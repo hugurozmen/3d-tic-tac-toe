@@ -176,6 +176,10 @@ test('mobile view selector can enter and leave the 3D board', async ({ page }) =
   await expectCanvasHasPixels(page);
   await expect(page.locator('.stage-actions')).toBeVisible();
 
+  await page.getByRole('button', { name: 'Floors' }).click();
+  await expectCanvasHasPixels(page);
+  await expect(page.locator('.stage-actions')).toBeVisible();
+
   await page.getByRole('button', { name: 'Scanner' }).click();
   await expect(page.locator('.scanner-grid')).toBeVisible();
 });

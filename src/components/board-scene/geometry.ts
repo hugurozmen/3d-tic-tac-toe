@@ -5,13 +5,14 @@ import { toCoordinate } from '../../game/rules';
 export const CAMERA_HOME = new THREE.Vector3(4.2, 3.5, 5.2);
 export const BOARD_TARGET = new THREE.Vector3(0, 0, 0);
 export const MIN_DISTANCE = 3.7;
-export const MAX_DISTANCE = 12;
+export const MAX_DISTANCE = 14;
 
 const HOME_DISTANCE = CAMERA_HOME.length();
 const HALF_FOV = THREE.MathUtils.degToRad(21);
 
 export const fitCameraDistance = (aspect: number, layout: BoardLayout) => {
-  const extent = layout === 'floors' ? 3.5 : 3.1;
+  const narrowComfort = aspect < 1.25 ? 1.2 : aspect < 1.5 ? 1.1 : 1;
+  const extent = (layout === 'floors' ? 3.85 : 3.35) * narrowComfort;
   const fit = extent / (Math.tan(HALF_FOV) * Math.min(aspect, 1.5));
 
   return THREE.MathUtils.clamp(

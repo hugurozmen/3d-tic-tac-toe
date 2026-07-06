@@ -19,6 +19,7 @@ export function BoardScene(props: BoardSceneProps) {
 
   return (
     <Canvas
+      key={props.layout}
       camera={{ position: [CAMERA_HOME.x, CAMERA_HOME.y, CAMERA_HOME.z], fov: 42 }}
       dpr={[1, 2]}
       gl={{ alpha: true, antialias: true }}
