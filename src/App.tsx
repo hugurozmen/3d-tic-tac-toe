@@ -50,10 +50,10 @@ const COACH_OPTIONS = ['auto', 'on', 'off'] as const;
 type CoachSetting = (typeof COACH_OPTIONS)[number];
 
 const aiThinkingDelay: Record<Difficulty, number> = {
-  easy: 650,
-  balanced: 1050,
-  hard: 1250,
-  master: 1400,
+  easy: 520,
+  balanced: 840,
+  hard: 1020,
+  master: 1180,
 };
 
 type StageNotice = {
