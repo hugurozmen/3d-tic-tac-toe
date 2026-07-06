@@ -57,6 +57,13 @@ const aiThinkingDelay: Record<Difficulty, number> = {
   master: 1400,
 };
 
+type StageNotice = {
+  count?: number;
+  id: number;
+  text: string;
+  tone: 'block' | 'score' | 'system';
+};
+
 export function App() {
   const [ruleset, setRuleset] = useLocalStorageState<GameRuleset>(
     '3dxox-ruleset',
@@ -78,6 +85,7 @@ export function App() {
     xMoves,
     opener,
     recentLines,
+    recentImpact,
   } = useMatchState(ruleset);
   const [mode, setMode] = useState<GameMode>('solo');
   const [difficulty, setDifficulty] = useLocalStorageState<Difficulty>(
@@ -129,7 +137,7 @@ export function App() {
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(
     null,
   );
-  const [stageNotice, setStageNotice] = useState<string | null>(null);
+  const [stageNotice, setStageNotice] = useState<StageNotice | null>(null);
   const [piePromptOpen, setPiePromptOpen] = useState(false);
   const [pieDecisionDone, setPieDecisionDone] = useState(false);
   const [isAiThinking, setIsAiThinking] = useState(false);
@@ -170,12 +178,13 @@ export function App() {
         : [],
     [board, coachEnabled, currentPlayer, result.isDraw, result.winner],
   );
-  const highlightLines =
-    ruleset === 'lines'
-      ? recentLines
-      : result.winningLine.length === 3
-        ? [result.winningLine]
-        : [];
+  const scoredLines = ruleset === 'lines' ? recentLines : [];
+  const finalLines: number[][] =
+    ruleset === 'lines' && result.winner && 'winningLines' in result
+      ? (result.winningLines as number[][])
+      : [];
+  const recentLineCount = recentImpact?.linesCompleted.length ?? 0;
+  const recentBlockCount = recentImpact?.blockedLines.length ?? 0;
 
   useEffect(() => {
     setFeedbackMuted(soundSetting === 'off');
@@ -196,18 +205,26 @@ export function App() {
     return () => window.clearTimeout(preloadTimer);
   }, [layout]);
 
-  const flashNotice = useCallback((text: string) => {
-    setStageNotice(text);
+  const flashNotice = useCallback(
+    (text: string, tone: StageNotice['tone'] = 'system', count?: number) => {
+      setStageNotice({
+        count,
+        id: Date.now(),
+        text,
+        tone,
+      });
 
-    if (noticeTimeoutRef.current !== null) {
-      window.clearTimeout(noticeTimeoutRef.current);
-    }
+      if (noticeTimeoutRef.current !== null) {
+        window.clearTimeout(noticeTimeoutRef.current);
+      }
 
-    noticeTimeoutRef.current = window.setTimeout(
-      () => setStageNotice(null),
-      2600,
-    );
-  }, []);
+      noticeTimeoutRef.current = window.setTimeout(
+        () => setStageNotice(null),
+        tone === 'score' ? 2800 : 2200,
+      );
+    },
+    [],
+  );
 
   useEffect(
     () => () => {
@@ -226,25 +243,32 @@ export function App() {
   }, [moveCount]);
 
   useEffect(() => {
-    if (ruleset !== 'lines' || recentLines.length === 0 || lastMove === null) {
+    if (ruleset !== 'lines' || !recentImpact) {
       return;
     }
 
-    const scoringPlayer = board[lastMove];
+    const lineCount = recentImpact.linesCompleted.length;
+    const blockCount = recentImpact.blockedLines.length;
+    const parts: string[] = [];
 
-    if (!scoringPlayer) {
-      return;
+    if (lineCount > 0) {
+      const lineText = lineCount === 1 ? 'line' : 'lines';
+      parts.push(`${recentImpact.player} +${lineCount} ${lineText}`);
     }
 
-    const lineText = recentLines.length === 1 ? 'line' : 'lines';
+    if (blockCount > 0) {
+      const blockText = blockCount === 1 ? 'block' : 'blocks';
+      parts.push(`${blockCount} ${blockText}`);
+    }
+
     flashNotice(
-      `${scoringPlayer} +${recentLines.length} ${lineText} (${result.lineScores.X}-${result.lineScores.O})`,
+      `${parts.join(' + ')} (${result.lineScores.X}-${result.lineScores.O})`,
+      lineCount > 0 ? 'score' : 'block',
+      lineCount || blockCount,
     );
   }, [
-    board,
     flashNotice,
-    lastMove,
-    recentLines.length,
+    recentImpact,
     result.lineScores.O,
     result.lineScores.X,
     ruleset,
@@ -749,12 +773,17 @@ export function App() {
   }, [humanSide, mode, opener]);
 
   const openedText = useMemo(() => {
+    const context =
+      ruleset === 'lines' && (result.winner || result.isDraw)
+        ? 'Final board filled - '
+        : '';
+
     if (mode === 'solo') {
-      return opener === humanSide ? 'You opened' : 'AI opened';
+      return `${context}${opener === humanSide ? 'You opened' : 'AI opened'}`;
     }
 
-    return `${opener} opened`;
-  }, [humanSide, mode, opener]);
+    return `${context}${opener} opened`;
+  }, [humanSide, mode, opener, result.isDraw, result.winner, ruleset]);
 
   const resultLabel = useMemo(() => {
     if (!result.winner && !result.isDraw) {
@@ -762,10 +791,10 @@ export function App() {
     }
 
     if (ruleset === 'lines') {
-      const scoreText = `${result.lineScores.X}-${result.lineScores.O}`;
+      const scoreText = `${result.lineScores.X}\u2013${result.lineScores.O}`;
 
       if (result.isDraw) {
-        return `Draw, ${scoreText}`;
+        return `Draw by lines, ${scoreText}`;
       }
 
       if (mode === 'solo') {
@@ -807,13 +836,14 @@ export function App() {
         coachScoreCells={coachScoreCells}
         currentPlayer={currentPlayer}
         disabled={isBoardDisabled}
-        highlightLines={highlightLines}
+        finalLines={finalLines}
         lastMove={lastMove}
         layout={layout}
         openedText={openedText}
         result={result}
         resultLabel={resultLabel}
         scannerFloor={scannerFloor}
+        scoredLines={scoredLines}
         stageNotice={stageNotice}
         theme={theme.scene}
         viewCommand={viewCommand}
@@ -845,6 +875,9 @@ export function App() {
         online={online}
         openerText={openerText}
         remoteSignal={remoteSignal}
+        recentBlockCount={recentBlockCount}
+        recentLineCount={recentLineCount}
+        recentLinePlayer={recentImpact?.player ?? null}
         remainingCells={result.remainingCells}
         result={result}
         roundsPlayed={roundsPlayed}

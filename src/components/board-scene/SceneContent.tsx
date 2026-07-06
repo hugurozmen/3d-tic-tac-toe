@@ -21,8 +21,9 @@ export function SceneContent({
   coachScoreCells,
   currentPlayer,
   disabled,
-  highlightLines,
+  finalLines,
   layout,
+  scoredLines,
   theme,
   viewCommand,
   winningLine,
@@ -30,13 +31,15 @@ export function SceneContent({
   onSelect,
 }: SceneContentProps) {
   const group = useRef<THREE.Group>(null);
-  const highlightedCells = new Set([
-    ...winningLine,
-    ...highlightLines.flatMap((line) => line),
-  ]);
+  const classicWinningCells = new Set(winningLine);
+  const scoredCells = new Set(scoredLines.flatMap((line) => line));
+  const finalCells = new Set(finalLines.flatMap((line) => line));
   const scoreCells = new Set(coachScoreCells);
   const blockCells = new Set(coachBlockCells);
-  const beamLine = winningLine.length === 3 ? winningLine : highlightLines[0] ?? [];
+  const beamLine =
+    scoredLines[0] ??
+    (winningLine.length === 3 ? winningLine : finalLines[0] ?? []);
+  const beamColor = scoredLines[0] ? '#74f0a7' : theme.win;
 
   useFrame(({ clock }) => {
     if (!group.current) {
@@ -59,7 +62,7 @@ export function SceneContent({
         {layout === 'floors' ? <FloorPlates theme={theme} /> : null}
         {theme.coreGlow ? <CoreGlow theme={theme} /> : null}
         {theme.winBeam && beamLine.length === 3 ? (
-          <WinBeam layout={layout} line={beamLine} theme={theme} />
+          <WinBeam color={beamColor} layout={layout} line={beamLine} theme={theme} />
         ) : null}
         {board.map((value, index) => {
           const isScore = !value && scoreCells.has(index);
@@ -81,7 +84,15 @@ export function SceneContent({
               currentPlayer={currentPlayer}
               disabled={disabled}
               index={index}
-              isWinning={highlightedCells.has(index)}
+              lineMark={
+                classicWinningCells.has(index)
+                  ? 'win'
+                  : finalCells.has(index)
+                    ? 'final'
+                    : scoredCells.has(index)
+                      ? 'scored'
+                      : null
+              }
               layout={layout}
               theme={theme}
               value={value}

@@ -264,7 +264,7 @@ const lineParticipation = (move: number) =>
 
 const linesPositionalBonus = (move: number) => {
   if (move === CENTER_INDEX) {
-    return 36;
+    return 28;
   }
 
   if (CORNERS.has(move)) {
@@ -272,11 +272,11 @@ const linesPositionalBonus = (move: number) => {
   }
 
   if (EDGE_CENTERS.has(move)) {
-    return 13;
+    return 15;
   }
 
   if (MIDDLE_FACE_CENTERS.has(move)) {
-    return 9;
+    return 11;
   }
 
   return 4;
@@ -350,18 +350,22 @@ const scoreLinesCandidateShallow = (
   next[move] = player;
   const afterScores = getLineScores(next);
   const immediateGain = afterScores[player] - beforeScores[player];
+  const newCompletedCount = getNewCompletedLines(board, next, player).length;
   const blocksThreat = getThreatCells(board, rival).includes(move) ? 1 : 0;
   const createsThreats =
     getThreatCells(next, player).length - getThreatCells(board, player).length;
+  const remainingAfter = getAvailableMoves(next).length;
+  const endgameMultiplier = remainingAfter < 6 ? 1.35 : 1;
 
   return (
     scoreLinesBoard(next, player) +
-    immediateGain * 230 +
-    getNewCompletedLines(board, next, player).length * 90 +
-    blocksThreat * 76 +
+    immediateGain * 230 * endgameMultiplier +
+    newCompletedCount * 120 +
+    blocksThreat * 118 * endgameMultiplier +
     Math.max(0, createsThreats) * 28 +
-    countOpenLinesThroughMove(board, move, player) * 8 +
-    lineParticipation(move) * 5 +
+    countOpenLinesThroughMove(board, move, player) * 9 +
+    countOpenLinesThroughMove(board, move, rival) * 7 +
+    lineParticipation(move) * 4 +
     linesPositionalBonus(move)
   );
 };

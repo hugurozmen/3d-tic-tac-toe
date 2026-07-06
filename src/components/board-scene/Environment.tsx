@@ -187,10 +187,12 @@ export function ScanFloor({
 }
 
 export function WinBeam({
+  color,
   layout,
   line,
   theme,
 }: {
+  color?: string;
   layout: BoardLayout;
   line: number[];
   theme: SceneTheme;
@@ -226,7 +228,7 @@ export function WinBeam({
       <meshBasicMaterial
         ref={material}
         blending={THREE.AdditiveBlending}
-        color={theme.win}
+        color={color ?? theme.win}
         depthWrite={false}
         transparent
       />

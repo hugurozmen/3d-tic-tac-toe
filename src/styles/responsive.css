@@ -3,9 +3,14 @@
   .turn-badge.thinking,
   .thinking-spinner,
   .scanner-stop.hinted,
+  .scanner-cell.scored-line,
   .round-result,
   .stage-toast,
-  .confirm-card {
+  .stage-toast.notice-score.multi,
+  .confirm-card,
+  .line-score-tile.score-bump,
+  .line-score-tile.score-bump::before,
+  .line-score-empty.tension {
     animation: none;
   }
 }

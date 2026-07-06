@@ -7,9 +7,10 @@ type ScannerBoardProps = {
   coachScoreCells: number[];
   currentPlayer: Player;
   disabled: boolean;
+  finalLines: number[][];
   floor: number;
-  highlightLines: number[][];
   lastMove: number | null;
+  scoredLines: number[][];
   theme: SceneTheme;
   winningLine: number[];
   onFloorChange: (floor: number) => void;
@@ -27,28 +28,53 @@ export function ScannerBoard({
   coachScoreCells,
   currentPlayer,
   disabled,
+  finalLines,
   floor,
-  highlightLines,
   lastMove,
+  scoredLines,
   theme,
   winningLine,
   onFloorChange,
   onSelect,
 }: ScannerBoardProps) {
   const lastMoveFloor = lastMove === null ? null : floorOf(lastMove);
+  const classicWinningCells = new Set(winningLine);
+  const scoredCells = new Set(scoredLines.flatMap((line) => line));
+  const finalCells = new Set(finalLines.flatMap((line) => line));
   const highlightedCells = new Set([
-    ...winningLine,
-    ...highlightLines.flatMap((line) => line),
+    ...classicWinningCells,
+    ...scoredCells,
+    ...finalCells,
   ]);
   const scoreCells = new Set(coachScoreCells);
   const blockCells = new Set(coachBlockCells);
   const winningFloors = new Set(Array.from(highlightedCells).map(floorOf));
   const style: ThemeStyle = { '--scan-win': theme.win };
 
+  const hintClassForFloor = (layer: number) => {
+    const hasScore = coachScoreCells.some((index) => floorOf(index) === layer);
+    const hasBlock = coachBlockCells.some((index) => floorOf(index) === layer);
+
+    if (hasScore && hasBlock) {
+      return 'hint-both';
+    }
+
+    if (hasScore) {
+      return 'hint-score';
+    }
+
+    if (hasBlock) {
+      return 'hint-block';
+    }
+
+    return '';
+  };
+
   const stopClass = (layer: number) =>
     [
       'scanner-stop',
       layer === floor ? 'active' : '',
+      hintClassForFloor(layer),
       winningFloors.has(layer)
         ? 'win'
         : layer !== floor && lastMoveFloor === layer
@@ -93,35 +119,50 @@ export function ScannerBoard({
           {Array.from({ length: 9 }, (_, cell) => floor * 9 + cell).map(
             (index) => {
               const value = board[index];
+              const isClassicWinning = classicWinningCells.has(index);
+              const isScoredLine = scoredCells.has(index);
+              const isFinalLine = finalCells.has(index);
               const isWinning = highlightedCells.has(index);
               const isCoachScore = !value && scoreCells.has(index);
               const isCoachBlock = !value && blockCells.has(index);
+              const isCoachBoth = isCoachScore && isCoachBlock;
               const isPlayable = !value && !disabled;
               const cellClass = [
                 'scanner-cell',
                 value === 'X' ? 'mark-x' : value === 'O' ? 'mark-o' : '',
                 isWinning ? 'win' : '',
+                isScoredLine ? 'scored-line' : '',
+                isFinalLine || isClassicWinning ? 'final-line' : '',
                 isCoachScore ? 'coach-score' : '',
                 isCoachBlock ? 'coach-block' : '',
+                isCoachBoth ? 'coach-both' : '',
                 lastMove === index ? 'last' : '',
                 isPlayable ? `preview-${currentPlayer.toLowerCase()}` : '',
               ]
                 .filter(Boolean)
                 .join(' ');
 
+              const lineLabel = isClassicWinning
+                ? ', winning line'
+                : isFinalLine
+                  ? ', final winning line'
+                  : isScoredLine
+                    ? ', scored line'
+                    : '';
+              const coachLabel = isCoachBoth
+                ? ', completes and blocks lines'
+                : isCoachScore
+                  ? ', completes a line'
+                  : isCoachBlock
+                    ? ', blocks a line'
+                    : '';
               const cellLabel = value
-                ? `Cell ${index + 1}, ${value}${isWinning ? ', winning line' : ''}`
+                ? `Cell ${index + 1}, ${value}${lineLabel}`
                 : isPlayable
                   ? `Place ${currentPlayer} at cell ${index + 1}, floor ${
                       floor + 1
-                    }${
-                      isCoachScore
-                        ? ', completes a line'
-                        : isCoachBlock
-                          ? ', blocks a line'
-                          : ''
-                    }`
-                  : `Cell ${index + 1}, empty`;
+                    }${coachLabel}`
+                  : `Cell ${index + 1}, empty${lineLabel}${coachLabel}`;
 
               return (
                 <button

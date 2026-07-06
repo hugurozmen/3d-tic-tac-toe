@@ -11,8 +11,9 @@ export type BoardSceneProps = {
   coachScoreCells: number[];
   currentPlayer: Player;
   disabled: boolean;
-  highlightLines: number[][];
+  finalLines: number[][];
   layout: BoardLayout;
+  scoredLines: number[][];
   theme: SceneTheme;
   viewCommand: BoardViewCommand | null;
   winningLine: number[];
@@ -25,7 +26,7 @@ export type CellProps = {
   disabled: boolean;
   index: number;
   coachMark: 'score' | 'block' | 'both' | null;
-  isWinning: boolean;
+  lineMark: 'final' | 'scored' | 'win' | null;
   layout: BoardLayout;
   theme: SceneTheme;
   value: Player | null;

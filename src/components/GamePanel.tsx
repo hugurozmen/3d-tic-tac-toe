@@ -65,6 +65,9 @@ type GamePanelProps = {
   online: OnlinePanelState;
   openerText: string;
   remoteSignal: string;
+  recentBlockCount: number;
+  recentLineCount: number;
+  recentLinePlayer: Player | null;
   remainingCells: number;
   result: GameResult;
   roundsPlayed: number;
@@ -111,6 +114,9 @@ export function GamePanel({
   online,
   openerText,
   remoteSignal,
+  recentBlockCount,
+  recentLineCount,
+  recentLinePlayer,
   remainingCells,
   result,
   roundsPlayed,
@@ -136,6 +142,18 @@ export function GamePanel({
   onThemeChange,
   onToggleSound,
 }: GamePanelProps) {
+  const lineScoreEventClass = [
+    recentLineCount > 0 ? 'score-bump' : '',
+    recentLineCount > 1 ? 'multi-line' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+  const emptyCellsTense =
+    ruleset === 'lines' &&
+    remainingCells > 0 &&
+    remainingCells < 6 &&
+    !result.isComplete;
+
   return (
     <aside className="game-panel" aria-label="Game controls">
       <header className="panel-header">
@@ -212,23 +230,45 @@ export function GamePanel({
       </div>
 
       {ruleset === 'lines' ? (
-        <div className="line-score-card" aria-label="Lines score">
-          <div>
+        <div
+          className={`line-score-card ${
+            recentBlockCount > 0 ? 'block-event' : ''
+          }`}
+          aria-label="Lines score"
+          aria-live="polite"
+        >
+          <div
+            className={`line-score-tile line-score-x ${
+              recentLinePlayer === 'X' ? lineScoreEventClass : ''
+            }`}
+          >
             <span>X lines</span>
             <strong>{lineScores.X}</strong>
           </div>
-          <div>
+          <div
+            className={`line-score-tile line-score-round ${
+              recentLineCount > 0 ? lineScoreEventClass : ''
+            }`}
+          >
             <span>Round</span>
             <strong>
               {lineScores.X}-{lineScores.O}
             </strong>
           </div>
-          <div>
+          <div
+            className={`line-score-tile line-score-o ${
+              recentLinePlayer === 'O' ? lineScoreEventClass : ''
+            }`}
+          >
             <span>O lines</span>
             <strong>{lineScores.O}</strong>
           </div>
-          <div>
-            <span>Empty</span>
+          <div
+            className={`line-score-tile line-score-empty ${
+              emptyCellsTense ? 'tension' : ''
+            }`}
+          >
+            <span>{emptyCellsTense ? 'Final cells' : 'Empty'}</span>
             <strong>{remainingCells}</strong>
           </div>
         </div>

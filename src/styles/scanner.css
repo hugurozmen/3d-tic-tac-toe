@@ -135,25 +135,66 @@
     0 0 24px color-mix(in srgb, var(--app-win) 45%, transparent);
 }
 
-.scanner-cell.coach-score:not(.win) {
-  border-color: color-mix(in srgb, #74f0a7 72%, transparent);
+.scanner-cell.scored-line:not(.final-line) {
+  border-color: var(--line-scored);
+  animation: scored-line-pulse 860ms ease-out 2;
   box-shadow:
-    inset 0 0 0 2px color-mix(in srgb, #74f0a7 68%, transparent),
-    0 0 18px color-mix(in srgb, #74f0a7 30%, transparent);
+    inset 0 0 0 2px color-mix(in srgb, var(--line-scored) 76%, transparent),
+    0 0 24px color-mix(in srgb, var(--line-scored) 36%, transparent);
+}
+
+.scanner-cell.final-line {
+  border-color: var(--app-win);
+  box-shadow:
+    inset 0 0 0 2px var(--app-win),
+    0 0 30px color-mix(in srgb, var(--app-win) 52%, transparent);
+}
+
+.scanner-cell.coach-score:not(.win) {
+  border-color: color-mix(in srgb, var(--hint-score) 72%, transparent);
+  box-shadow:
+    inset 0 0 0 2px color-mix(in srgb, var(--hint-score) 68%, transparent),
+    0 0 18px color-mix(in srgb, var(--hint-score) 30%, transparent);
 }
 
 .scanner-cell.coach-block:not(.win) {
-  border-color: color-mix(in srgb, #ff6f76 72%, transparent);
+  border-color: color-mix(in srgb, var(--hint-block) 72%, transparent);
   box-shadow:
-    inset 0 0 0 2px color-mix(in srgb, #ff6f76 68%, transparent),
-    0 0 18px color-mix(in srgb, #ff6f76 28%, transparent);
+    inset 0 0 0 2px color-mix(in srgb, var(--hint-block) 68%, transparent),
+    0 0 18px color-mix(in srgb, var(--hint-block) 28%, transparent);
 }
 
-.scanner-cell.coach-score.coach-block:not(.win) {
-  border-color: color-mix(in srgb, #f8d65a 78%, transparent);
+.scanner-cell.coach-both:not(.win) {
+  border-color: color-mix(in srgb, var(--hint-both) 78%, transparent);
   box-shadow:
-    inset 0 0 0 2px color-mix(in srgb, #f8d65a 70%, transparent),
-    0 0 20px color-mix(in srgb, #f8d65a 32%, transparent);
+    inset 0 0 0 2px color-mix(in srgb, var(--hint-both) 70%, transparent),
+    0 0 20px color-mix(in srgb, var(--hint-both) 32%, transparent);
+}
+
+.scanner-cell.coach-both:not(.win)::after {
+  position: absolute;
+  top: 7px;
+  left: 7px;
+  width: 8px;
+  height: 8px;
+  content: "";
+  border-radius: 50%;
+  background: var(--hint-both);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--hint-both) 70%, transparent);
+}
+
+@keyframes scored-line-pulse {
+  0% {
+    transform: scale(0.97);
+  }
+
+  45% {
+    transform: scale(1.035);
+  }
+
+  100% {
+    transform: scale(1);
+  }
 }
 
 .scanner-cell.last:not(.win) {
@@ -252,6 +293,21 @@
 .scanner-stop.win:not(.active) {
   border-color: var(--app-win);
   color: var(--app-win);
+}
+
+.scanner-stop.hint-score:not(.active):not(.win) {
+  border-color: color-mix(in srgb, var(--hint-score) 68%, transparent);
+  color: var(--hint-score);
+}
+
+.scanner-stop.hint-block:not(.active):not(.win) {
+  border-color: color-mix(in srgb, var(--hint-block) 68%, transparent);
+  color: var(--hint-block);
+}
+
+.scanner-stop.hint-both:not(.active):not(.win) {
+  border-color: color-mix(in srgb, var(--hint-both) 74%, transparent);
+  color: var(--hint-both);
 }
 
 .scanner-stop.hinted {

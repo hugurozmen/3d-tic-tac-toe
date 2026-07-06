@@ -37,6 +37,10 @@
   --app-text: #eaf1ff;
   --app-tile: #101a33;
   --app-win: #f4c542;
+  --hint-block: #ff6f76;
+  --hint-both: #f8d65a;
+  --hint-score: #74f0a7;
+  --line-scored: #74f0a7;
   --mark-o: #3fe3cb;
   --mark-x: #ff635d;
   --font-display: "Space Grotesk", "Inter", ui-sans-serif, system-ui,

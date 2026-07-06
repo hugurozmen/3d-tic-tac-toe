@@ -7,11 +7,19 @@ import {
   countMarks,
   createBoard,
   evaluateBoard,
+  getLineThreats,
   getOtherPlayer,
   getNewCompletedLines,
 } from './rules';
 
 export type Score = Record<Player | 'draws', number>;
+
+export type MoveImpact = {
+  blockedLines: number[][];
+  id: number;
+  linesCompleted: number[][];
+  player: Player;
+};
 
 const loadScore = (): Score => {
   try {
@@ -49,11 +57,13 @@ export function useMatchState(ruleset: GameRuleset) {
   const [score, setScore] = useState<Score>(loadScore);
   const [scoredRound, setScoredRound] = useState<string | null>(null);
   const [recentLines, setRecentLines] = useState<number[][]>([]);
+  const [recentImpact, setRecentImpact] = useState<MoveImpact | null>(null);
   const boardRef = useRef(board);
   const currentPlayerRef = useRef(currentPlayer);
   const rulesetRef = useRef(ruleset);
   const startingPlayerRef = useRef<Player>('X');
   const recentLinesTimeoutRef = useRef<number | null>(null);
+  const moveImpactIdRef = useRef(0);
   const result = useMemo(() => evaluateBoard(board, ruleset), [board, ruleset]);
   const boardSignature = useMemo(
     () => board.map((cell) => cell ?? '-').join(''),
@@ -71,6 +81,7 @@ export function useMatchState(ruleset: GameRuleset) {
     }
 
     setRecentLines([]);
+    setRecentImpact(null);
   }, []);
 
   useEffect(() => {
@@ -119,6 +130,7 @@ export function useMatchState(ruleset: GameRuleset) {
     setCurrentPlayer(nextStarter);
     setLastMove(null);
     setScoredRound(null);
+    setRecentImpact(null);
     clearRecentLines();
   }, [clearRecentLines]);
 
@@ -145,6 +157,15 @@ export function useMatchState(ruleset: GameRuleset) {
       activeRuleset === 'lines'
         ? getNewCompletedLines(activeBoard, next, movePlayer)
         : [];
+    const blockedLines =
+      activeRuleset === 'lines'
+        ? getLineThreats(activeBoard, getOtherPlayer(movePlayer)).filter(
+            (line) =>
+              line.includes(index) &&
+              line.find((cellIndex) => activeBoard[cellIndex] === null) ===
+                index,
+          )
+        : [];
 
     boardRef.current = next;
     currentPlayerRef.current = nextPlayer;
@@ -154,7 +175,14 @@ export function useMatchState(ruleset: GameRuleset) {
 
     if (newCompletedLines.length > 0) {
       setRecentLines(newCompletedLines);
-      feedback.win();
+      setRecentImpact({
+        blockedLines,
+        id: moveImpactIdRef.current + 1,
+        linesCompleted: newCompletedLines,
+        player: movePlayer,
+      });
+      moveImpactIdRef.current += 1;
+      feedback.scoreLine(newCompletedLines.length);
 
       if (recentLinesTimeoutRef.current !== null) {
         window.clearTimeout(recentLinesTimeoutRef.current);
@@ -162,14 +190,37 @@ export function useMatchState(ruleset: GameRuleset) {
 
       recentLinesTimeoutRef.current = window.setTimeout(() => {
         setRecentLines([]);
+        setRecentImpact(null);
         recentLinesTimeoutRef.current = null;
       }, 2600);
+    } else if (blockedLines.length > 0) {
+      setRecentLines([]);
+      setRecentImpact({
+        blockedLines,
+        id: moveImpactIdRef.current + 1,
+        linesCompleted: [],
+        player: movePlayer,
+      });
+      moveImpactIdRef.current += 1;
+      feedback.block();
+
+      if (recentLinesTimeoutRef.current !== null) {
+        window.clearTimeout(recentLinesTimeoutRef.current);
+      }
+
+      recentLinesTimeoutRef.current = window.setTimeout(() => {
+        setRecentImpact(null);
+        recentLinesTimeoutRef.current = null;
+      }, 1800);
     } else {
+      setRecentLines([]);
+      setRecentImpact(null);
       feedback.place(movePlayer);
     }
 
     return {
       linesCompleted: newCompletedLines,
+      blockedLines,
       moved: true,
       player: movePlayer,
     };
@@ -225,5 +276,6 @@ export function useMatchState(ruleset: GameRuleset) {
     xMoves,
     opener,
     recentLines,
+    recentImpact,
   };
 }
