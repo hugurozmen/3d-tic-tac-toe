@@ -23,6 +23,7 @@ import {
   RULESET_LABEL,
   RULESET_OPTIONS,
 } from '../game/options';
+import type { MatchState, Score } from '../game/match';
 import type {
   Difficulty,
   GameMode,
@@ -35,7 +36,6 @@ import type { OnlineStatus } from '../game/useOnlineGame';
 import { THEME_ORDER, THEMES, ThemeId } from '../theme';
 import { ViewSelector } from './ViewSelector';
 
-type Score = Record<Player | 'draws', number>;
 type SoundSetting = 'on' | 'off';
 type CoachSetting = 'auto' | 'on' | 'off';
 
@@ -60,8 +60,11 @@ type GamePanelProps = {
   lastMove: number | null;
   layout: BoardLayout;
   lineScores: LineScores;
+  lifetimeScore: Score;
+  match: MatchState;
+  matchWinnerText: string | null;
   mode: GameMode;
-  oMoves: number;
+  nextOpenerText: string;
   online: OnlinePanelState;
   openerText: string;
   remoteSignal: string;
@@ -70,13 +73,10 @@ type GamePanelProps = {
   recentLinePlayer: Player | null;
   remainingCells: number;
   result: GameResult;
-  roundsPlayed: number;
   ruleset: GameRuleset;
-  score: Score;
   soundSetting: SoundSetting;
   status: string;
   themeId: ThemeId;
-  xMoves: number;
   onCoachSettingChange: (setting: CoachSetting) => void;
   onCopySignal: () => void;
   onDifficultyChange: (difficulty: Difficulty) => void;
@@ -109,8 +109,11 @@ export function GamePanel({
   lastMove,
   layout,
   lineScores,
+  lifetimeScore,
+  match,
+  matchWinnerText,
   mode,
-  oMoves,
+  nextOpenerText,
   online,
   openerText,
   remoteSignal,
@@ -119,13 +122,10 @@ export function GamePanel({
   recentLinePlayer,
   remainingCells,
   result,
-  roundsPlayed,
   ruleset,
-  score,
   soundSetting,
   status,
   themeId,
-  xMoves,
   onCoachSettingChange,
   onCopySignal,
   onDifficultyChange,
@@ -206,26 +206,30 @@ export function GamePanel({
         </div>
       </header>
 
-      <div className="score-row" aria-label="Score">
+      <div className="score-row" aria-label="Best-of-5 match score">
         <div
           className={`score-tile score-x ${
-            !result.winner && currentPlayer === 'X' ? 'live' : ''
+            !result.winner && !match.isComplete && currentPlayer === 'X'
+              ? 'live'
+              : ''
           }`}
         >
-          <span>X</span>
-          <strong>{score.X}</strong>
+          <span>X wins</span>
+          <strong>{match.score.X}</strong>
         </div>
         <div className="score-tile score-draw">
-          <span>Draw</span>
-          <strong>{score.draws}</strong>
+          <span>Draws</span>
+          <strong>{match.score.draws}</strong>
         </div>
         <div
           className={`score-tile score-o ${
-            !result.winner && currentPlayer === 'O' ? 'live' : ''
+            !result.winner && !match.isComplete && currentPlayer === 'O'
+              ? 'live'
+              : ''
           }`}
         >
-          <span>O</span>
-          <strong>{score.O}</strong>
+          <span>O wins</span>
+          <strong>{match.score.O}</strong>
         </div>
       </div>
 
@@ -530,20 +534,36 @@ export function GamePanel({
 
       <div className="match-card">
         <div>
-          <span>Best 5</span>
-          <strong>{Math.min(roundsPlayed + 1, 5)}</strong>
+          <span>Round</span>
+          <strong>{match.roundNumber}</strong>
+        </div>
+        <div>
+          <span>{match.winner ? 'Winner' : 'Target'}</span>
+          <strong>{matchWinnerText ?? `Race to ${match.targetWins}`}</strong>
+        </div>
+        <div>
+          <span>Match</span>
+          <strong>
+            {match.score.X}-{match.score.O}
+          </strong>
         </div>
         <div>
           <span>Opener</span>
           <strong>{openerText}</strong>
         </div>
         <div>
-          <span>X moves</span>
-          <strong>{xMoves}</strong>
+          <span>Next</span>
+          <strong>{match.isComplete ? 'Done' : nextOpenerText}</strong>
         </div>
         <div>
-          <span>O moves</span>
-          <strong>{oMoves}</strong>
+          <span>Lifetime</span>
+          <strong>
+            {lifetimeScore.X}-{lifetimeScore.O}
+          </strong>
+        </div>
+        <div>
+          <span>Life draws</span>
+          <strong>{lifetimeScore.draws}</strong>
         </div>
         <div>
           <span>Last</span>
