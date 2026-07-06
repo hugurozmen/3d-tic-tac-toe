@@ -35,14 +35,20 @@ type GameStageProps = {
   coachScoreCells: number[];
   currentPlayer: Player;
   disabled: boolean;
-  highlightLines: number[][];
+  finalLines: number[][];
   lastMove: number | null;
   layout: BoardLayout;
   openedText: string;
   result: GameResult;
   resultLabel: string | null;
   scannerFloor: number;
-  stageNotice: string | null;
+  scoredLines: number[][];
+  stageNotice: {
+    count?: number;
+    id: number;
+    text: string;
+    tone: 'block' | 'score' | 'system';
+  } | null;
   theme: SceneTheme;
   viewCommand: BoardViewCommand | null;
   onFloorChange: (floor: number) => void;
@@ -59,13 +65,14 @@ export const GameStage = forwardRef<HTMLElement, GameStageProps>(
       coachScoreCells,
       currentPlayer,
       disabled,
-      highlightLines,
+      finalLines,
       lastMove,
       layout,
       openedText,
       result,
       resultLabel,
       scannerFloor,
+      scoredLines,
       stageNotice,
       theme,
       viewCommand,
@@ -86,8 +93,9 @@ export const GameStage = forwardRef<HTMLElement, GameStageProps>(
             floor={scannerFloor}
             coachBlockCells={coachBlockCells}
             coachScoreCells={coachScoreCells}
-            highlightLines={highlightLines}
+            finalLines={finalLines}
             lastMove={lastMove}
+            scoredLines={scoredLines}
             theme={theme}
             winningLine={result.winningLine}
             onFloorChange={onFloorChange}
@@ -108,8 +116,9 @@ export const GameStage = forwardRef<HTMLElement, GameStageProps>(
               coachScoreCells={coachScoreCells}
               currentPlayer={currentPlayer}
               disabled={disabled}
-              highlightLines={highlightLines}
+              finalLines={finalLines}
               layout={layout}
+              scoredLines={scoredLines}
               theme={theme}
               viewCommand={viewCommand}
               winningLine={result.winningLine}
@@ -118,8 +127,14 @@ export const GameStage = forwardRef<HTMLElement, GameStageProps>(
           </Suspense>
         )}
         {stageNotice ? (
-          <div className="stage-toast" role="status">
-            {stageNotice}
+          <div
+            key={stageNotice.id}
+            className={`stage-toast notice-${stageNotice.tone} ${
+              (stageNotice.count ?? 0) > 1 ? 'multi' : ''
+            }`}
+            role="status"
+          >
+            {stageNotice.text}
           </div>
         ) : null}
         {result.winner || result.isDraw ? (

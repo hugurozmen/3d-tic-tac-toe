@@ -80,6 +80,23 @@ export const feedback = {
   arm() {
     tone(520, 0.045, { gain: 0.05, type: 'triangle' });
   },
+  block() {
+    tone(220, 0.08, { gain: 0.08, type: 'square' });
+    tone(330, 0.1, { delay: 0.055, gain: 0.07, type: 'triangle' });
+    vibrate([12, 28, 12]);
+  },
+  scoreLine(count = 1) {
+    const cappedCount = Math.min(Math.max(count, 1), 4);
+
+    [523, 659, 784, 988].slice(0, cappedCount + 1).forEach((frequency, step) =>
+      tone(frequency, 0.12, {
+        delay: step * 0.055,
+        gain: step === cappedCount ? 0.11 : 0.075,
+        type: 'triangle',
+      }),
+    );
+    vibrate(count > 1 ? [18, 30, 18, 40, 28] : 22);
+  },
   win() {
     [392, 494, 587, 784].forEach((frequency, step) =>
       tone(frequency, 0.17, { delay: step * 0.09, gain: 0.11, type: 'triangle' }),

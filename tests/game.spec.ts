@@ -29,6 +29,10 @@ async function chooseTwoPlayer(page: Page) {
   await page.getByRole('button', { name: '2P' }).click();
 }
 
+async function showFloor(page: Page, floor: 1 | 2 | 3) {
+  await page.getByRole('button', { name: `Floor ${floor}`, exact: true }).click();
+}
+
 async function place(page: Page, player: 'X' | 'O', cell: number) {
   await page
     .getByRole('button', {
@@ -152,7 +156,43 @@ test('lines mode scores completed lines without ending the round', async ({
   ).toBeVisible();
 });
 
-test('coach mode marks blocking cells on the scanner board', async ({ page }) => {
+test('multi-line scoring gets special scanner feedback', async ({ page }) => {
+  await openGame(page, { layout: 'scanner' });
+  await chooseTwoPlayer(page);
+
+  await showFloor(page, 1);
+  await place(page, 'X', 1);
+  await place(page, 'O', 2);
+  await place(page, 'X', 3);
+  await place(page, 'O', 4);
+  await place(page, 'X', 7);
+  await place(page, 'O', 5);
+  await place(page, 'X', 9);
+  await place(page, 'O', 6);
+  await showFloor(page, 3);
+  await place(page, 'X', 19);
+  await place(page, 'O', 20);
+  await place(page, 'X', 21);
+  await place(page, 'O', 22);
+  await place(page, 'X', 25);
+  await place(page, 'O', 24);
+  await place(page, 'X', 27);
+  await place(page, 'O', 26);
+  await showFloor(page, 2);
+  await place(page, 'X', 14);
+
+  await expect(page.locator('.stage-toast.notice-score.multi')).toContainText(
+    'X +4 lines',
+  );
+  await expect(page.locator('.line-score-x.score-bump.multi-line')).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: /Cell 14, X, scored line/ }),
+  ).toBeVisible();
+});
+
+test('coach mode marks blocking and combined cells on the scanner board', async ({
+  page,
+}) => {
   await openGame(page, { layout: 'scanner' });
   await chooseTwoPlayer(page);
   await page.getByRole('button', { name: 'On', exact: true }).click();
@@ -163,6 +203,47 @@ test('coach mode marks blocking cells on the scanner board', async ({ page }) =>
 
   await expect(
     page.getByRole('button', { name: /Place O at cell 12\b.*blocks a line/ }),
+  ).toBeVisible();
+
+  await page.getByRole('button', { name: 'New round' }).click();
+  await showFloor(page, 1);
+  await place(page, 'X', 6);
+  await place(page, 'O', 1);
+  await place(page, 'X', 9);
+  await place(page, 'O', 2);
+  await showFloor(page, 2);
+  await place(page, 'X', 10);
+  await showFloor(page, 1);
+
+  await expect(
+    page.getByRole('button', {
+      name: /Place O at cell 3\b.*completes and blocks lines/,
+    }),
+  ).toBeVisible();
+});
+
+test('lines final result explains the score and filled board', async ({ page }) => {
+  await openGame(page, { layout: 'scanner' });
+  await chooseTwoPlayer(page);
+
+  for (const floor of [1, 2, 3] as const) {
+    await showFloor(page, floor);
+
+    const start = (floor - 1) * 9 + 1;
+
+    for (let cell = start; cell < start + 9; cell += 1) {
+      await place(page, cell % 2 === 1 ? 'X' : 'O', cell);
+
+      if (cell === 22) {
+        await expect(page.locator('.line-score-empty.tension')).toContainText('5');
+      }
+    }
+  }
+
+  await expect(page.getByText('X wins by lines, 12–6')).toBeVisible();
+  await expect(page.getByText('Final board filled - X opened')).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: /Cell 27, X, final winning line/ }),
   ).toBeVisible();
 });
 

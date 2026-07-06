@@ -18,7 +18,7 @@ export function Cell({
   currentPlayer,
   disabled,
   index,
-  isWinning,
+  lineMark,
   layout,
   theme,
   value,
@@ -32,6 +32,8 @@ export function Cell({
   const isGhost = theme.cellStyle === 'ghost';
   const isWire = theme.cellStyle === 'wire';
   const isActive = armed || (hovered && isPlayable);
+  const isLineMarked = lineMark !== null;
+  const isFinalLine = lineMark === 'final' || lineMark === 'win';
   const coachColor =
     coachMark === 'score'
       ? '#74f0a7'
@@ -48,8 +50,10 @@ export function Cell({
       return;
     }
 
-    const pulse = isWinning
+    const pulse = isFinalLine
       ? 1 + Math.sin(clock.elapsedTime * 5.2) * 0.055
+      : lineMark === 'scored'
+        ? 1 + Math.sin(clock.elapsedTime * 6.6) * 0.045
       : coachMark && isPlayable
         ? 1 + Math.sin(clock.elapsedTime * 3.1) * 0.025
       : isActive && isPlayable
@@ -104,8 +108,10 @@ export function Cell({
         <edgesGeometry args={[cellGeometry]} />
         <lineBasicMaterial
           color={
-            isWinning
+            isFinalLine
               ? theme.win
+              : lineMark === 'scored'
+                ? '#74f0a7'
               : coachColor
                 ? coachColor
               : isActive && isPlayable
@@ -113,7 +119,7 @@ export function Cell({
                 : theme.edge
           }
           opacity={
-            isWinning
+            isLineMarked
               ? 1
               : coachColor
                 ? 0.98
@@ -147,7 +153,7 @@ export function Cell({
         </group>
       ) : null}
       {value ? (
-        <group scale={isWinning ? 1.12 : 1}>
+        <group scale={isFinalLine ? 1.12 : lineMark === 'scored' ? 1.06 : 1}>
           <Mark player={value} theme={theme} />
         </group>
       ) : null}
