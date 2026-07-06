@@ -1,14 +1,51 @@
 # 3D XOX
 
-A polished first pass at a true `3x3x3` XOX game for web, with mobile app packaging hooks ready for Capacitor.
+A mobile-friendly `3x3x3` XOX strategy game for web, with online rooms,
+AI opponents, release QA tooling, and Capacitor packaging hooks for native
+iOS/Android builds.
 
-## Modes
+## Game Modes
 
-- Local 2-player
-- Player vs AI with four difficulty tiers
-- Online multiplayer with a lightweight WebSocket room server
+### Lines Mode
 
-## Run
+Lines Mode is the default ruleset. The board fills over the whole round, and
+players score every completed 3-cell line instead of ending the round on the
+first line. Multi-line moves, blocked threats, final line totals, and result
+chips are surfaced in the UI so the round reads as a score race.
+
+### Classic
+
+Classic is the familiar variant: the first completed line wins the round. Local
+Classic games can use the Pie Rule opening flow, while online Classic rooms use
+the room settings agreed by the host and guest.
+
+### Best-of-5 Match
+
+Rounds sit inside a Best-of-5 match. The match ends when one side reaches 3
+round wins. Draws are shown but do not count toward the match win target.
+Match score, current round, current opener, next opener, and match result stay
+separate from local lifetime stats.
+
+### Coach
+
+Coach highlights useful scoring and blocking cells. Scanner labels include
+score/block/both hints with non-color cues, and the 3D views show related
+threat context without making Coach louder than the board.
+
+### Daily Puzzle And Local Progress
+
+The Daily Puzzle card gives a small daily challenge and stores the local result
+in browser storage. Local progress tracks streaks, total Lines scoring,
+best Lines margin, Master wins, and theme accent unlock progress on the device.
+
+### Online Rooms
+
+Online mode uses a lightweight WebSocket room server. The host defines room
+settings, including ruleset and Classic Pie Rule setting. Guests receive those
+settings, the ruleset controls lock after connection, resets preserve agreed
+settings, and reconnects restore the room state.
+
+## Run Locally
 
 ```bash
 npm install
@@ -23,41 +60,115 @@ For online mode, run the room server in a second terminal:
 npm run online:server
 ```
 
-The web client defaults to `ws://<current-host>:8787`. For deployed web or native mobile builds, set `VITE_ONLINE_SERVER_URL` before building:
+The web client defaults to `ws://<current-host>:8787`. For deployed web or
+native mobile builds, set `VITE_ONLINE_SERVER_URL` before building:
 
 ```bash
 VITE_ONLINE_SERVER_URL=wss://your-server.example npm run build
 ```
 
-## Build
+## Commands
+
+Install dependencies:
+
+```bash
+npm install
+```
+
+Build the web app:
 
 ```bash
 npm run build
 ```
 
-## Online Protocol Test
+Run the online room server:
+
+```bash
+npm run online:server
+```
+
+Run deterministic online protocol checks:
 
 ```bash
 npm run online:test
 ```
 
-This verifies room creation/join, move relays, reset relays, player spoof
-rejection, host rejoin, and abandoned-room cleanup.
+Run AI self-play balance checks:
 
-## Browser Interaction Tests
+```bash
+npm run ai:selfplay
+```
+
+Run the product final pass:
+
+```bash
+npm run product:final-pass
+```
+
+## Test Command List
+
+Install reproducible dependencies in CI:
+
+```bash
+npm ci
+```
+
+Install Playwright Chromium before browser tests on a fresh machine:
 
 ```bash
 npx playwright install chromium
+```
+
+Run the build gate:
+
+```bash
+npm run build
+```
+
+Run unit tests:
+
+```bash
+npm run test:unit
+```
+
+Run online protocol tests:
+
+```bash
+npm run online:test
+```
+
+Run browser interaction tests:
+
+```bash
 npm run test:e2e
 ```
 
-The Playwright suite covers the mobile playable area, Scanner move/win flow,
-mobile view switching into the 3D board, and an online host/guest move.
-
-Run all verification with:
+Run AI self-play balance checks:
 
 ```bash
-npm test
+npm run ai:selfplay
+```
+
+Run the product final pass:
+
+```bash
+npm run product:final-pass
+```
+
+Run the full standard gate:
+
+```bash
+npm run test
+```
+
+`npm run test` runs `npm run build`, `npm run test:unit`,
+`npm run online:test`, and `npm run test:e2e`.
+
+The optional deeper manual release gate is:
+
+```bash
+npm run test
+npm run product:final-pass
 ```
 
 ## Online Deployment Notes
@@ -75,16 +186,18 @@ Useful server environment variables:
 - `HOST`: bind host, default `0.0.0.0`
 - `PORT`: bind port, default `8787`
 - `ROOM_TTL_MS`: idle/waiting room lifetime, default `1800000`
-- `REJOIN_GRACE_MS`: time to preserve an empty room for reconnect, default `45000`
+- `REJOIN_GRACE_MS`: time to preserve an empty room for reconnect, default
+  `45000`
 - `HEARTBEAT_MS`: WebSocket ping interval, default `30000`
 
-The protocol assigns private session IDs to each side so a dropped host or guest
-can rejoin the same room. Moves are validated server-side against the connected
-player side before relay.
+The protocol assigns private session IDs to each side so a dropped host or
+guest can rejoin the same room. Moves are validated server-side against the
+connected player side before relay.
 
 ## Mobile
 
-The app is installable as a PWA and has Capacitor config for native iOS/Android packaging.
+The app is installable as a PWA and has Capacitor config for native iOS/Android
+packaging.
 
 ```bash
 npm run mobile:add:ios
@@ -94,3 +207,15 @@ npm run mobile:sync
 
 Native iOS/Android platform folders are included. Use `npm run mobile:sync`
 after web changes, then open the platform project for device QA.
+
+## Release QA
+
+- Desktop: run `npm run test`, then manually smoke Chrome or a Safari-like
+  browser across Scanner, Cube, Floors, Lines, Classic, Coach, and theme
+  switching.
+- Mobile viewport: verify Scanner remains playable, touch selection is clear,
+  Cube/Floors can be entered, and no horizontal overflow appears.
+- Online server: run `npm run online:server`, check `GET /health`, create and
+  join both Lines and Classic rooms, verify settings lock and reconnect.
+- Capacitor sync: run `npm run mobile:sync` after a production build, then open
+  the native platform project for device-specific packaging checks.
