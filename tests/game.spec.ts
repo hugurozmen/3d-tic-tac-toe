@@ -8,15 +8,17 @@ async function openGame(
   {
     guide = 'done',
     layout,
+    localScore,
     viewport = { height: 720, width: 1280 },
   }: {
     guide?: 'done' | 'pending';
     layout?: 'cube' | 'floors' | 'scanner';
+    localScore?: { draws: number; O: number; X: number };
     viewport?: { height: number; width: number };
   } = {},
 ) {
   await page.setViewportSize(viewport);
-  await page.addInitScript(({ preferredGuide, preferredLayout }) => {
+  await page.addInitScript(({ preferredGuide, preferredLayout, preferredScore }) => {
     window.localStorage.clear();
 
     if (preferredGuide === 'done') {
@@ -26,7 +28,11 @@ async function openGame(
     if (preferredLayout) {
       window.localStorage.setItem('3dxox-layout', preferredLayout);
     }
-  }, { preferredGuide: guide, preferredLayout: layout });
+
+    if (preferredScore) {
+      window.localStorage.setItem('3dxox-score', JSON.stringify(preferredScore));
+    }
+  }, { preferredGuide: guide, preferredLayout: layout, preferredScore: localScore });
   await page.goto(appUrl);
 }
 
@@ -326,19 +332,56 @@ test('solo panel shows local progress and the daily puzzle', async ({ page }) =>
   await expect(page.locator('.daily-cell')).toHaveCount(27);
 });
 
-test('first few games offer a non-blocking Try Coach prompt', async ({
+async function createCoachScoreAndBlockPosition(page: Page) {
+  await chooseTwoPlayer(page);
+  await showFloor(page, 1);
+  await place(page, 'X', 1);
+  await showFloor(page, 2);
+  await place(page, 'O', 13);
+  await showFloor(page, 1);
+  await place(page, 'X', 2);
+  await showFloor(page, 2);
+  await place(page, 'O', 14);
+  await showFloor(page, 1);
+  await place(page, 'X', 4);
+}
+
+test('Coach Auto starts explicit then softens score-only hints', async ({
   page,
 }) => {
   await openGame(page, { layout: 'scanner' });
+  await createCoachScoreAndBlockPosition(page);
 
-  const prompt = page.locator('.coach-prompt');
-
-  await expect(prompt).toContainText('Try Coach');
-  await expect(prompt).toContainText('cross-floor threats');
-  await prompt.getByRole('button', { name: 'Try Coach' }).click();
-  await expect(prompt).toHaveCount(0);
+  await expect(page.locator('.coach-prompt')).toHaveCount(0);
   await expect(page.locator('.coach-legend')).toContainText('Score');
   await expect(page.locator('.coach-legend')).toContainText('Block');
+  await showFloor(page, 2);
+  await expect(
+    page.getByRole('button', {
+      name: /Place O at cell 15, floor 2.*completes a line/,
+    }),
+  ).toBeVisible();
+
+  await openGame(page, {
+    layout: 'scanner',
+    localScore: { O: 1, X: 2, draws: 0 },
+  });
+  await createCoachScoreAndBlockPosition(page);
+  await showFloor(page, 2);
+
+  await expect(
+    page.getByRole('button', {
+      name: /Place O at cell 15, floor 2.*score hint available on focus/,
+    }),
+  ).toBeVisible();
+  await expect(page.locator('.scanner-cell.coach-soft-score')).toBeVisible();
+
+  await showFloor(page, 1);
+  await expect(
+    page.getByRole('button', {
+      name: /Place O at cell 3, floor 1.*blocks X through cells 1-2-3/,
+    }),
+  ).toBeVisible();
 });
 
 test('scanner supports keyboard navigation between cells and floors', async ({
@@ -548,6 +591,21 @@ test('lines final result explains the score and filled board', async ({ page }) 
 
     for (let cell = start; cell < start + 9; cell += 1) {
       await place(page, cell % 2 === 1 ? 'X' : 'O', cell);
+
+      if (cell === 21) {
+        await expect(page.locator('.final-phase-cue')).toContainText('Final 6');
+        await expect(page.locator('.line-tension-note')).toContainText('Final 6');
+        await expect(
+          page.getByRole('button', {
+            name: /Place O at cell 22, floor 3.*final-6 scoring move/,
+          }),
+        ).toBeVisible();
+        await expect(
+          page.getByRole('button', {
+            name: /Place O at cell 25, floor 3.*final-6 blocking move/,
+          }),
+        ).toBeVisible();
+      }
 
       if (cell === 22) {
         await expect(page.locator('.line-score-empty.tension')).toContainText('5');

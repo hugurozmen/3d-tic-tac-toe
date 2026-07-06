@@ -23,6 +23,7 @@ import type {
   BoardViewCommand,
 } from '../game/boardView';
 import type { CoachHint } from '../game/coach';
+import type { LinesEndgameAnalysis } from '../game/linesTension';
 import type { Board, GameResult, Player } from '../game/rules';
 import type { SceneTheme } from '../theme';
 import { ScannerBoard } from './ScannerBoard';
@@ -43,8 +44,10 @@ type GameStageProps = {
   coachBlockCells: number[];
   coachHints: CoachHint[];
   coachScoreCells: number[];
+  coachSoftScoreCells: number[];
   currentPlayer: Player;
   disabled: boolean;
+  finalPhase: LinesEndgameAnalysis | null;
   finalLines: number[][];
   lastMove: number | null;
   layout: BoardLayout;
@@ -106,8 +109,10 @@ export const GameStage = forwardRef<HTMLElement, GameStageProps>(
       coachBlockCells,
       coachHints,
       coachScoreCells,
+      coachSoftScoreCells,
       currentPlayer,
       disabled,
+      finalPhase,
       finalLines,
       lastMove,
       layout,
@@ -152,7 +157,9 @@ export const GameStage = forwardRef<HTMLElement, GameStageProps>(
             coachBlockCells={coachBlockCells}
             coachHints={coachHints}
             coachScoreCells={coachScoreCells}
+            coachSoftScoreCells={coachSoftScoreCells}
             finalLines={finalLines}
+            finalPhase={finalPhase}
             lastMove={lastMove}
             scoredLines={scoredLines}
             theme={theme}
@@ -179,8 +186,10 @@ export const GameStage = forwardRef<HTMLElement, GameStageProps>(
                 coachBlockCells={coachBlockCells}
                 coachHints={coachHints}
                 coachScoreCells={coachScoreCells}
+                coachSoftScoreCells={coachSoftScoreCells}
                 currentPlayer={currentPlayer}
                 disabled={disabled}
+                finalPhase={finalPhase}
                 finalLines={finalLines}
                 layout={layout}
                 scoredLines={scoredLines}
@@ -201,6 +210,11 @@ export const GameStage = forwardRef<HTMLElement, GameStageProps>(
             role="status"
           >
             {stageNotice.text}
+          </div>
+        ) : null}
+        {finalPhase ? (
+          <div className="final-phase-cue" role="status" aria-live="polite">
+            {finalPhase.text}
           </div>
         ) : null}
         {result.winner || result.isDraw ? (

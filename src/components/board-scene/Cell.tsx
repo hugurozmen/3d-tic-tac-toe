@@ -21,6 +21,7 @@ export function Cell({
   index,
   lineMark,
   layout,
+  tensionMark,
   theme,
   value,
   onArm,
@@ -44,6 +45,8 @@ export function Cell({
   );
   const coachColor =
     coachMark === 'score'
+      ? '#74f0a7'
+      : coachMark === 'soft-score'
       ? '#74f0a7'
       : coachMark === 'block'
         ? '#ff6f76'
@@ -129,7 +132,15 @@ export function Cell({
               : lineMark === 'scored'
                 ? '#74f0a7'
               : coachColor
-                ? coachColor
+                ? coachMark === 'soft-score' && !isActive
+                  ? theme.edge
+                  : coachColor
+              : tensionMark === 'score'
+                ? '#74f0a7'
+              : tensionMark === 'block'
+                ? '#ff6f76'
+              : tensionMark === 'both'
+                ? '#f8d65a'
               : isActive && isPlayable
                 ? theme.hover
                 : theme.edge
@@ -138,7 +149,11 @@ export function Cell({
             isLineMarked
               ? 1
               : coachColor
-                ? 0.98
+                ? coachMark === 'soft-score' && !isActive
+                  ? 0.54
+                  : 0.98
+              : tensionMark
+                ? 0.84
               : isActive && isPlayable
                 ? 0.95
                 : isGhost
@@ -150,7 +165,7 @@ export function Cell({
           transparent
         />
       </lineSegments>
-      {coachColor && isPlayable ? (
+      {coachColor && isPlayable && (coachMark !== 'soft-score' || isActive) ? (
         <mesh rotation={[Math.PI / 2, 0, 0]} scale={isActive ? 1.08 : 1}>
           <torusGeometry args={[0.42, 0.018, 8, 48]} />
           <meshBasicMaterial
@@ -158,6 +173,24 @@ export function Cell({
             color={coachColor}
             depthWrite={false}
             opacity={isActive ? 0.48 : 0.28}
+            transparent
+          />
+        </mesh>
+      ) : null}
+      {!coachColor && tensionMark && isPlayable ? (
+        <mesh rotation={[Math.PI / 2, 0, 0]} scale={isActive ? 1.04 : 0.98}>
+          <torusGeometry args={[0.39, 0.012, 8, 48]} />
+          <meshBasicMaterial
+            blending={THREE.AdditiveBlending}
+            color={
+              tensionMark === 'score'
+                ? '#74f0a7'
+                : tensionMark === 'block'
+                  ? '#ff6f76'
+                  : '#f8d65a'
+            }
+            depthWrite={false}
+            opacity={isActive ? 0.32 : 0.16}
             transparent
           />
         </mesh>

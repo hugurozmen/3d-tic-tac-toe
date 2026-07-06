@@ -16,8 +16,10 @@ import type {
   BoardViewCommand,
 } from './game/boardView';
 import { chooseAiMove, shouldSwapClassicPie } from './game/ai';
+import { getCoachLadder } from './game/coachLadder';
 import { getCoachHints } from './game/coach';
 import { setFeedbackMuted } from './game/feedback';
+import { getLinesEndgameAnalysis } from './game/linesTension';
 import {
   DIFFICULTY_OPTIONS,
   LAYOUT_OPTIONS,
@@ -201,8 +203,26 @@ export function App() {
     !result.winner &&
     !result.isDraw &&
     !pieDecisionPending;
-  const coachEnabled =
-    coachSetting === 'on' || (coachSetting === 'auto' && difficulty === 'easy');
+  const completedLocalRounds =
+    lifetimeScore.X + lifetimeScore.O + lifetimeScore.draws;
+  const rawCoachHints = useMemo(
+    () =>
+      coachSetting !== 'off' && !result.winner && !result.isDraw
+        ? getCoachHints(board, currentPlayer)
+        : [],
+    [board, coachSetting, currentPlayer, result.isDraw, result.winner],
+  );
+  const coachLadder = useMemo(
+    () =>
+      getCoachLadder({
+        completedLocalRounds,
+        hints: rawCoachHints,
+        mode,
+        setting: coachSetting,
+      }),
+    [coachSetting, completedLocalRounds, mode, rawCoachHints],
+  );
+  const coachEnabled = coachLadder.enabled;
   const hostOnlineSettings = useMemo<OnlineRoomSettings>(
     () => ({
       classicPieRule: ONLINE_CLASSIC_PIE_RULE,
@@ -210,26 +230,28 @@ export function App() {
     }),
     [ruleset],
   );
-  const coachHints = useMemo(
-    () =>
-      coachEnabled && !result.winner && !result.isDraw
-        ? getCoachHints(board, currentPlayer)
-        : [],
-    [board, coachEnabled, currentPlayer, result.isDraw, result.winner],
-  );
+  const coachHints = coachLadder.hints;
   const coachScoreCells = useMemo(
     () =>
-      coachHints
+      coachLadder.fullHints
         .filter((hint) => hint.kind === 'score' || hint.kind === 'both')
         .map((hint) => hint.cell),
-    [coachHints],
+    [coachLadder.fullHints],
   );
   const coachBlockCells = useMemo(
     () =>
-      coachHints
+      coachLadder.fullHints
         .filter((hint) => hint.kind === 'block' || hint.kind === 'both')
         .map((hint) => hint.cell),
-    [coachHints],
+    [coachLadder.fullHints],
+  );
+  const coachSoftScoreCells = coachLadder.softScoreCells;
+  const linesEndgame = useMemo(
+    () =>
+      ruleset === 'lines' && !result.isComplete
+        ? getLinesEndgameAnalysis(board, currentPlayer)
+        : null,
+    [board, currentPlayer, result.isComplete, ruleset],
   );
   const scoredLines = ruleset === 'lines' ? recentLines : [];
   const finalLines: number[][] =
@@ -238,10 +260,8 @@ export function App() {
       : [];
   const recentLineCount = recentImpact?.linesCompleted.length ?? 0;
   const recentBlockCount = recentImpact?.blockedLines.length ?? 0;
-  const completedLocalRounds =
-    lifetimeScore.X + lifetimeScore.O + lifetimeScore.draws;
   const showCoachPrompt =
-    mode !== 'online' && !coachEnabled && completedLocalRounds < 3;
+    mode !== 'online' && coachSetting === 'off' && completedLocalRounds < 3;
 
   // Narrow embedded browsers can cold-paint WebGL blank when restored into 3D.
   useLayoutEffect(() => {
@@ -1080,8 +1100,10 @@ export function App() {
         coachBlockCells={coachBlockCells}
         coachHints={coachHints}
         coachScoreCells={coachScoreCells}
+        coachSoftScoreCells={coachSoftScoreCells}
         currentPlayer={currentPlayer}
         disabled={isBoardDisabled}
+        finalPhase={linesEndgame}
         finalLines={finalLines}
         lastMove={lastMove}
         layout={layout}
@@ -1123,6 +1145,7 @@ export function App() {
         lastMove={lastMove}
         layout={layout}
         lineScores={result.lineScores}
+        linesEndgameText={linesEndgame?.text ?? null}
         lifetimeScore={lifetimeScore}
         match={match}
         matchWinnerText={matchWinnerText}

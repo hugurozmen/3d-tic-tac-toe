@@ -21,8 +21,10 @@ export function SceneContent({
   coachBlockCells,
   coachHints,
   coachScoreCells,
+  coachSoftScoreCells,
   currentPlayer,
   disabled,
+  finalPhase,
   finalLines,
   hoveredCell,
   layout,
@@ -40,6 +42,9 @@ export function SceneContent({
   const finalCells = new Set(finalLines.flatMap((line) => line));
   const scoreCells = new Set(coachScoreCells);
   const blockCells = new Set(coachBlockCells);
+  const softScoreCells = new Set(coachSoftScoreCells);
+  const finalPhaseScoreCells = new Set(finalPhase?.scoringCells ?? []);
+  const finalPhaseBlockCells = new Set(finalPhase?.blockingCells ?? []);
   const hintsByCell = new Map(coachHints.map((hint) => [hint.cell, hint]));
   const activeCoachCell = armedCell ?? hoveredCell;
   const activeCoachHint =
@@ -90,16 +95,28 @@ export function SceneContent({
         {board.map((value, index) => {
           const isScore = !value && scoreCells.has(index);
           const isBlock = !value && blockCells.has(index);
+          const isSoftScore = !value && softScoreCells.has(index);
+          const isFinalPhaseScore = !value && finalPhaseScoreCells.has(index);
+          const isFinalPhaseBlock = !value && finalPhaseBlockCells.has(index);
           const coachHint = hintsByCell.get(index);
           const coachMark =
-            coachHint?.kind ??
-            (isScore && isBlock
+            isScore && isBlock
               ? 'both'
               : isScore
                 ? 'score'
                 : isBlock
                   ? 'block'
-                  : null);
+                  : isSoftScore
+                    ? 'soft-score'
+                    : null;
+          const tensionMark =
+            isFinalPhaseScore && isFinalPhaseBlock
+              ? 'both'
+              : isFinalPhaseScore
+                ? 'score'
+                : isFinalPhaseBlock
+                  ? 'block'
+                  : null;
 
           return (
             <Cell
@@ -120,6 +137,7 @@ export function SceneContent({
                       : null
               }
               layout={layout}
+              tensionMark={tensionMark}
               theme={theme}
               value={value}
               onArm={onArmCell}
