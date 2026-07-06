@@ -235,3 +235,63 @@ export function WinBeam({
     </mesh>
   );
 }
+
+export function CoachLinePath({
+  color,
+  layout,
+  line,
+}: {
+  color: string;
+  layout: BoardLayout;
+  line: number[];
+}) {
+  const material = useRef<THREE.MeshBasicMaterial>(null);
+  const prefersReducedMotion = useMemo(
+    () =>
+      typeof window !== 'undefined' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+    [],
+  );
+  const { length, midpoint, quaternion } = useMemo(() => {
+    const start = new THREE.Vector3(...cellPosition(line[0], layout));
+    const end = new THREE.Vector3(...cellPosition(line[2], layout));
+    const direction = end.clone().sub(start);
+    const beamLength = direction.length() + 0.34;
+    const beamMidpoint = start.clone().add(end).multiplyScalar(0.5);
+    const beamQuaternion = new THREE.Quaternion().setFromUnitVectors(
+      new THREE.Vector3(0, 1, 0),
+      direction.normalize(),
+    );
+
+    return {
+      length: beamLength,
+      midpoint: beamMidpoint,
+      quaternion: beamQuaternion,
+    };
+  }, [layout, line]);
+
+  useFrame(({ clock }) => {
+    if (material.current) {
+      material.current.opacity = prefersReducedMotion
+        ? 0.42
+        : 0.34 + Math.sin(clock.elapsedTime * 3.2) * 0.08;
+    }
+  });
+
+  if (line.length !== 3) {
+    return null;
+  }
+
+  return (
+    <mesh position={midpoint} quaternion={quaternion}>
+      <cylinderGeometry args={[0.028, 0.028, length, 10]} />
+      <meshBasicMaterial
+        ref={material}
+        blending={THREE.AdditiveBlending}
+        color={color}
+        depthWrite={false}
+        transparent
+      />
+    </mesh>
+  );
+}

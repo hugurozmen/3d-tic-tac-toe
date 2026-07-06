@@ -1,9 +1,11 @@
 import { Board, Player } from '../game/rules';
+import type { CoachHint, CoachHintKind } from '../game/coach';
 import { SceneTheme, ThemeStyle } from '../theme';
 
 type ScannerBoardProps = {
   board: Board;
   coachBlockCells: number[];
+  coachHints: CoachHint[];
   coachScoreCells: number[];
   currentPlayer: Player;
   disabled: boolean;
@@ -25,6 +27,7 @@ const floorOf = (index: number) => Math.floor(index / 9);
 export function ScannerBoard({
   board,
   coachBlockCells,
+  coachHints,
   coachScoreCells,
   currentPlayer,
   disabled,
@@ -48,26 +51,89 @@ export function ScannerBoard({
   ]);
   const scoreCells = new Set(coachScoreCells);
   const blockCells = new Set(coachBlockCells);
+  const hintsByCell = new Map(coachHints.map((hint) => [hint.cell, hint]));
   const winningFloors = new Set(Array.from(highlightedCells).map(floorOf));
   const style: ThemeStyle = { '--scan-win': theme.win };
 
+  const mergeHintKind = (
+    current: CoachHintKind | null,
+    next: CoachHintKind,
+  ): CoachHintKind => {
+    if (!current || current === next) {
+      return next;
+    }
+
+    return 'both';
+  };
+
+  const hintKindForFloor = (layer: number) =>
+    coachHints.reduce<CoachHintKind | null>((kind, hint) => {
+      if (floorOf(hint.cell) !== layer) {
+        return kind;
+      }
+
+      return mergeHintKind(kind, hint.kind);
+    }, null);
+
   const hintClassForFloor = (layer: number) => {
-    const hasScore = coachScoreCells.some((index) => floorOf(index) === layer);
-    const hasBlock = coachBlockCells.some((index) => floorOf(index) === layer);
+    const kind = hintKindForFloor(layer);
 
-    if (hasScore && hasBlock) {
-      return 'hint-both';
+    return kind ? `hint-${kind}` : '';
+  };
+
+  const hintLabelForFloor = (layer: number) => {
+    const kind = hintKindForFloor(layer);
+
+    if (!kind) {
+      return '';
     }
 
-    if (hasScore) {
-      return 'hint-score';
+    if (kind === 'both') {
+      return ', score and block hints';
     }
 
-    if (hasBlock) {
-      return 'hint-block';
+    if (kind === 'score') {
+      return ', score hint';
     }
 
-    return '';
+    return ', block hint';
+  };
+
+  const connectorKindForCell = (index: number) =>
+    coachHints.reduce<CoachHintKind | null>((kind, hint) => {
+      if (!hint.isCrossFloor || floorOf(hint.cell) === floor) {
+        return kind;
+      }
+
+      const relatedLines = [...hint.scoreLines, ...hint.blockLines];
+      const lineTouchesCell = relatedLines.some((line) => line.includes(index));
+
+      if (!lineTouchesCell) {
+        return kind;
+      }
+
+      return mergeHintKind(kind, hint.kind);
+    }, null);
+
+  const firstVisibleHint =
+    coachHints.find((hint) => floorOf(hint.cell) === floor) ??
+    coachHints.find((hint) =>
+      [...hint.scoreLines, ...hint.blockLines].some((line) =>
+        line.some((index) => floorOf(index) === floor),
+      ),
+    ) ??
+    null;
+
+  const hintClassForDot = (index: number) => {
+    const hint = hintsByCell.get(index);
+
+    if (hint) {
+      return `dot-hint-${hint.kind}`;
+    }
+
+    const connectorKind = connectorKindForCell(index);
+
+    return connectorKind ? `dot-connector-${connectorKind}` : '';
   };
 
   const stopClass = (layer: number) =>
@@ -98,14 +164,15 @@ export function ScannerBoard({
               onClick={() => onFloorChange(layer)}
             >
               {Array.from({ length: 9 }, (_, cell) => {
-                const value = board[layer * 9 + cell];
+                const index = layer * 9 + cell;
+                const value = board[index];
 
                 return (
                   <span
                     key={cell}
                     className={`scanner-dot ${
                       value === 'X' ? 'dot-x' : value === 'O' ? 'dot-o' : ''
-                    }`}
+                    } ${hintClassForDot(index)}`}
                   />
                 );
               })}
@@ -126,6 +193,8 @@ export function ScannerBoard({
               const isCoachScore = !value && scoreCells.has(index);
               const isCoachBlock = !value && blockCells.has(index);
               const isCoachBoth = isCoachScore && isCoachBlock;
+              const coachHint = hintsByCell.get(index);
+              const connectorKind = connectorKindForCell(index);
               const isPlayable = !value && !disabled;
               const cellClass = [
                 'scanner-cell',
@@ -136,6 +205,7 @@ export function ScannerBoard({
                 isCoachScore ? 'coach-score' : '',
                 isCoachBlock ? 'coach-block' : '',
                 isCoachBoth ? 'coach-both' : '',
+                connectorKind ? `coach-connector-${connectorKind}` : '',
                 lastMove === index ? 'last' : '',
                 isPlayable ? `preview-${currentPlayer.toLowerCase()}` : '',
               ]
@@ -150,11 +220,11 @@ export function ScannerBoard({
                     ? ', scored line'
                     : '';
               const coachLabel = isCoachBoth
-                ? ', completes and blocks lines'
+                ? `, ${coachHint?.accessibleLabel ?? 'completes and blocks lines'}`
                 : isCoachScore
-                  ? ', completes a line'
+                  ? `, ${coachHint?.accessibleLabel ?? 'completes a line'}`
                   : isCoachBlock
-                    ? ', blocks a line'
+                    ? `, ${coachHint?.accessibleLabel ?? 'blocks a line'}`
                     : '';
               const cellLabel = value
                 ? `Cell ${index + 1}, ${value}${lineLabel}`
@@ -170,10 +240,17 @@ export function ScannerBoard({
                   aria-label={cellLabel}
                   className={cellClass}
                   disabled={!isPlayable}
+                  title={coachHint?.explanation}
                   type="button"
                   onClick={() => onSelect(index)}
                 >
                   {value ?? ''}
+                  {connectorKind ? (
+                    <span
+                      aria-hidden="true"
+                      className={`scanner-connector connector-${connectorKind}`}
+                    />
+                  ) : null}
                   <span aria-hidden="true" className="scanner-cell-num">
                     {index + 1}
                   </span>
@@ -183,6 +260,11 @@ export function ScannerBoard({
           )}
         </div>
         <p className="scanner-caption">Floor {floor + 1} of 3</p>
+        {firstVisibleHint ? (
+          <p className={`scanner-coach-note note-${firstVisibleHint.kind}`}>
+            {firstVisibleHint.explanation}
+          </p>
+        ) : null}
       </div>
 
       <div className="scanner-rail" aria-label="Floor selector">
@@ -190,7 +272,7 @@ export function ScannerBoard({
           <button
             key={layer}
             aria-current={layer === floor}
-            aria-label={`Floor ${layer + 1}`}
+            aria-label={`Floor ${layer + 1}${hintLabelForFloor(layer)}`}
             className={stopClass(layer)}
             type="button"
             onClick={() => onFloorChange(layer)}

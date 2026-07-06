@@ -14,6 +14,7 @@ import type {
   BoardViewAction,
   BoardViewCommand,
 } from '../game/boardView';
+import type { CoachHint } from '../game/coach';
 import type { Board, GameResult, Player } from '../game/rules';
 import type { SceneTheme } from '../theme';
 import { ScannerBoard } from './ScannerBoard';
@@ -32,6 +33,7 @@ export const preloadBoardScene = () => {
 type GameStageProps = {
   board: Board;
   coachBlockCells: number[];
+  coachHints: CoachHint[];
   coachScoreCells: number[];
   currentPlayer: Player;
   disabled: boolean;
@@ -62,6 +64,7 @@ export const GameStage = forwardRef<HTMLElement, GameStageProps>(
     {
       board,
       coachBlockCells,
+      coachHints,
       coachScoreCells,
       currentPlayer,
       disabled,
@@ -92,6 +95,7 @@ export const GameStage = forwardRef<HTMLElement, GameStageProps>(
             disabled={disabled}
             floor={scannerFloor}
             coachBlockCells={coachBlockCells}
+            coachHints={coachHints}
             coachScoreCells={coachScoreCells}
             finalLines={finalLines}
             lastMove={lastMove}
@@ -113,6 +117,7 @@ export const GameStage = forwardRef<HTMLElement, GameStageProps>(
             <BoardScene
               board={board}
               coachBlockCells={coachBlockCells}
+              coachHints={coachHints}
               coachScoreCells={coachScoreCells}
               currentPlayer={currentPlayer}
               disabled={disabled}

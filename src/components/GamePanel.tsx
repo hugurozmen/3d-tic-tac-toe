@@ -510,6 +510,22 @@ export function GamePanel({
             </button>
           ))}
         </div>
+        {coachEnabled ? (
+          <div className="coach-legend" aria-label="Coach legend">
+            <span>
+              <i className="legend-dot legend-score" aria-hidden="true" />
+              Score
+            </span>
+            <span>
+              <i className="legend-dot legend-block" aria-hidden="true" />
+              Block
+            </span>
+            <span>
+              <i className="legend-dot legend-both" aria-hidden="true" />
+              Score + block
+            </span>
+          </div>
+        ) : null}
       </div>
 
       <div className="match-card">
