@@ -155,6 +155,18 @@ test('desktop 3D cube renders real canvas pixels', async ({ page }) => {
   await expectCanvasHasPixels(page);
 });
 
+test('solo panel shows local progress and the daily puzzle', async ({ page }) => {
+  await openGame(page, { layout: 'scanner' });
+
+  await expect(page.locator('.progress-card')).toContainText('Progress');
+  await expect(page.locator('.progress-card')).toContainText('Total lines');
+  await expect(page.locator('.progress-card')).toContainText('Master wins');
+  await expect(page.locator('.progress-card')).toContainText('Theme accents');
+  await expect(page.locator('.daily-puzzle-card')).toContainText(/Daily #\d+/);
+  await expect(page.locator('.daily-puzzle-card')).toContainText(/Find the|Score the/);
+  await expect(page.locator('.daily-cell')).toHaveCount(27);
+});
+
 test('scanner board supports a complete 2P winning round', async ({ page }) => {
   await openGame(page, { layout: 'scanner' });
   await page.getByRole('button', { name: 'Classic' }).click();

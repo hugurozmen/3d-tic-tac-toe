@@ -27,11 +27,22 @@ import {
   getOtherPlayer,
 } from './game/rules';
 import {
+  evaluateDailyPuzzleMove,
+  getDailyPuzzle,
+  loadDailyPuzzleResult,
+  saveDailyPuzzleResult,
+} from './game/puzzles';
+import {
   getThemeUnlockHooks,
+  getThemeUnlockProgress,
   loadDifficultyStreaks,
+  loadRetentionStats,
+  loadThemeUnlockHooks,
   saveDifficultyStreaks,
+  saveRetentionStats,
   saveThemeUnlockHooks,
   updateDifficultyStreak,
+  updateRetentionStats,
 } from './game/retention';
 import { useMatchState } from './game/useMatchState';
 import { type OnlineRoomSettings, useOnlineGame } from './game/useOnlineGame';
@@ -131,6 +142,7 @@ export function App() {
   const remotePlayerRef = useRef<Player | null>(null);
   const aiWorkerRef = useRef<Worker | null>(null);
   const aiRequestIdRef = useRef(0);
+  const dailyShareTimeoutRef = useRef<number | null>(null);
   const noticeTimeoutRef = useRef<number | null>(null);
   const streakRoundRef = useRef<string | null>(null);
   const [scannerFloor, setScannerFloor] = useState(1);
@@ -144,8 +156,21 @@ export function App() {
   const [difficultyStreaks, setDifficultyStreaks] = useState(
     loadDifficultyStreaks,
   );
+  const [retentionStats, setRetentionStats] = useState(loadRetentionStats);
+  const [themeUnlockHooks, setThemeUnlockHooks] = useState(
+    loadThemeUnlockHooks,
+  );
+  const dailyPuzzle = useMemo(() => getDailyPuzzle(), []);
+  const [dailyPuzzleResult, setDailyPuzzleResult] = useState(() =>
+    loadDailyPuzzleResult(dailyPuzzle.dateKey),
+  );
+  const [dailyPuzzleShareCopied, setDailyPuzzleShareCopied] = useState(false);
   const theme = THEMES[themeId];
   const themeStyle = useMemo(() => themeToCssVariables(theme), [theme]);
+  const themeUnlockProgress = useMemo(
+    () => getThemeUnlockProgress(difficultyStreaks, themeUnlockHooks),
+    [difficultyStreaks, themeUnlockHooks],
+  );
   const aiPlayer = getOtherPlayer(humanSide);
   const moveCount = xMoves + oMoves;
   const pieRuleEnabled = ruleset === 'classic' && mode !== 'online';
@@ -244,6 +269,10 @@ export function App() {
     () => () => {
       if (noticeTimeoutRef.current !== null) {
         window.clearTimeout(noticeTimeoutRef.current);
+      }
+
+      if (dailyShareTimeoutRef.current !== null) {
+        window.clearTimeout(dailyShareTimeoutRef.current);
       }
     },
     [],
@@ -349,11 +378,21 @@ export function App() {
       difficulty,
       outcome,
     );
+    const nextStats = updateRetentionStats(retentionStats, {
+      difficulty,
+      humanSide,
+      outcome,
+      result,
+    });
     const unlocks = getThemeUnlockHooks(nextStreaks);
+    const mergedUnlocks = Array.from(new Set([...themeUnlockHooks, ...unlocks]));
 
     streakRoundRef.current = roundSignature;
     setDifficultyStreaks(nextStreaks);
+    setRetentionStats(nextStats);
+    setThemeUnlockHooks(mergedUnlocks);
     saveDifficultyStreaks(nextStreaks);
+    saveRetentionStats(nextStats);
     saveThemeUnlockHooks(unlocks);
   }, [
     board,
@@ -361,9 +400,12 @@ export function App() {
     difficultyStreaks,
     humanSide,
     mode,
+    retentionStats,
     result.isDraw,
     result.winner,
+    result,
     ruleset,
+    themeUnlockHooks,
   ]);
 
   const onlineHandlers = useMemo(
@@ -807,6 +849,42 @@ export function App() {
     }
   };
 
+  const handleDailyPuzzleMove = useCallback(
+    (move: number) => {
+      if (dailyPuzzleResult || dailyPuzzle.board[move]) {
+        return;
+      }
+
+      const nextResult = evaluateDailyPuzzleMove(dailyPuzzle, move);
+
+      setDailyPuzzleResult(nextResult);
+      saveDailyPuzzleResult(nextResult);
+    },
+    [dailyPuzzle, dailyPuzzleResult],
+  );
+
+  const handleShareDailyPuzzle = useCallback(async () => {
+    if (!dailyPuzzleResult?.solved) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(dailyPuzzleResult.shareText);
+      setDailyPuzzleShareCopied(true);
+
+      if (dailyShareTimeoutRef.current !== null) {
+        window.clearTimeout(dailyShareTimeoutRef.current);
+      }
+
+      dailyShareTimeoutRef.current = window.setTimeout(
+        () => setDailyPuzzleShareCopied(false),
+        1400,
+      );
+    } catch {
+      setDailyPuzzleShareCopied(false);
+    }
+  }, [dailyPuzzleResult]);
+
   const openerText = useMemo(() => {
     if (mode === 'solo') {
       return opener === humanSide ? 'You open' : 'AI opens';
@@ -963,7 +1041,11 @@ export function App() {
         coachSetting={coachSetting}
         copiedSignal={copiedSignal}
         currentPlayer={currentPlayer}
+        dailyPuzzle={dailyPuzzle}
+        dailyPuzzleResult={dailyPuzzleResult}
+        dailyPuzzleShareCopied={dailyPuzzleShareCopied}
         difficulty={difficulty}
+        difficultyStreaks={difficultyStreaks}
         humanSide={humanSide}
         isAiThinking={isAiThinking}
         lastMove={lastMove}
@@ -983,12 +1065,15 @@ export function App() {
         recentLinePlayer={recentImpact?.player ?? null}
         remainingCells={result.remainingCells}
         result={result}
+        retentionStats={retentionStats}
         ruleset={ruleset}
         soundSetting={soundSetting}
         status={status}
         themeId={themeId}
+        themeUnlockProgress={themeUnlockProgress}
         onCoachSettingChange={setCoachSetting}
         onCopySignal={handleCopySignal}
+        onDailyPuzzleMove={handleDailyPuzzleMove}
         onDifficultyChange={handleDifficultyChange}
         onHostOnline={handleHostOnline}
         onLayoutChange={handleLayoutChange}
@@ -1001,6 +1086,7 @@ export function App() {
         onRulesetChange={handleRulesetChange}
         onSideChange={handleSideChange}
         onThemeChange={setThemeId}
+        onShareDailyPuzzle={handleShareDailyPuzzle}
         onToggleSound={() =>
           setSoundSetting(soundSetting === 'on' ? 'off' : 'on')
         }

@@ -24,6 +24,12 @@ import {
   RULESET_OPTIONS,
 } from '../game/options';
 import type { MatchState, Score } from '../game/match';
+import type { DailyPuzzle, DailyPuzzleResult } from '../game/puzzles';
+import type {
+  DifficultyStreaks,
+  RetentionStats,
+  ThemeUnlockProgress,
+} from '../game/retention';
 import type {
   Difficulty,
   GameMode,
@@ -55,7 +61,11 @@ type GamePanelProps = {
   coachSetting: CoachSetting;
   copiedSignal: boolean;
   currentPlayer: Player;
+  dailyPuzzle: DailyPuzzle;
+  dailyPuzzleResult: DailyPuzzleResult | null;
+  dailyPuzzleShareCopied: boolean;
   difficulty: Difficulty;
+  difficultyStreaks: DifficultyStreaks;
   humanSide: Player;
   isAiThinking: boolean;
   lastMove: number | null;
@@ -75,12 +85,15 @@ type GamePanelProps = {
   recentLinePlayer: Player | null;
   remainingCells: number;
   result: GameResult;
+  retentionStats: RetentionStats;
   ruleset: GameRuleset;
   soundSetting: SoundSetting;
   status: string;
   themeId: ThemeId;
+  themeUnlockProgress: ThemeUnlockProgress[];
   onCoachSettingChange: (setting: CoachSetting) => void;
   onCopySignal: () => void;
+  onDailyPuzzleMove: (move: number) => void;
   onDifficultyChange: (difficulty: Difficulty) => void;
   onHostOnline: () => void;
   onLayoutChange: (layout: BoardLayout) => void;
@@ -92,6 +105,7 @@ type GamePanelProps = {
   onResetRound: () => void;
   onRulesetChange: (ruleset: GameRuleset) => void;
   onSideChange: (side: Player) => void;
+  onShareDailyPuzzle: () => void;
   onThemeChange: (themeId: ThemeId) => void;
   onToggleSound: () => void;
 };
@@ -100,12 +114,20 @@ function markIcon(player: Player) {
   return player === 'X' ? <X size={18} /> : <Circle size={18} />;
 }
 
+const DAILY_FLOORS = [0, 1, 2] as const;
+
+const formatCell = (move: number | null) => (move === null ? '-' : move + 1);
+
 export function GamePanel({
   coachEnabled,
   coachSetting,
   copiedSignal,
   currentPlayer,
+  dailyPuzzle,
+  dailyPuzzleResult,
+  dailyPuzzleShareCopied,
   difficulty,
+  difficultyStreaks,
   humanSide,
   isAiThinking,
   lastMove,
@@ -125,12 +147,15 @@ export function GamePanel({
   recentLinePlayer,
   remainingCells,
   result,
+  retentionStats,
   ruleset,
   soundSetting,
   status,
   themeId,
+  themeUnlockProgress,
   onCoachSettingChange,
   onCopySignal,
+  onDailyPuzzleMove,
   onDifficultyChange,
   onHostOnline,
   onLayoutChange,
@@ -142,6 +167,7 @@ export function GamePanel({
   onResetRound,
   onRulesetChange,
   onSideChange,
+  onShareDailyPuzzle,
   onThemeChange,
   onToggleSound,
 }: GamePanelProps) {
@@ -541,6 +567,128 @@ export function GamePanel({
               <i className="legend-dot legend-both" aria-hidden="true" />
               Score + block
             </span>
+          </div>
+        ) : null}
+      </div>
+
+      <div className="progress-card" aria-label="Local progress">
+        <div className="progress-card-header">
+          <span>Progress</span>
+          <strong>Local only</strong>
+        </div>
+        <div className="streak-grid" aria-label="Win streak by difficulty">
+          {DIFFICULTY_OPTIONS.map((level) => (
+            <div key={level} className="streak-tile">
+              <span>{DIFFICULTY_LABEL[level]}</span>
+              <strong>{difficultyStreaks[level]}</strong>
+            </div>
+          ))}
+        </div>
+        <div className="retention-stat-grid">
+          <div>
+            <span>Best margin</span>
+            <strong>+{retentionStats.bestLinesWinMargin}</strong>
+          </div>
+          <div>
+            <span>Total lines</span>
+            <strong>{retentionStats.totalLinesScored}</strong>
+          </div>
+          <div
+            className={`master-badge ${
+              retentionStats.masterWins > 0 ? 'earned' : ''
+            }`}
+          >
+            <span>Master wins</span>
+            <strong>{retentionStats.masterWins}</strong>
+          </div>
+        </div>
+        <div className="theme-progress-list" aria-label="Theme accent progress">
+          <div className="theme-progress-heading">
+            <span>Theme accents</span>
+            <strong>{themeUnlockProgress.filter((item) => item.unlocked).length}/3</strong>
+          </div>
+          {themeUnlockProgress.map((item) => (
+            <div key={item.id} className="theme-progress-row">
+              <div>
+                <span>{item.label}</span>
+                <small>{item.detail}</small>
+              </div>
+              <strong>{item.valueText}</strong>
+              <i aria-hidden="true">
+                <span style={{ width: `${Math.round(item.progress * 100)}%` }} />
+              </i>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="daily-puzzle-card" aria-label="Daily puzzle">
+        <div className="daily-puzzle-header">
+          <div>
+            <span>Daily #{dailyPuzzle.id}</span>
+            <strong>{dailyPuzzle.title}</strong>
+          </div>
+          <span>{RULESET_LABEL[dailyPuzzle.ruleset]}</span>
+        </div>
+        <p>{dailyPuzzle.prompt}</p>
+        <div className="daily-puzzle-board">
+          {DAILY_FLOORS.map((floor) => (
+            <div key={floor} className="daily-puzzle-floor">
+              <span>Floor {floor + 1}</span>
+              <div className="daily-puzzle-grid">
+                {Array.from({ length: 9 }, (_, cell) => {
+                  const index = floor * 9 + cell;
+                  const value = dailyPuzzle.board[index];
+                  const isPicked = dailyPuzzleResult?.move === index;
+                  const isBest = dailyPuzzleResult?.bestMove === index;
+
+                  return (
+                    <button
+                      key={index}
+                      aria-label={`Daily puzzle cell ${index + 1}, ${
+                        value ?? 'empty'
+                      }`}
+                      className={[
+                        'daily-cell',
+                        value ? `occupied mark-${value.toLowerCase()}` : '',
+                        isPicked ? 'picked' : '',
+                        isBest ? 'best' : '',
+                      ]
+                        .filter(Boolean)
+                        .join(' ')}
+                      disabled={Boolean(value) || Boolean(dailyPuzzleResult)}
+                      type="button"
+                      onClick={() => onDailyPuzzleMove(index)}
+                    >
+                      {value ?? index + 1}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+        {dailyPuzzleResult ? (
+          <div
+            className={`daily-puzzle-result ${
+              dailyPuzzleResult.solved ? 'solved' : 'missed'
+            }`}
+          >
+            <div className="daily-result-moves">
+              <span>Best move {formatCell(dailyPuzzleResult.bestMove)}</span>
+              <span>Your move {formatCell(dailyPuzzleResult.move)}</span>
+            </div>
+            <p>{dailyPuzzleResult.explanation}</p>
+            {dailyPuzzleResult.solved ? (
+              <button
+                className="daily-share"
+                type="button"
+                onClick={onShareDailyPuzzle}
+              >
+                <Clipboard size={15} />
+                <span>{dailyPuzzleShareCopied ? 'Copied' : 'Share'}</span>
+              </button>
+            ) : null}
           </div>
         ) : null}
       </div>
