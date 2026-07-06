@@ -350,6 +350,19 @@ h1 {
   color: var(--app-primary);
 }
 
+.line-tension-note {
+  margin: -2px 0 0;
+  padding: 8px 11px;
+  border: 1px solid color-mix(in srgb, var(--app-primary) 30%, var(--app-border));
+  border-radius: 999px;
+  color: color-mix(in srgb, var(--app-primary) 54%, var(--app-text));
+  background: color-mix(in srgb, var(--app-primary) 8%, transparent);
+  font-size: 0.72rem;
+  font-weight: 820;
+  line-height: 1.2;
+  text-align: center;
+}
+
 @keyframes score-chip-bump {
   0% {
     transform: scale(1);

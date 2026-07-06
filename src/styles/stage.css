@@ -233,6 +233,24 @@
     0 0 20px color-mix(in srgb, var(--hint-block) 20%, transparent);
 }
 
+.final-phase-cue {
+  position: absolute;
+  z-index: 2;
+  right: clamp(14px, 2.8vw, 26px);
+  bottom: clamp(16px, 3vw, 28px);
+  max-width: min(290px, calc(100% - 32px));
+  padding: 8px 13px;
+  border: 1px solid color-mix(in srgb, var(--app-primary) 36%, var(--app-border));
+  border-radius: 999px;
+  color: color-mix(in srgb, var(--app-primary) 58%, var(--app-text));
+  background: color-mix(in srgb, var(--app-panel) 84%, transparent);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.24);
+  backdrop-filter: blur(14px);
+  font-size: 0.78rem;
+  font-weight: 820;
+  line-height: 1.2;
+}
+
 @keyframes multi-score-pop {
   0% {
     letter-spacing: 0;
@@ -505,4 +523,8 @@
 
 .cell-coach-badge.coach-both {
   box-shadow: 0 0 16px color-mix(in srgb, var(--hint-both) 28%, transparent);
+}
+
+.cell-coach-badge.coach-soft-score {
+  box-shadow: 0 0 10px color-mix(in srgb, var(--hint-score) 16%, transparent);
 }

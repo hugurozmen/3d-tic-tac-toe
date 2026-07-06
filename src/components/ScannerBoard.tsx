@@ -1,6 +1,7 @@
 import { KeyboardEvent, useRef } from 'react';
 import { Board, Player } from '../game/rules';
 import type { CoachHint, CoachHintKind } from '../game/coach';
+import type { LinesEndgameAnalysis } from '../game/linesTension';
 import { SceneTheme, ThemeStyle } from '../theme';
 
 type ScannerBoardProps = {
@@ -8,8 +9,10 @@ type ScannerBoardProps = {
   coachBlockCells: number[];
   coachHints: CoachHint[];
   coachScoreCells: number[];
+  coachSoftScoreCells: number[];
   currentPlayer: Player;
   disabled: boolean;
+  finalPhase: LinesEndgameAnalysis | null;
   finalLines: number[][];
   floor: number;
   lastMove: number | null;
@@ -30,8 +33,10 @@ export function ScannerBoard({
   coachBlockCells,
   coachHints,
   coachScoreCells,
+  coachSoftScoreCells,
   currentPlayer,
   disabled,
+  finalPhase,
   finalLines,
   floor,
   lastMove,
@@ -53,6 +58,12 @@ export function ScannerBoard({
   ]);
   const scoreCells = new Set(coachScoreCells);
   const blockCells = new Set(coachBlockCells);
+  const softScoreCells = new Set(coachSoftScoreCells);
+  const finalPhaseScoreCells = new Set(finalPhase?.scoringCells ?? []);
+  const finalPhaseBlockCells = new Set(finalPhase?.blockingCells ?? []);
+  const finalPhaseCells = new Map(
+    finalPhase?.cells.map((cell) => [cell.cell, cell]) ?? [],
+  );
   const hintsByCell = new Map(coachHints.map((hint) => [hint.cell, hint]));
   const winningFloors = new Set(Array.from(highlightedCells).map(floorOf));
   const style: ThemeStyle = { '--scan-win': theme.win };
@@ -70,6 +81,10 @@ export function ScannerBoard({
 
   const hintKindForFloor = (layer: number) =>
     coachHints.reduce<CoachHintKind | null>((kind, hint) => {
+      if (softScoreCells.has(hint.cell) && hint.kind === 'score') {
+        return kind;
+      }
+
       if (floorOf(hint.cell) !== layer) {
         return kind;
       }
@@ -103,6 +118,10 @@ export function ScannerBoard({
 
   const connectorKindForCell = (index: number) =>
     coachHints.reduce<CoachHintKind | null>((kind, hint) => {
+      if (softScoreCells.has(hint.cell) && hint.kind === 'score') {
+        return kind;
+      }
+
       if (!hint.isCrossFloor || floorOf(hint.cell) === floor) {
         return kind;
       }
@@ -118,8 +137,13 @@ export function ScannerBoard({
     }, null);
 
   const firstVisibleHint =
-    coachHints.find((hint) => floorOf(hint.cell) === floor) ??
+    coachHints.find(
+      (hint) =>
+        floorOf(hint.cell) === floor &&
+        !(softScoreCells.has(hint.cell) && hint.kind === 'score'),
+    ) ??
     coachHints.find((hint) =>
+      !(softScoreCells.has(hint.cell) && hint.kind === 'score') &&
       [...hint.scoreLines, ...hint.blockLines].some((line) =>
         line.some((index) => floorOf(index) === floor),
       ),
@@ -275,9 +299,16 @@ export function ScannerBoard({
               const isWinning = highlightedCells.has(index);
               const isCoachScore = !value && scoreCells.has(index);
               const isCoachBlock = !value && blockCells.has(index);
+              const isCoachSoftScore = !value && softScoreCells.has(index);
               const isCoachBoth = isCoachScore && isCoachBlock;
               const coachHint = hintsByCell.get(index);
               const connectorKind = connectorKindForCell(index);
+              const finalPhaseCell = finalPhaseCells.get(index);
+              const isFinalPhaseScore =
+                !value && finalPhaseScoreCells.has(index);
+              const isFinalPhaseBlock =
+                !value && finalPhaseBlockCells.has(index);
+              const isFinalPhaseBoth = isFinalPhaseScore && isFinalPhaseBlock;
               const hintGlyph = isCoachBoth
                 ? 'S+B'
                 : isCoachScore
@@ -291,6 +322,13 @@ export function ScannerBoard({
                           ? 'S'
                           : 'B'
                       : null;
+              const finalGlyph = isFinalPhaseBoth
+                ? '+!'
+                : isFinalPhaseScore
+                  ? `+${finalPhaseCell?.scoreLines ?? 1}`
+                  : isFinalPhaseBlock
+                    ? '!'
+                    : null;
               const isPlayable = !value && !disabled;
               const cellClass = [
                 'scanner-cell',
@@ -301,7 +339,11 @@ export function ScannerBoard({
                 isCoachScore ? 'coach-score' : '',
                 isCoachBlock ? 'coach-block' : '',
                 isCoachBoth ? 'coach-both' : '',
+                isCoachSoftScore ? 'coach-soft-score' : '',
                 connectorKind ? `coach-connector-${connectorKind}` : '',
+                isFinalPhaseScore ? 'final-six-score' : '',
+                isFinalPhaseBlock ? 'final-six-block' : '',
+                isFinalPhaseBoth ? 'final-six-both' : '',
                 lastMove === index ? 'last' : '',
                 isPlayable ? `preview-${currentPlayer.toLowerCase()}` : '',
               ]
@@ -321,20 +363,37 @@ export function ScannerBoard({
                   ? `, ${coachHint?.accessibleLabel ?? 'completes a line'}`
                   : isCoachBlock
                     ? `, ${coachHint?.accessibleLabel ?? 'blocks a line'}`
+                    : isCoachSoftScore
+                      ? `, score hint available on focus: ${
+                          coachHint?.accessibleLabel ?? 'completes a line'
+                        }`
                     : '';
               const connectorLabel =
                 !coachLabel && connectorKind
                   ? `, part of a cross-floor ${connectorKind === 'both' ? 'score and block' : connectorKind} hint`
                   : '';
+              const finalPhaseLabel = isFinalPhaseBoth
+                ? `, final-6 scoring and blocking move, scores ${
+                    finalPhaseCell?.scoreLines ?? 1
+                  } and blocks ${finalPhaseCell?.blockLines ?? 1}`
+                : isFinalPhaseScore
+                  ? `, final-6 scoring move, scores ${
+                      finalPhaseCell?.scoreLines ?? 1
+                    }`
+                  : isFinalPhaseBlock
+                    ? `, final-6 blocking move, blocks ${
+                        finalPhaseCell?.blockLines ?? 1
+                      }`
+                    : '';
               const cellLabel = value
                 ? `Cell ${index + 1}, ${value}${lineLabel}, floor ${floor + 1}`
                 : isPlayable
                   ? `Place ${currentPlayer} at cell ${index + 1}, floor ${
                       floor + 1
-                    }${coachLabel}${connectorLabel}`
+                    }${coachLabel}${connectorLabel}${finalPhaseLabel}`
                   : `Cell ${index + 1}, empty, floor ${
                       floor + 1
-                    }${lineLabel}${coachLabel}${connectorLabel}`;
+                    }${lineLabel}${coachLabel}${connectorLabel}${finalPhaseLabel}`;
 
               return (
                 <button
@@ -355,6 +414,20 @@ export function ScannerBoard({
                       className={`scanner-hint-glyph hint-glyph-${connectorKind ?? coachHint?.kind ?? 'score'}`}
                     >
                       {hintGlyph}
+                    </span>
+                  ) : null}
+                  {finalGlyph ? (
+                    <span
+                      aria-hidden="true"
+                      className={`scanner-final-glyph ${
+                        isFinalPhaseBoth
+                          ? 'final-glyph-both'
+                          : isFinalPhaseScore
+                            ? 'final-glyph-score'
+                            : 'final-glyph-block'
+                      }`}
+                    >
+                      {finalGlyph}
                     </span>
                   ) : null}
                   {connectorKind ? (

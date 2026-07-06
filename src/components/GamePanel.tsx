@@ -71,6 +71,7 @@ type GamePanelProps = {
   lastMove: number | null;
   layout: BoardLayout;
   lineScores: LineScores;
+  linesEndgameText: string | null;
   lifetimeScore: Score;
   match: MatchState;
   matchWinnerText: string | null;
@@ -135,6 +136,7 @@ export function GamePanel({
   lastMove,
   layout,
   lineScores,
+  linesEndgameText,
   lifetimeScore,
   match,
   matchWinnerText,
@@ -184,7 +186,7 @@ export function GamePanel({
   const emptyCellsTense =
     ruleset === 'lines' &&
     remainingCells > 0 &&
-    remainingCells < 6 &&
+    remainingCells <= 6 &&
     !result.isComplete;
   const onlineSettingsText = online.settings
     ? online.settings.ruleset === 'classic'
@@ -274,48 +276,55 @@ export function GamePanel({
       </div>
 
       {ruleset === 'lines' ? (
-        <div
-          className={`line-score-card ${
-            recentBlockCount > 0 ? 'block-event' : ''
-          }`}
-          aria-label="Lines score"
-          aria-live="polite"
-        >
+        <>
           <div
-            className={`line-score-tile line-score-x ${
-              recentLinePlayer === 'X' ? lineScoreEventClass : ''
+            className={`line-score-card ${
+              recentBlockCount > 0 ? 'block-event' : ''
             }`}
+            aria-label="Lines score"
+            aria-live="polite"
           >
-            <span>X lines</span>
-            <strong>{lineScores.X}</strong>
+            <div
+              className={`line-score-tile line-score-x ${
+                recentLinePlayer === 'X' ? lineScoreEventClass : ''
+              }`}
+            >
+              <span>X lines</span>
+              <strong>{lineScores.X}</strong>
+            </div>
+            <div
+              className={`line-score-tile line-score-round ${
+                recentLineCount > 0 ? lineScoreEventClass : ''
+              }`}
+            >
+              <span>Round</span>
+              <strong>
+                {lineScores.X}-{lineScores.O}
+              </strong>
+            </div>
+            <div
+              className={`line-score-tile line-score-o ${
+                recentLinePlayer === 'O' ? lineScoreEventClass : ''
+              }`}
+            >
+              <span>O lines</span>
+              <strong>{lineScores.O}</strong>
+            </div>
+            <div
+              className={`line-score-tile line-score-empty ${
+                emptyCellsTense ? 'tension' : ''
+              }`}
+            >
+              <span>{emptyCellsTense ? 'Final cells' : 'Empty'}</span>
+              <strong>{remainingCells}</strong>
+            </div>
           </div>
-          <div
-            className={`line-score-tile line-score-round ${
-              recentLineCount > 0 ? lineScoreEventClass : ''
-            }`}
-          >
-            <span>Round</span>
-            <strong>
-              {lineScores.X}-{lineScores.O}
-            </strong>
-          </div>
-          <div
-            className={`line-score-tile line-score-o ${
-              recentLinePlayer === 'O' ? lineScoreEventClass : ''
-            }`}
-          >
-            <span>O lines</span>
-            <strong>{lineScores.O}</strong>
-          </div>
-          <div
-            className={`line-score-tile line-score-empty ${
-              emptyCellsTense ? 'tension' : ''
-            }`}
-          >
-            <span>{emptyCellsTense ? 'Final cells' : 'Empty'}</span>
-            <strong>{remainingCells}</strong>
-          </div>
-        </div>
+          {linesEndgameText ? (
+            <p className="line-tension-note" aria-live="polite">
+              {linesEndgameText}
+            </p>
+          ) : null}
+        </>
       ) : null}
 
       <div className="control-group">

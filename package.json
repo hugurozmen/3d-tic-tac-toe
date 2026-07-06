@@ -9,6 +9,7 @@
     "online:server": "node server/online-server.mjs",
     "online:test": "node scripts/verify-online-server.mjs",
     "ai:selfplay": "node scripts/run-ai-self-play.mjs",
+    "design:audit": "node scripts/run-design-audit.mjs",
     "product:final-pass": "node scripts/product-final-pass.mjs",
     "test": "npm run build && npm run test:unit && npm run online:test && npm run test:e2e",
     "test:unit": "vitest run src/**/*.test.ts",

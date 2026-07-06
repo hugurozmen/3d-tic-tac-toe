@@ -3,6 +3,7 @@ import type {
   BoardViewCommand,
 } from '../../game/boardView';
 import type { CoachHint } from '../../game/coach';
+import type { LinesEndgameAnalysis } from '../../game/linesTension';
 import type { Board, Player } from '../../game/rules';
 import type { SceneTheme } from '../../theme';
 
@@ -11,8 +12,10 @@ export type BoardSceneProps = {
   coachBlockCells: number[];
   coachHints: CoachHint[];
   coachScoreCells: number[];
+  coachSoftScoreCells: number[];
   currentPlayer: Player;
   disabled: boolean;
+  finalPhase: LinesEndgameAnalysis | null;
   finalLines: number[][];
   layout: BoardLayout;
   scoredLines: number[][];
@@ -27,10 +30,11 @@ export type CellProps = {
   currentPlayer: Player;
   disabled: boolean;
   index: number;
-  coachMark: 'score' | 'block' | 'both' | null;
+  coachMark: 'score' | 'block' | 'both' | 'soft-score' | null;
   coachExplanation: string | null;
   lineMark: 'final' | 'scored' | 'win' | null;
   layout: BoardLayout;
+  tensionMark: 'score' | 'block' | 'both' | null;
   theme: SceneTheme;
   value: Player | null;
   onArm: (index: number | null) => void;
