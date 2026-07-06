@@ -242,6 +242,46 @@ test('desktop 3D cube renders real canvas pixels', async ({ page }) => {
   await expectCanvasHasPixels(page);
 });
 
+test('compact desktop gives Cube and Floors the full stage width', async ({
+  page,
+}) => {
+  await openGame(page, {
+    layout: 'scanner',
+    viewport: { height: 720, width: 1000 },
+  });
+
+  for (const view of ['Cube', 'Floors']) {
+    await page.getByRole('button', { name: view }).click();
+    await expect(page.locator('.app-shell')).toHaveAttribute(
+      'data-layout',
+      view.toLowerCase(),
+    );
+    await expectCanvasHasPixels(page);
+
+    const metrics = await page.evaluate(() => {
+      const panel = document.querySelector('.game-panel')?.getBoundingClientRect();
+      const selector = document
+        .querySelector('.mobile-view-selector')
+        ?.getBoundingClientRect();
+      const stage = document.querySelector('.game-stage')?.getBoundingClientRect();
+
+      return {
+        bodyScrollWidth: document.body.scrollWidth,
+        innerWidth: window.innerWidth,
+        panelTop: panel?.top ?? 0,
+        selectorHeight: selector?.height ?? 0,
+        stageBottom: stage?.bottom ?? 0,
+        stageWidth: stage?.width ?? 0,
+      };
+    });
+
+    expect(metrics.bodyScrollWidth).toBeLessThanOrEqual(metrics.innerWidth);
+    expect(metrics.stageWidth).toBeGreaterThanOrEqual(940);
+    expect(metrics.selectorHeight).toBeGreaterThan(40);
+    expect(metrics.panelTop).toBeGreaterThan(metrics.stageBottom);
+  }
+});
+
 test('solo panel shows local progress and the daily puzzle', async ({ page }) => {
   await openGame(page, { layout: 'scanner' });
 

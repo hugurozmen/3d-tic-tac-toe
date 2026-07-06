@@ -996,7 +996,12 @@ export function App() {
   }, [humanSide, match.score, match.winner, matchWinnerText, mode]);
 
   return (
-    <main className="app-shell" data-theme={themeId} style={themeStyle}>
+    <main
+      className="app-shell"
+      data-layout={layout}
+      data-theme={themeId}
+      style={themeStyle}
+    >
       <GameStage
         ref={stageRef}
         board={board}
@@ -1021,6 +1026,7 @@ export function App() {
         onResetMatch={handleResetMatch}
         onResetRound={handleResetRound}
         onSelect={handleSelect}
+        onUseScanner={() => handleLayoutChange('scanner')}
         onViewCommand={sendViewCommand}
       />
 

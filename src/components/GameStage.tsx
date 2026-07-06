@@ -4,11 +4,19 @@ import {
   RefreshCw,
   RotateCcw,
   RotateCw,
+  ScanLine,
+  TriangleAlert,
   Trophy,
   ZoomIn,
   ZoomOut,
 } from 'lucide-react';
-import { Suspense, forwardRef, lazy } from 'react';
+import {
+  Component,
+  Suspense,
+  forwardRef,
+  lazy,
+  type ReactNode,
+} from 'react';
 import type {
   BoardLayout,
   BoardViewAction,
@@ -58,8 +66,38 @@ type GameStageProps = {
   onResetMatch: () => void;
   onResetRound: () => void;
   onSelect: (index: number) => void;
+  onUseScanner: () => void;
   onViewCommand: (action: BoardViewAction) => void;
 };
+
+class BoardSceneBoundary extends Component<
+  {
+    children: ReactNode;
+    fallback: ReactNode;
+    resetKey: BoardLayout;
+  },
+  { hasError: boolean }
+> {
+  state = { hasError: false };
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidUpdate(previousProps: { resetKey: BoardLayout }) {
+    if (previousProps.resetKey !== this.props.resetKey && this.state.hasError) {
+      this.setState({ hasError: false });
+    }
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return this.props.fallback;
+    }
+
+    return this.props.children;
+  }
+}
 
 export const GameStage = forwardRef<HTMLElement, GameStageProps>(
   function GameStage(
@@ -86,10 +124,23 @@ export const GameStage = forwardRef<HTMLElement, GameStageProps>(
       onResetMatch,
       onResetRound,
       onSelect,
+      onUseScanner,
       onViewCommand,
     },
     ref,
   ) {
+    const boardSceneFallback = (
+      <div className="stage-error" role="alert">
+        <TriangleAlert size={26} />
+        <strong>3D board could not start</strong>
+        <span>Scanner remains available for this round.</span>
+        <button type="button" onClick={onUseScanner}>
+          <ScanLine size={16} />
+          <span>Scanner</span>
+        </button>
+      </div>
+    );
+
     return (
       <section ref={ref} className="game-stage" aria-label="3D XOX board">
         {layout === 'scanner' ? (
@@ -110,34 +161,36 @@ export const GameStage = forwardRef<HTMLElement, GameStageProps>(
             onSelect={onSelect}
           />
         ) : (
-          <Suspense
-            fallback={
-              <div className="stage-loading" role="status" aria-live="polite">
-                <span className="stage-loading-cube" aria-hidden="true">
-                  <i />
-                  <i />
-                  <i />
-                </span>
-                <span>Preparing 3D board</span>
-              </div>
-            }
-          >
-            <BoardScene
-              board={board}
-              coachBlockCells={coachBlockCells}
-              coachHints={coachHints}
-              coachScoreCells={coachScoreCells}
-              currentPlayer={currentPlayer}
-              disabled={disabled}
-              finalLines={finalLines}
-              layout={layout}
-              scoredLines={scoredLines}
-              theme={theme}
-              viewCommand={viewCommand}
-              winningLine={result.winningLine}
-              onSelect={onSelect}
-            />
-          </Suspense>
+          <BoardSceneBoundary fallback={boardSceneFallback} resetKey={layout}>
+            <Suspense
+              fallback={
+                <div className="stage-loading" role="status" aria-live="polite">
+                  <span className="stage-loading-cube" aria-hidden="true">
+                    <i />
+                    <i />
+                    <i />
+                  </span>
+                  <span>Preparing 3D board</span>
+                </div>
+              }
+            >
+              <BoardScene
+                board={board}
+                coachBlockCells={coachBlockCells}
+                coachHints={coachHints}
+                coachScoreCells={coachScoreCells}
+                currentPlayer={currentPlayer}
+                disabled={disabled}
+                finalLines={finalLines}
+                layout={layout}
+                scoredLines={scoredLines}
+                theme={theme}
+                viewCommand={viewCommand}
+                winningLine={result.winningLine}
+                onSelect={onSelect}
+              />
+            </Suspense>
+          </BoardSceneBoundary>
         )}
         {stageNotice ? (
           <div
