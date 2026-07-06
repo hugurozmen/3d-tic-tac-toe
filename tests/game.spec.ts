@@ -44,8 +44,11 @@ async function place(page: Page, player: 'X' | 'O', cell: number) {
 async function keepPieIfVisible(page: Page) {
   const keepSides = page.getByRole('button', { name: 'Keep sides?' });
 
-  if (await keepSides.isVisible()) {
+  try {
+    await keepSides.waitFor({ state: 'visible', timeout: 1000 });
     await keepSides.click();
+  } catch {
+    // Online Classic has Pie disabled, so there may be no prompt.
   }
 }
 
@@ -378,6 +381,11 @@ test('online host and guest can join and relay a scanner move', async ({
   const hostOnlineCard = host.locator('.online-card');
   const roomField = hostOnlineCard.getByRole('textbox', { name: 'Room' });
 
+  await expect(hostOnlineCard).toContainText('Lines room');
+  await expect(hostOnlineCard).toContainText('Locked');
+  await expect(
+    host.locator('.ruleset-control').getByRole('button', { name: 'Classic' }),
+  ).toBeDisabled();
   await expect(roomField).toHaveValue(/[A-Z0-9]{5}/);
   const roomCode = await roomField.inputValue();
 
@@ -395,6 +403,60 @@ test('online host and guest can join and relay a scanner move', async ({
 
     await expect(host.locator('.online-card')).toContainText('connected');
     await expect(guest.locator('.online-card')).toContainText('connected');
+    await expect(guest.locator('.online-card')).toContainText('Lines room');
+    await expect(
+      guest.locator('.ruleset-control').getByRole('button', { name: 'Classic' }),
+    ).toBeDisabled();
+
+    await place(host, 'X', 10);
+    await expect(guest.getByRole('button', { name: /Cell 10, X/ }))
+      .toBeVisible();
+  } finally {
+    await guestContext.close();
+  }
+});
+
+test('online guest adopts host Classic room settings and locks rules', async ({
+  browser,
+  page: host,
+}) => {
+  await openGame(host, { layout: 'scanner' });
+  await host.getByRole('button', { name: 'Classic' }).click();
+  await host.getByRole('button', { name: 'Online' }).click();
+  await host.getByRole('button', { name: 'Host' }).click();
+
+  const hostOnlineCard = host.locator('.online-card');
+  const roomField = hostOnlineCard.getByRole('textbox', { name: 'Room' });
+
+  await expect(hostOnlineCard).toContainText('Classic room');
+  await expect(hostOnlineCard).toContainText('Pie off');
+  await expect(roomField).toHaveValue(/[A-Z0-9]{5}/);
+  const roomCode = await roomField.inputValue();
+
+  const guestContext = await browser.newContext();
+  const guest = await guestContext.newPage();
+
+  try {
+    await openGame(guest, { layout: 'scanner' });
+    await expect(
+      guest.locator('.ruleset-control button.active'),
+    ).toContainText('Lines');
+
+    await guest.getByRole('button', { name: 'Online' }).click();
+    await guest
+      .locator('.online-card')
+      .getByRole('textbox', { name: 'Join' })
+      .fill(roomCode);
+    await guest.getByRole('button', { name: /^Join$/ }).click();
+
+    await expect(guest.locator('.online-card')).toContainText('Classic room');
+    await expect(
+      guest.locator('.ruleset-control button.active'),
+    ).toContainText('Classic');
+    await expect(
+      guest.locator('.ruleset-control').getByRole('button', { name: 'Lines' }),
+    ).toBeDisabled();
+    await expect(guest.locator('.line-score-card')).toHaveCount(0);
 
     await place(host, 'X', 10);
     await expect(guest.getByRole('button', { name: /Cell 10, X/ }))

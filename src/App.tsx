@@ -34,7 +34,7 @@ import {
   updateDifficultyStreak,
 } from './game/retention';
 import { useMatchState } from './game/useMatchState';
-import { useOnlineGame } from './game/useOnlineGame';
+import { type OnlineRoomSettings, useOnlineGame } from './game/useOnlineGame';
 import { THEME_ORDER, THEMES, ThemeId, themeToCssVariables } from './theme';
 import { useLocalStorageState } from './useLocalStorageState';
 
@@ -48,6 +48,7 @@ const getInitialLayout = (): BoardLayout => {
 
 const COACH_OPTIONS = ['auto', 'on', 'off'] as const;
 type CoachSetting = (typeof COACH_OPTIONS)[number];
+const ONLINE_CLASSIC_PIE_RULE = false;
 
 const aiThinkingDelay: Record<Difficulty, number> = {
   easy: 520,
@@ -163,6 +164,13 @@ export function App() {
     !pieDecisionPending;
   const coachEnabled =
     coachSetting === 'on' || (coachSetting === 'auto' && difficulty === 'easy');
+  const hostOnlineSettings = useMemo<OnlineRoomSettings>(
+    () => ({
+      classicPieRule: ONLINE_CLASSIC_PIE_RULE,
+      ruleset,
+    }),
+    [ruleset],
+  );
   const coachHints = useMemo(
     () =>
       coachEnabled && !result.winner && !result.isDraw
@@ -379,10 +387,19 @@ export function App() {
         resetRound();
         flashNotice('Opponent started a new round');
       },
+      onRoomSettings: (settings: OnlineRoomSettings) => {
+        if (settings.ruleset !== ruleset) {
+          setRuleset(settings.ruleset);
+          resetMatch();
+          setPieDecisionDone(false);
+          setPiePromptOpen(false);
+        }
+      },
     }),
-    [applyMove, flashNotice, resetMatch, resetRound],
+    [applyMove, flashNotice, resetMatch, resetRound, ruleset, setRuleset],
   );
   const online = useOnlineGame(onlineHandlers);
+  const onlineRoomActive = mode === 'online' && Boolean(online.localSignal);
 
   useEffect(() => {
     remotePlayerRef.current = online.remotePlayer;
@@ -634,6 +651,11 @@ export function App() {
       return;
     }
 
+    if (onlineRoomActive) {
+      flashNotice('Online room settings are locked');
+      return;
+    }
+
     requestRoundReset(
       `Switching to ${RULESET_DESCRIPTION[nextRuleset]} resets the active best of 5.`,
       () => {
@@ -745,7 +767,7 @@ export function App() {
   const handleHostOnline = () => {
     resetMatch();
     setRemoteSignal('');
-    void online.startHost();
+    void online.startHost(hostOnlineSettings);
   };
 
   const handleResetRound = () => {
@@ -953,6 +975,7 @@ export function App() {
         mode={mode}
         nextOpenerText={nextOpenerText}
         online={online}
+        onlineRulesLocked={onlineRoomActive}
         openerText={openerText}
         remoteSignal={remoteSignal}
         recentBlockCount={recentBlockCount}

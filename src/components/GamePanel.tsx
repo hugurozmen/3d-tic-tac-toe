@@ -32,7 +32,7 @@ import type {
   LineScores,
   Player,
 } from '../game/rules';
-import type { OnlineStatus } from '../game/useOnlineGame';
+import type { OnlineRoomSettings, OnlineStatus } from '../game/useOnlineGame';
 import { THEME_ORDER, THEMES, ThemeId } from '../theme';
 import { ViewSelector } from './ViewSelector';
 
@@ -46,6 +46,7 @@ type OnlinePanelState = {
   localPlayer: Player | null;
   localSignal: string;
   reconnect: () => Promise<boolean>;
+  settings: OnlineRoomSettings | null;
   status: OnlineStatus;
 };
 
@@ -66,6 +67,7 @@ type GamePanelProps = {
   mode: GameMode;
   nextOpenerText: string;
   online: OnlinePanelState;
+  onlineRulesLocked: boolean;
   openerText: string;
   remoteSignal: string;
   recentBlockCount: number;
@@ -115,6 +117,7 @@ export function GamePanel({
   mode,
   nextOpenerText,
   online,
+  onlineRulesLocked,
   openerText,
   remoteSignal,
   recentBlockCount,
@@ -153,6 +156,11 @@ export function GamePanel({
     remainingCells > 0 &&
     remainingCells < 6 &&
     !result.isComplete;
+  const onlineSettingsText = online.settings
+    ? `${RULESET_LABEL[online.settings.ruleset]} room - Pie ${
+        online.settings.classicPieRule ? 'on' : 'off'
+      }`
+    : `${RULESET_LABEL[ruleset]} room`;
 
   return (
     <aside className="game-panel" aria-label="Game controls">
@@ -285,6 +293,7 @@ export function GamePanel({
             <button
               key={option}
               className={ruleset === option ? 'active' : ''}
+              disabled={onlineRulesLocked}
               type="button"
               onClick={() => onRulesetChange(option)}
             >
@@ -348,6 +357,10 @@ export function GamePanel({
             <strong>
               {online.localPlayer ? `${online.localPlayer} local` : 'No side'}
             </strong>
+          </div>
+          <div className="online-settings">
+            <span>{onlineSettingsText}</span>
+            <strong>{onlineRulesLocked ? 'Locked' : 'Host decides'}</strong>
           </div>
           {online.status === 'disconnected' ? (
             <div className="online-banner">

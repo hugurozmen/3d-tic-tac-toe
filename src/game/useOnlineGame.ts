@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Player } from './rules';
+import type { GameRuleset, Player } from './rules';
 
 type OnlineRole = 'guest' | 'host';
 export type OnlineStatus =
@@ -24,10 +24,16 @@ type PeerMessage =
       type: 'reset-match';
     };
 
+export type OnlineRoomSettings = {
+  classicPieRule: boolean;
+  ruleset: GameRuleset;
+};
+
 type RoomMessage = {
   player: Player;
   roomId: string;
   sessionId: string;
+  settings: OnlineRoomSettings;
   type: 'room-created' | 'room-joined';
 };
 
@@ -36,6 +42,7 @@ type RejoinedMessage = {
   player: Player;
   roomId: string;
   sessionId: string;
+  settings: OnlineRoomSettings;
   type: 'room-rejoined';
 };
 
@@ -43,7 +50,11 @@ type ServerMessage =
   | RoomMessage
   | RejoinedMessage
   | {
-      type: 'peer-joined' | 'peer-left';
+      settings?: OnlineRoomSettings;
+      type: 'peer-joined';
+    }
+  | {
+      type: 'peer-left';
     }
   | {
       message: string;
@@ -55,6 +66,7 @@ type OnlineHandlers = {
   onRemoteMatchReset: () => void;
   onRemoteMove: (index: number, player: Player) => void;
   onRemoteRoundReset: () => void;
+  onRoomSettings: (settings: OnlineRoomSettings) => void;
 };
 
 const DEFAULT_SERVER_PORT = '8787';
@@ -73,6 +85,22 @@ const getDefaultServerUrl = () => {
 
 const isPlayer = (value: unknown): value is Player =>
   value === 'X' || value === 'O';
+
+const isRuleset = (value: unknown): value is GameRuleset =>
+  value === 'lines' || value === 'classic';
+
+const isRoomSettings = (value: unknown): value is OnlineRoomSettings => {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const settings = value as Partial<OnlineRoomSettings>;
+
+  return (
+    isRuleset(settings.ruleset) &&
+    typeof settings.classicPieRule === 'boolean'
+  );
+};
 
 const roleForPlayer = (player: Player): OnlineRole =>
   player === 'X' ? 'host' : 'guest';
@@ -106,6 +134,7 @@ const isRoomMessage = (message: {
   (message.type === 'room-created' || message.type === 'room-joined') &&
   typeof message.roomId === 'string' &&
   typeof message.sessionId === 'string' &&
+  isRoomSettings(message.settings) &&
   isPlayer(message.player);
 
 const parseServerMessage = (data: string): ServerMessage | null => {
@@ -129,12 +158,20 @@ const parseServerMessage = (data: string): ServerMessage | null => {
       typeof message.roomId === 'string' &&
       typeof message.sessionId === 'string' &&
       typeof message.peerConnected === 'boolean' &&
+      isRoomSettings(message.settings) &&
       isPlayer(message.player)
     ) {
       return message;
     }
 
-    if (message.type === 'peer-joined' || message.type === 'peer-left') {
+    if (
+      message.type === 'peer-joined' &&
+      (message.settings === undefined || isRoomSettings(message.settings))
+    ) {
+      return message;
+    }
+
+    if (message.type === 'peer-left') {
       return message;
     }
 
@@ -156,6 +193,7 @@ export function useOnlineGame(handlers: OnlineHandlers) {
   const [role, setRole] = useState<OnlineRole | null>(null);
   const [roomId, setRoomId] = useState('');
   const [sessionId, setSessionId] = useState('');
+  const [settings, setSettings] = useState<OnlineRoomSettings | null>(null);
   const [status, setStatus] = useState<OnlineStatus>('idle');
 
   useEffect(() => {
@@ -184,10 +222,17 @@ export function useOnlineGame(handlers: OnlineHandlers) {
   }, []);
 
   const rememberSession = useCallback(
-    (message: Pick<RoomMessage, 'player' | 'roomId' | 'sessionId'>) => {
+    (
+      message: Pick<
+        RoomMessage,
+        'player' | 'roomId' | 'sessionId' | 'settings'
+      >,
+    ) => {
       setRole(roleForPlayer(message.player));
       setRoomId(message.roomId);
       setSessionId(message.sessionId);
+      setSettings(message.settings);
+      handlersRef.current.onRoomSettings(message.settings);
     },
     [],
   );
@@ -196,6 +241,7 @@ export function useOnlineGame(handlers: OnlineHandlers) {
     setRole(null);
     setRoomId('');
     setSessionId('');
+    setSettings(null);
   }, []);
 
   const close = useCallback(() => {
@@ -254,6 +300,11 @@ export function useOnlineGame(handlers: OnlineHandlers) {
         }
 
         if (message.type === 'peer-joined') {
+          if (message.settings) {
+            setSettings(message.settings);
+            handlersRef.current.onRoomSettings(message.settings);
+          }
+
           setError(null);
           setStatus('connected');
           return;
@@ -322,20 +373,26 @@ export function useOnlineGame(handlers: OnlineHandlers) {
     [attachSocket, serverUrl],
   );
 
-  const startHost = useCallback(async () => {
-    close();
-    setStatus('connecting');
-    setRole('host');
+  const startHost = useCallback(
+    async (roomSettings: OnlineRoomSettings) => {
+      close();
+      setStatus('connecting');
+      setRole('host');
+      setSettings(roomSettings);
 
-    try {
-      const socket = await openSocket();
-      socket.send(JSON.stringify({ type: 'create-room' }));
-    } catch (caught) {
-      clearSession();
-      setError(caught instanceof Error ? caught.message : 'Could not host');
-      setStatus('error');
-    }
-  }, [clearSession, close, openSocket]);
+      try {
+        const socket = await openSocket();
+        socket.send(
+          JSON.stringify({ settings: roomSettings, type: 'create-room' }),
+        );
+      } catch (caught) {
+        clearSession();
+        setError(caught instanceof Error ? caught.message : 'Could not host');
+        setStatus('error');
+      }
+    },
+    [clearSession, close, openSocket],
+  );
 
   const joinOffer = useCallback(
     async (roomCode: string) => {
@@ -428,5 +485,6 @@ export function useOnlineGame(handlers: OnlineHandlers) {
     serverUrl,
     startHost,
     status,
+    settings,
   };
 }

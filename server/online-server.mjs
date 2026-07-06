@@ -27,6 +27,31 @@ const makeRoomId = (rooms) => {
 
 const makeSessionId = () => randomUUID().replaceAll('-', '').slice(0, 24);
 
+const DEFAULT_ROOM_SETTINGS = {
+  classicPieRule: false,
+  ruleset: 'lines',
+};
+
+const isRoomSettings = (settings) =>
+  settings &&
+  (settings.ruleset === 'lines' || settings.ruleset === 'classic') &&
+  typeof settings.classicPieRule === 'boolean';
+
+const normalizeRoomSettings = (settings) => {
+  if (settings === undefined) {
+    return DEFAULT_ROOM_SETTINGS;
+  }
+
+  if (!isRoomSettings(settings)) {
+    return null;
+  }
+
+  return {
+    classicPieRule: settings.classicPieRule,
+    ruleset: settings.ruleset,
+  };
+};
+
 const isMoveMessage = (message) =>
   message?.type === 'move' &&
   Number.isInteger(message.index) &&
@@ -193,6 +218,13 @@ export const createOnlineServer = ({
         const message = parse(data);
 
         if (message?.type === 'create-room') {
+          const settings = normalizeRoomSettings(message.settings);
+
+          if (!settings) {
+            send(socket, { message: 'Invalid room settings', type: 'error' });
+            return;
+          }
+
           leaveRoom(socket);
           const roomId = makeRoomId(rooms);
           const sessionId = makeSessionId();
@@ -205,12 +237,19 @@ export const createOnlineServer = ({
             guestSessionId: null,
             host: socket,
             hostSessionId: sessionId,
+            settings,
             updatedAt: now,
           });
           socket.roomId = roomId;
           socket.player = 'X';
           socket.sessionId = sessionId;
-          send(socket, { player: 'X', roomId, sessionId, type: 'room-created' });
+          send(socket, {
+            player: 'X',
+            roomId,
+            sessionId,
+            settings,
+            type: 'room-created',
+          });
           return;
         }
 
@@ -245,8 +284,14 @@ export const createOnlineServer = ({
           socket.player = 'O';
           socket.sessionId = sessionId;
           touchRoom(room);
-          send(socket, { player: 'O', roomId, sessionId, type: 'room-joined' });
-          send(room.host, { type: 'peer-joined' });
+          send(socket, {
+            player: 'O',
+            roomId,
+            sessionId,
+            settings: room.settings,
+            type: 'room-joined',
+          });
+          send(room.host, { settings: room.settings, type: 'peer-joined' });
           return;
         }
 
@@ -288,11 +333,12 @@ export const createOnlineServer = ({
             player,
             roomId,
             sessionId,
+            settings: room.settings,
             type: 'room-rejoined',
           });
 
           if (peer) {
-            send(peer, { type: 'peer-joined' });
+            send(peer, { settings: room.settings, type: 'peer-joined' });
           }
 
           return;
