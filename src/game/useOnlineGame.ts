@@ -1,0 +1,432 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Player } from './rules';
+
+type OnlineRole = 'guest' | 'host';
+export type OnlineStatus =
+  | 'idle'
+  | 'connecting'
+  | 'waiting'
+  | 'connected'
+  | 'disconnected'
+  | 'reconnecting'
+  | 'error';
+
+type PeerMessage =
+  | {
+      index: number;
+      player: Player;
+      type: 'move';
+    }
+  | {
+      type: 'reset-round';
+    }
+  | {
+      type: 'reset-match';
+    };
+
+type RoomMessage = {
+  player: Player;
+  roomId: string;
+  sessionId: string;
+  type: 'room-created' | 'room-joined';
+};
+
+type RejoinedMessage = {
+  peerConnected: boolean;
+  player: Player;
+  roomId: string;
+  sessionId: string;
+  type: 'room-rejoined';
+};
+
+type ServerMessage =
+  | RoomMessage
+  | RejoinedMessage
+  | {
+      type: 'peer-joined' | 'peer-left';
+    }
+  | {
+      message: string;
+      type: 'error';
+    }
+  | PeerMessage;
+
+type OnlineHandlers = {
+  onRemoteMatchReset: () => void;
+  onRemoteMove: (index: number, player: Player) => void;
+  onRemoteRoundReset: () => void;
+};
+
+const DEFAULT_SERVER_PORT = '8787';
+const getDefaultServerUrl = () => {
+  const configured = import.meta.env.VITE_ONLINE_SERVER_URL;
+
+  if (configured) {
+    return configured;
+  }
+
+  const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+  const host = window.location.hostname || '127.0.0.1';
+
+  return `${protocol}://${host}:${DEFAULT_SERVER_PORT}`;
+};
+
+const isPlayer = (value: unknown): value is Player =>
+  value === 'X' || value === 'O';
+
+const roleForPlayer = (player: Player): OnlineRole =>
+  player === 'X' ? 'host' : 'guest';
+
+const playerForRole = (role: OnlineRole): Player =>
+  role === 'host' ? 'X' : 'O';
+
+const isPeerMessage = (value: unknown): value is PeerMessage => {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const message = value as PeerMessage;
+
+  if (message.type === 'reset-round' || message.type === 'reset-match') {
+    return true;
+  }
+
+  return (
+    message.type === 'move' &&
+    Number.isInteger(message.index) &&
+    message.index >= 0 &&
+    message.index < 27 &&
+    isPlayer(message.player)
+  );
+};
+
+const isRoomMessage = (message: {
+  [key: string]: unknown;
+}): message is RoomMessage =>
+  (message.type === 'room-created' || message.type === 'room-joined') &&
+  typeof message.roomId === 'string' &&
+  typeof message.sessionId === 'string' &&
+  isPlayer(message.player);
+
+const parseServerMessage = (data: string): ServerMessage | null => {
+  try {
+    const message = JSON.parse(data);
+
+    if (!message || typeof message !== 'object') {
+      return null;
+    }
+
+    if (isPeerMessage(message)) {
+      return message;
+    }
+
+    if (isRoomMessage(message)) {
+      return message;
+    }
+
+    if (
+      message.type === 'room-rejoined' &&
+      typeof message.roomId === 'string' &&
+      typeof message.sessionId === 'string' &&
+      typeof message.peerConnected === 'boolean' &&
+      isPlayer(message.player)
+    ) {
+      return message;
+    }
+
+    if (message.type === 'peer-joined' || message.type === 'peer-left') {
+      return message;
+    }
+
+    if (message.type === 'error' && typeof message.message === 'string') {
+      return message;
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
+};
+
+export function useOnlineGame(handlers: OnlineHandlers) {
+  const handlersRef = useRef(handlers);
+  const socketRef = useRef<WebSocket | null>(null);
+  const serverUrl = useMemo(getDefaultServerUrl, []);
+  const [error, setError] = useState<string | null>(null);
+  const [role, setRole] = useState<OnlineRole | null>(null);
+  const [roomId, setRoomId] = useState('');
+  const [sessionId, setSessionId] = useState('');
+  const [status, setStatus] = useState<OnlineStatus>('idle');
+
+  useEffect(() => {
+    handlersRef.current = handlers;
+  }, [handlers]);
+
+  const disconnectCurrentSocket = useCallback(() => {
+    const socket = socketRef.current;
+
+    socketRef.current = null;
+
+    if (!socket) {
+      return;
+    }
+
+    socket.onclose = null;
+    socket.onerror = null;
+    socket.onmessage = null;
+
+    if (
+      socket.readyState === WebSocket.CONNECTING ||
+      socket.readyState === WebSocket.OPEN
+    ) {
+      socket.close();
+    }
+  }, []);
+
+  const rememberSession = useCallback(
+    (message: Pick<RoomMessage, 'player' | 'roomId' | 'sessionId'>) => {
+      setRole(roleForPlayer(message.player));
+      setRoomId(message.roomId);
+      setSessionId(message.sessionId);
+    },
+    [],
+  );
+
+  const clearSession = useCallback(() => {
+    setRole(null);
+    setRoomId('');
+    setSessionId('');
+  }, []);
+
+  const close = useCallback(() => {
+    disconnectCurrentSocket();
+    clearSession();
+    setError(null);
+    setStatus('idle');
+  }, [clearSession, disconnectCurrentSocket]);
+
+  useEffect(
+    () => () => {
+      disconnectCurrentSocket();
+    },
+    [disconnectCurrentSocket],
+  );
+
+  const sendRaw = useCallback((message: unknown) => {
+    if (socketRef.current?.readyState !== WebSocket.OPEN) {
+      return false;
+    }
+
+    socketRef.current.send(JSON.stringify(message));
+    return true;
+  }, []);
+
+  const attachSocket = useCallback(
+    (socket: WebSocket) => {
+      socketRef.current = socket;
+
+      socket.onmessage = (event) => {
+        const message = parseServerMessage(String(event.data));
+
+        if (!message) {
+          return;
+        }
+
+        if (message.type === 'room-created') {
+          rememberSession(message);
+          setError(null);
+          setStatus('waiting');
+          return;
+        }
+
+        if (message.type === 'room-joined') {
+          rememberSession(message);
+          setError(null);
+          setStatus('connected');
+          return;
+        }
+
+        if (message.type === 'room-rejoined') {
+          rememberSession(message);
+          setError(null);
+          setStatus(message.peerConnected ? 'connected' : 'waiting');
+          return;
+        }
+
+        if (message.type === 'peer-joined') {
+          setError(null);
+          setStatus('connected');
+          return;
+        }
+
+        if (message.type === 'peer-left') {
+          setStatus('disconnected');
+          return;
+        }
+
+        if (message.type === 'error') {
+          setError(message.message);
+          setStatus('error');
+          return;
+        }
+
+        if (message.type === 'move') {
+          handlersRef.current.onRemoteMove(message.index, message.player);
+        }
+
+        if (message.type === 'reset-round') {
+          handlersRef.current.onRemoteRoundReset();
+        }
+
+        if (message.type === 'reset-match') {
+          handlersRef.current.onRemoteMatchReset();
+        }
+      };
+
+      socket.onclose = () => {
+        if (socketRef.current === socket) {
+          socketRef.current = null;
+        }
+
+        setStatus((current) => (current === 'idle' ? current : 'disconnected'));
+      };
+
+      socket.onerror = () => {
+        setError(`Connection lost: ${serverUrl}`);
+        setStatus('error');
+      };
+    },
+    [rememberSession, serverUrl],
+  );
+
+  const openSocket = useCallback(
+    () =>
+      new Promise<WebSocket>((resolve, reject) => {
+        const socket = new WebSocket(serverUrl);
+        const timeout = window.setTimeout(() => {
+          socket.close();
+          reject(new Error(`Cannot reach ${serverUrl}`));
+        }, 4500);
+
+        socket.onopen = () => {
+          window.clearTimeout(timeout);
+          attachSocket(socket);
+          resolve(socket);
+        };
+
+        socket.onerror = () => {
+          window.clearTimeout(timeout);
+          reject(new Error(`Cannot reach ${serverUrl}`));
+        };
+      }),
+    [attachSocket, serverUrl],
+  );
+
+  const startHost = useCallback(async () => {
+    close();
+    setStatus('connecting');
+    setRole('host');
+
+    try {
+      const socket = await openSocket();
+      socket.send(JSON.stringify({ type: 'create-room' }));
+    } catch (caught) {
+      clearSession();
+      setError(caught instanceof Error ? caught.message : 'Could not host');
+      setStatus('error');
+    }
+  }, [clearSession, close, openSocket]);
+
+  const joinOffer = useCallback(
+    async (roomCode: string) => {
+      close();
+      setStatus('connecting');
+      setRole('guest');
+
+      try {
+        const socket = await openSocket();
+        socket.send(
+          JSON.stringify({
+            roomId: roomCode.trim().toUpperCase(),
+            type: 'join-room',
+          }),
+        );
+      } catch (caught) {
+        clearSession();
+        setError(caught instanceof Error ? caught.message : 'Could not join');
+        setStatus('error');
+      }
+    },
+    [clearSession, close, openSocket],
+  );
+
+  const reconnect = useCallback(async () => {
+    if (!role || !roomId || !sessionId) {
+      setError('No room session to reconnect');
+      setStatus('error');
+      return false;
+    }
+
+    disconnectCurrentSocket();
+    setError(null);
+    setStatus('reconnecting');
+
+    try {
+      const socket = await openSocket();
+
+      socket.send(
+        JSON.stringify({
+          player: playerForRole(role),
+          roomId,
+          sessionId,
+          type: 'rejoin-room',
+        }),
+      );
+
+      return true;
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Could not reconnect');
+      setStatus('disconnected');
+      return false;
+    }
+  }, [disconnectCurrentSocket, openSocket, role, roomId, sessionId]);
+
+  const send = useCallback(
+    (message: PeerMessage) => {
+      const delivered = sendRaw(message);
+
+      if (!delivered && status !== 'idle') {
+        setError('Connection is offline. Reconnect the room to keep playing.');
+        setStatus('disconnected');
+      }
+
+      return delivered;
+    },
+    [sendRaw, status],
+  );
+
+  const localPlayer: Player | null =
+    role === 'host' ? 'X' : role === 'guest' ? 'O' : null;
+  const remotePlayer: Player | null =
+    role === 'host' ? 'O' : role === 'guest' ? 'X' : null;
+
+  return {
+    canReconnect: Boolean(role && roomId && sessionId),
+    close,
+    error,
+    isConnected: status === 'connected',
+    joinOffer,
+    localPlayer,
+    localSignal: roomId,
+    reconnect,
+    remotePlayer,
+    role,
+    sendMatchReset: () => send({ type: 'reset-match' }),
+    sendMove: (index: number, player: Player) =>
+      send({ index, player, type: 'move' }),
+    sendRoundReset: () => send({ type: 'reset-round' }),
+    serverUrl,
+    startHost,
+    status,
+  };
+}

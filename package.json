@@ -1,0 +1,42 @@
+{
+  "name": "3d-xox",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "tsc --noEmit && vite build",
+    "online:server": "node server/online-server.mjs",
+    "online:test": "node scripts/verify-online-server.mjs",
+    "test": "npm run build && npm run online:test && npm run test:e2e",
+    "test:e2e": "playwright test",
+    "preview": "vite preview --host 0.0.0.0",
+    "mobile:sync": "npm run build && cap sync",
+    "mobile:add:ios": "cap add ios",
+    "mobile:add:android": "cap add android",
+    "mobile:open:ios": "cap open ios",
+    "mobile:open:android": "cap open android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^7.6.6",
+    "@capacitor/core": "^7.6.6",
+    "@capacitor/ios": "^7.6.6",
+    "@react-three/drei": "^10.7.7",
+    "@react-three/fiber": "^9.4.0",
+    "lucide-react": "^0.468.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "three": "^0.171.0",
+    "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^7.6.6",
+    "@playwright/test": "^1.61.0",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.2",
+    "pngjs": "^7.0.0",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.16"
+  }
+}

@@ -1,0 +1,1791 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>3D XOX Playable Area Concepts</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", sans-serif;
+        background: #0d0f14;
+        color: #f4f6f3;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-width: 320px;
+        background: #0d0f14;
+      }
+
+      main {
+        min-height: 100vh;
+        padding: 24px;
+      }
+
+      header {
+        max-width: 1180px;
+        margin: 0 auto 18px;
+        display: flex;
+        align-items: end;
+        justify-content: space-between;
+        gap: 18px;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(1.65rem, 3vw, 3rem);
+        letter-spacing: 0;
+        line-height: 1;
+      }
+
+      header p {
+        max-width: 520px;
+        margin: 0;
+        color: #aeb7c8;
+        font-size: 0.95rem;
+        line-height: 1.45;
+      }
+
+      .gallery {
+        max-width: 1180px;
+        margin: 0 auto;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 18px;
+      }
+
+      .concept {
+        min-height: 560px;
+        display: grid;
+        grid-template-rows: auto 1fr auto;
+        gap: 14px;
+        padding: 18px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 10px;
+        background: #151922;
+        overflow: hidden;
+      }
+
+      .concept-title {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .concept-title h2 {
+        margin: 0;
+        font-size: 1.2rem;
+        letter-spacing: 0;
+      }
+
+      .tag {
+        min-width: 42px;
+        height: 32px;
+        display: inline-grid;
+        place-items: center;
+        border-radius: 7px;
+        background: #f4c542;
+        color: #101317;
+        font-weight: 900;
+      }
+
+      .stage {
+        position: relative;
+        min-height: 405px;
+        border-radius: 8px;
+        background: #0d111a;
+        overflow: hidden;
+        perspective: 900px;
+      }
+
+      .caption {
+        min-height: 44px;
+        margin: 0;
+        color: #bac3d2;
+        font-size: 0.92rem;
+        line-height: 1.35;
+      }
+
+      .cell,
+      .node {
+        display: grid;
+        place-items: center;
+        color: #f8fbff;
+        font-weight: 900;
+        user-select: none;
+      }
+
+      .x {
+        color: #ff635d;
+      }
+
+      .o {
+        color: #4fe0cc;
+      }
+
+      .empty {
+        color: rgba(255, 255, 255, 0.34);
+      }
+
+      .stack-stage {
+        background: #eef5ff;
+      }
+
+      .stack-board {
+        position: absolute;
+        inset: 30px 42px 24px;
+        transform: rotateX(58deg) rotateZ(-37deg);
+        transform-style: preserve-3d;
+      }
+
+      .stack-layer {
+        position: absolute;
+        width: 248px;
+        height: 248px;
+        left: calc(50% - 124px);
+        top: calc(50% - 124px);
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+        padding: 8px;
+        border: 2px solid rgba(49, 83, 130, 0.18);
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.54);
+        box-shadow: 0 18px 46px rgba(45, 71, 112, 0.16);
+      }
+
+      .stack-layer:nth-child(1) {
+        transform: translateZ(-82px);
+      }
+
+      .stack-layer:nth-child(2) {
+        transform: translateZ(0);
+      }
+
+      .stack-layer:nth-child(3) {
+        transform: translateZ(82px);
+      }
+
+      .stack-layer .cell {
+        min-height: 66px;
+        border-radius: 7px;
+        border: 1px solid rgba(49, 83, 130, 0.16);
+        background: rgba(255, 255, 255, 0.78);
+        color: #19233c;
+        font-size: 1.4rem;
+      }
+
+      .stack-layer .empty {
+        color: rgba(25, 35, 60, 0.32);
+      }
+
+      .exploded-stage {
+        background: #10141f;
+      }
+
+      .exploded-board {
+        position: absolute;
+        inset: 42px 26px 34px;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 18px;
+        align-items: center;
+      }
+
+      .exploded-layer {
+        position: relative;
+        aspect-ratio: 1;
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 7px;
+        padding: 10px;
+        border: 1px solid rgba(127, 140, 255, 0.28);
+        border-radius: 8px;
+        background: linear-gradient(145deg, #1a2134, #111827);
+        box-shadow: 0 22px 56px rgba(0, 0, 0, 0.22);
+        transform: rotateX(55deg) rotateZ(-33deg);
+      }
+
+      .exploded-layer::after {
+        content: attr(data-layer);
+        position: absolute;
+        left: 10px;
+        bottom: -30px;
+        color: #8794ff;
+        font-size: 0.76rem;
+        font-weight: 900;
+        transform: rotateZ(33deg) rotateX(-55deg);
+      }
+
+      .exploded-layer .cell {
+        border-radius: 7px;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        background: #232d48;
+        font-size: 1rem;
+      }
+
+      .node-stage {
+        background: #070a13;
+      }
+
+      .node-board {
+        position: absolute;
+        inset: 20px;
+        transform: rotateX(57deg) rotateZ(-38deg);
+        transform-style: preserve-3d;
+      }
+
+      .node-line {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        height: 4px;
+        border-radius: 99px;
+        background: rgba(102, 130, 255, 0.42);
+        transform-origin: 0 50%;
+      }
+
+      .node {
+        position: absolute;
+        width: 44px;
+        height: 44px;
+        margin: -22px 0 0 -22px;
+        border-radius: 50%;
+        border: 2px solid rgba(255, 255, 255, 0.18);
+        background: radial-gradient(circle at 35% 25%, #ffffff, #5d6fff 48%, #1a2040);
+        box-shadow: 0 0 28px rgba(93, 111, 255, 0.28);
+        font-size: 1rem;
+      }
+
+      .node.empty {
+        color: transparent;
+      }
+
+      .focus-stage {
+        background: #eaf4ee;
+      }
+
+      .focus-board {
+        position: absolute;
+        inset: 32px;
+        display: grid;
+        grid-template-columns: 1fr 120px;
+        gap: 18px;
+        align-items: center;
+      }
+
+      .focus-active {
+        aspect-ratio: 1;
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 10px;
+        padding: 12px;
+        border: 2px solid rgba(49, 72, 59, 0.22);
+        border-radius: 9px;
+        background: #fffaf1;
+        box-shadow: 0 24px 64px rgba(49, 72, 59, 0.16);
+      }
+
+      .focus-active .cell {
+        border-radius: 8px;
+        background: #e3efe4;
+        color: #17251e;
+        font-size: 1.65rem;
+      }
+
+      .focus-active .empty {
+        color: rgba(23, 37, 30, 0.32);
+      }
+
+      .focus-rail {
+        display: grid;
+        gap: 12px;
+      }
+
+      .mini-layer {
+        aspect-ratio: 1;
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 4px;
+        padding: 6px;
+        border-radius: 8px;
+        background: rgba(255, 250, 241, 0.74);
+        border: 1px solid rgba(49, 72, 59, 0.18);
+      }
+
+      .mini-layer.active {
+        outline: 3px solid #e4aa24;
+      }
+
+      .mini-cell {
+        border-radius: 4px;
+        background: #cfe0d0;
+      }
+
+      .cube-stage {
+        background: radial-gradient(circle at 50% 28%, #182441, #070b16 72%);
+      }
+
+      .cube-world {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        transform-style: preserve-3d;
+      }
+
+      .cube-core {
+        position: relative;
+        width: 0;
+        height: 0;
+        transform-style: preserve-3d;
+        animation: cube-sway 9s ease-in-out infinite alternate;
+      }
+
+      @keyframes cube-sway {
+        from {
+          transform: rotateX(-22deg) rotateY(-46deg);
+        }
+
+        to {
+          transform: rotateX(-27deg) rotateY(-16deg);
+        }
+      }
+
+      .cube-face {
+        position: absolute;
+        width: 252px;
+        height: 252px;
+        left: -126px;
+        top: -126px;
+        border: 1px solid rgba(122, 162, 255, 0.4);
+        border-radius: 6px;
+        background:
+          linear-gradient(rgba(122, 162, 255, 0.14) 1px, transparent 1px) 0 0 /
+            84px 84px,
+          linear-gradient(
+              90deg,
+              rgba(122, 162, 255, 0.14) 1px,
+              transparent 1px
+            )
+            0 0 / 84px 84px,
+          rgba(96, 128, 230, 0.05);
+      }
+
+      .cube-mark {
+        position: absolute;
+        left: 0;
+        top: 0;
+        transform-style: preserve-3d;
+      }
+
+      .cube-x {
+        width: 26px;
+        height: 26px;
+        margin: -13px;
+        border-radius: 6px;
+        background: linear-gradient(135deg, #ff9d8f, #e83a2e);
+        box-shadow: 0 0 20px rgba(255, 99, 93, 0.65);
+        transform: rotate(45deg);
+      }
+
+      .cube-o {
+        width: 26px;
+        height: 26px;
+        margin: -13px;
+        border: 7px solid #3fe3cb;
+        border-radius: 50%;
+        box-shadow: 0 0 20px rgba(79, 224, 204, 0.55);
+      }
+
+      .cube-dot {
+        width: 8px;
+        height: 8px;
+        margin: -4px;
+        border-radius: 50%;
+        background: rgba(165, 192, 255, 0.5);
+      }
+
+      .holo-stage {
+        background:
+          radial-gradient(
+            circle at 50% 82%,
+            rgba(34, 211, 238, 0.14),
+            transparent 55%
+          ),
+          #04070d;
+      }
+
+      .holo-face {
+        position: absolute;
+        width: 252px;
+        height: 252px;
+        left: -126px;
+        top: -126px;
+        border: 1.5px solid rgba(34, 211, 238, 0.5);
+        border-radius: 4px;
+        box-shadow:
+          0 0 22px rgba(34, 211, 238, 0.16),
+          inset 0 0 22px rgba(34, 211, 238, 0.1);
+        background:
+          linear-gradient(rgba(34, 211, 238, 0.1) 1px, transparent 1px) 0 0 /
+            84px 84px,
+          linear-gradient(90deg, rgba(34, 211, 238, 0.1) 1px, transparent 1px)
+            0 0 / 84px 84px;
+      }
+
+      .holo-floor {
+        position: absolute;
+        width: 460px;
+        height: 460px;
+        left: -230px;
+        top: -230px;
+        transform: rotateX(90deg) translateZ(-180px);
+        background:
+          linear-gradient(rgba(34, 211, 238, 0.22) 1px, transparent 1px) 0 0 /
+            46px 46px,
+          linear-gradient(90deg, rgba(34, 211, 238, 0.22) 1px, transparent 1px)
+            0 0 / 46px 46px;
+        -webkit-mask-image: radial-gradient(circle, #000 28%, transparent 68%);
+        mask-image: radial-gradient(circle, #000 28%, transparent 68%);
+      }
+
+      .holo-x {
+        width: 24px;
+        height: 24px;
+        margin: -12px;
+        border: 3px solid #f471b5;
+        border-radius: 5px;
+        transform: rotate(45deg);
+        box-shadow:
+          0 0 16px rgba(244, 113, 181, 0.7),
+          inset 0 0 8px rgba(244, 113, 181, 0.5);
+      }
+
+      .holo-o {
+        width: 24px;
+        height: 24px;
+        margin: -12px;
+        border: 3px solid #22d3ee;
+        border-radius: 50%;
+        box-shadow:
+          0 0 16px rgba(34, 211, 238, 0.7),
+          inset 0 0 8px rgba(34, 211, 238, 0.5);
+      }
+
+      .holo-dot {
+        width: 6px;
+        height: 6px;
+        margin: -3px;
+        border-radius: 50%;
+        background: rgba(34, 211, 238, 0.4);
+      }
+
+      .slab-stage {
+        background: linear-gradient(#f6f8fc, #e4eaf4);
+      }
+
+      .slab-floor {
+        position: absolute;
+        width: 252px;
+        height: 252px;
+        left: -126px;
+        top: -126px;
+        border: 1px solid rgba(71, 94, 138, 0.24);
+        border-radius: 12px;
+        background:
+          linear-gradient(rgba(71, 94, 138, 0.12) 1px, transparent 1px) 0 0 /
+            84px 84px,
+          linear-gradient(90deg, rgba(71, 94, 138, 0.12) 1px, transparent 1px)
+            0 0 / 84px 84px,
+          rgba(255, 255, 255, 0.6);
+        box-shadow: 0 18px 40px rgba(71, 94, 138, 0.16);
+      }
+
+      .slab-x {
+        width: 30px;
+        height: 30px;
+        margin: -15px;
+        border-radius: 50%;
+        background: radial-gradient(
+          circle at 32% 28%,
+          #ffd9d4,
+          #ff635d 55%,
+          #b8231d
+        );
+        box-shadow: 0 8px 16px rgba(184, 35, 29, 0.35);
+      }
+
+      .slab-o {
+        width: 30px;
+        height: 30px;
+        margin: -15px;
+        border-radius: 50%;
+        background: radial-gradient(
+          circle at 32% 28%,
+          #d8fff8,
+          #2fc4ae 55%,
+          #117a68
+        );
+        box-shadow: 0 8px 16px rgba(17, 122, 104, 0.35);
+      }
+
+      .slab-dot {
+        width: 10px;
+        height: 10px;
+        margin: -5px;
+        border-radius: 50%;
+        background: rgba(71, 94, 138, 0.28);
+      }
+
+      .crystal-stage {
+        background: radial-gradient(circle at 50% 35%, #221937, #0a0714 72%);
+      }
+
+      .crystal-glow {
+        position: absolute;
+        width: 320px;
+        height: 320px;
+        border-radius: 50%;
+        background: radial-gradient(
+          circle,
+          rgba(157, 110, 255, 0.28),
+          transparent 65%
+        );
+      }
+
+      .crystal-face {
+        position: absolute;
+        width: 252px;
+        height: 252px;
+        left: -126px;
+        top: -126px;
+        border: 1px solid rgba(180, 150, 255, 0.35);
+        border-radius: 6px;
+        background:
+          linear-gradient(rgba(180, 150, 255, 0.1) 1px, transparent 1px) 0 0 /
+            84px 84px,
+          linear-gradient(
+              90deg,
+              rgba(180, 150, 255, 0.1) 1px,
+              transparent 1px
+            )
+            0 0 / 84px 84px,
+          rgba(140, 110, 240, 0.05);
+      }
+
+      .crystal-x {
+        width: 22px;
+        height: 22px;
+        margin: -11px;
+        border-radius: 50%;
+        background: radial-gradient(
+          circle at 35% 30%,
+          #ffffff,
+          #ff8d7a 40%,
+          #e83a2e 78%
+        );
+        box-shadow: 0 0 18px rgba(255, 99, 93, 0.8);
+      }
+
+      .crystal-o {
+        width: 22px;
+        height: 22px;
+        margin: -11px;
+        border-radius: 50%;
+        background: radial-gradient(
+          circle at 35% 30%,
+          #ffffff,
+          #6ee9d8 40%,
+          #14a08b 78%
+        );
+        box-shadow: 0 0 18px rgba(79, 224, 204, 0.7);
+      }
+
+      .crystal-dot {
+        width: 7px;
+        height: 7px;
+        margin: -3.5px;
+        border-radius: 50%;
+        background: rgba(190, 170, 255, 0.4);
+      }
+
+      .crystal-x.hot,
+      .crystal-o.hot {
+        animation: crystal-pulse 1.6s ease-in-out infinite;
+      }
+
+      @keyframes crystal-pulse {
+        0%,
+        100% {
+          transform: scale(1);
+        }
+
+        50% {
+          transform: scale(1.4);
+        }
+      }
+
+      .crystal-beam {
+        position: absolute;
+        width: 292px;
+        height: 4px;
+        left: -146px;
+        top: -2px;
+        border-radius: 99px;
+        transform: rotateY(-45deg) rotateZ(35.3deg);
+        background: linear-gradient(
+          90deg,
+          transparent,
+          #ffb199 18%,
+          #ff635d 50%,
+          #ffb199 82%,
+          transparent
+        );
+        box-shadow: 0 0 18px rgba(255, 99, 93, 0.65);
+        animation: beam-pulse 1.6s ease-in-out infinite;
+      }
+
+      @keyframes beam-pulse {
+        0%,
+        100% {
+          opacity: 0.7;
+        }
+
+        50% {
+          opacity: 1;
+        }
+      }
+
+      .cage-stage {
+        background: radial-gradient(circle at 50% 30%, #1b2233, #0b0f18 75%);
+      }
+
+      .cage-rod {
+        position: absolute;
+        width: 168px;
+        height: 3px;
+        left: -84px;
+        top: -1.5px;
+        border-radius: 99px;
+        background: rgba(148, 163, 184, 0.38);
+      }
+
+      .cage-x {
+        width: 30px;
+        height: 30px;
+        margin: -15px;
+        border-radius: 50%;
+        background: radial-gradient(
+          circle at 35% 28%,
+          #ffc9c2,
+          #ff635d 50%,
+          #a8201a
+        );
+        box-shadow: 0 0 14px rgba(255, 99, 93, 0.45);
+      }
+
+      .cage-o {
+        width: 30px;
+        height: 30px;
+        margin: -15px;
+        border-radius: 50%;
+        background: radial-gradient(
+          circle at 35% 28%,
+          #c9fff5,
+          #2fc4ae 50%,
+          #0e6b5c
+        );
+        box-shadow: 0 0 14px rgba(79, 224, 204, 0.4);
+      }
+
+      .cage-dot {
+        width: 12px;
+        height: 12px;
+        margin: -6px;
+        border-radius: 50%;
+        background: radial-gradient(
+          circle at 35% 28%,
+          #aab6c8,
+          #5a6678 55%,
+          #2c3442
+        );
+      }
+
+      .pillar-stage {
+        background: #f4efe3;
+      }
+
+      .pillar-board {
+        position: absolute;
+        width: 516px;
+        height: 405px;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+      }
+
+      .pillar-base {
+        position: absolute;
+        width: 92px;
+        height: 46px;
+        margin: -23px 0 0 -46px;
+        border-radius: 50%;
+        border: 1px solid rgba(122, 104, 70, 0.25);
+        background: rgba(122, 104, 70, 0.16);
+      }
+
+      .pillar-rod {
+        position: absolute;
+        width: 5px;
+        margin-left: -2.5px;
+        border-radius: 99px;
+        background: linear-gradient(
+          rgba(122, 104, 70, 0.06),
+          rgba(122, 104, 70, 0.42)
+        );
+      }
+
+      .pillar-slot {
+        position: absolute;
+        width: 38px;
+        height: 38px;
+        margin: -19px 0 0 -19px;
+        border-radius: 50%;
+        border: 2px solid rgba(122, 104, 70, 0.28);
+        background: #fffdf7;
+        box-shadow: 0 6px 14px rgba(96, 80, 50, 0.18);
+        font-size: 1rem;
+        color: #3c3325;
+      }
+
+      .pillar-slot.x {
+        border-color: #d8423d;
+        background: #ff635d;
+        color: #ffffff;
+      }
+
+      .pillar-slot.o {
+        border-color: #1d9b89;
+        background: #2fc4ae;
+        color: #073029;
+      }
+
+      .pillar-slot.empty {
+        color: rgba(60, 51, 37, 0.3);
+      }
+
+      .cascade-stage {
+        background: #131826;
+      }
+
+      .cascade-board {
+        position: absolute;
+        width: 516px;
+        height: 405px;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+      }
+
+      .cascade-rail {
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(
+          115deg,
+          transparent 32%,
+          rgba(116, 134, 255, 0.14) 50%,
+          transparent 68%
+        );
+      }
+
+      .cascade-layer {
+        position: absolute;
+        width: 186px;
+        height: 186px;
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 6px;
+        padding: 9px;
+        border: 1px solid rgba(126, 146, 255, 0.34);
+        border-radius: 9px;
+        background: linear-gradient(
+          150deg,
+          rgba(40, 50, 86, 0.95),
+          rgba(22, 28, 48, 0.95)
+        );
+        box-shadow: 0 26px 50px rgba(0, 0, 0, 0.42);
+        transform: rotateX(54deg) rotateZ(-33deg);
+      }
+
+      .cascade-layer::after {
+        content: attr(data-floor);
+        position: absolute;
+        left: -4px;
+        bottom: -26px;
+        color: #8794ff;
+        font-size: 0.76rem;
+        font-weight: 900;
+        transform: rotateZ(33deg) rotateX(-54deg);
+      }
+
+      .cascade-layer .cell {
+        border-radius: 6px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        background: rgba(255, 255, 255, 0.07);
+        font-size: 1rem;
+      }
+
+      .tracer-stage {
+        background: #f7f4ec;
+      }
+
+      .tracer-board {
+        position: absolute;
+        inset: 36px 22px 60px;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 14px;
+        align-items: center;
+      }
+
+      .tracer-grid {
+        position: relative;
+        aspect-ratio: 1;
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 6px;
+        padding: 8px;
+        border: 1px solid rgba(40, 48, 66, 0.14);
+        border-radius: 9px;
+        background: #ffffff;
+        box-shadow: 0 14px 30px rgba(40, 48, 66, 0.08);
+      }
+
+      .tracer-grid::after {
+        content: attr(data-floor);
+        position: absolute;
+        left: 50%;
+        bottom: -26px;
+        transform: translateX(-50%);
+        color: rgba(40, 48, 66, 0.55);
+        font-size: 0.74rem;
+        font-weight: 800;
+      }
+
+      .tracer-grid .cell {
+        position: relative;
+        border-radius: 6px;
+        background: #eef0f4;
+        color: #232a3a;
+        font-size: 1.05rem;
+      }
+
+      .tracer-grid .empty {
+        color: rgba(35, 42, 58, 0.26);
+      }
+
+      .tracer-grid .cell.hot {
+        outline: 3px solid #ff635d;
+        outline-offset: -2px;
+        background: #ffe9e7;
+      }
+
+      .tracer-grid .cell.hot::after {
+        content: attr(data-step);
+        position: absolute;
+        top: -8px;
+        right: -8px;
+        width: 18px;
+        height: 18px;
+        display: grid;
+        place-items: center;
+        border-radius: 50%;
+        background: #ff635d;
+        color: #ffffff;
+        font-size: 0.62rem;
+      }
+
+      .tracer-svg {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        overflow: visible;
+        pointer-events: none;
+      }
+
+      .tracer-path {
+        fill: none;
+        stroke: #ff635d;
+        stroke-width: 3.5;
+        stroke-linecap: round;
+        stroke-dasharray: 1 9;
+        filter: drop-shadow(0 0 6px rgba(255, 99, 93, 0.5));
+      }
+
+      .carousel-stage {
+        background: #171226;
+      }
+
+      .carousel-board {
+        position: absolute;
+        inset: 0;
+        transform-style: preserve-3d;
+      }
+
+      .carousel-card {
+        position: absolute;
+        width: 212px;
+        height: 212px;
+        left: calc(50% - 106px);
+        top: calc(50% - 118px);
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 7px;
+        padding: 10px;
+        border: 1px solid rgba(182, 145, 255, 0.3);
+        border-radius: 12px;
+        background: linear-gradient(160deg, #2a2142, #1b1530);
+        box-shadow: 0 30px 60px rgba(0, 0, 0, 0.45);
+        transition:
+          transform 0.45s ease,
+          opacity 0.45s ease,
+          box-shadow 0.45s ease;
+        cursor: pointer;
+      }
+
+      .carousel-card.front {
+        transform: translateZ(46px);
+        border-color: #b691ff;
+        box-shadow: 0 36px 80px rgba(122, 80, 255, 0.32);
+        cursor: default;
+      }
+
+      .carousel-card.left {
+        transform: translateX(-164px) translateZ(-110px) rotateY(36deg);
+        opacity: 0.5;
+      }
+
+      .carousel-card.right {
+        transform: translateX(164px) translateZ(-110px) rotateY(-36deg);
+        opacity: 0.5;
+      }
+
+      .carousel-card .cell {
+        border-radius: 7px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        background: rgba(255, 255, 255, 0.07);
+        font-size: 1.05rem;
+      }
+
+      .carousel-hint {
+        position: absolute;
+        top: 16px;
+        left: 0;
+        right: 0;
+        text-align: center;
+        color: rgba(255, 255, 255, 0.42);
+        font-size: 0.74rem;
+        font-weight: 700;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+      }
+
+      .carousel-dots {
+        position: absolute;
+        left: 50%;
+        bottom: 18px;
+        display: flex;
+        gap: 8px;
+        transform: translateX(-50%);
+      }
+
+      .carousel-dots span {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.22);
+      }
+
+      .carousel-dots .on {
+        background: #b691ff;
+      }
+
+      .scan-stage {
+        background: #e9eef7;
+      }
+
+      .scan-board {
+        position: absolute;
+        inset: 24px;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) 34px;
+        gap: 16px;
+        align-items: center;
+      }
+
+      .scan-cube {
+        position: relative;
+        height: 100%;
+      }
+
+      .scan-cube-inner {
+        position: absolute;
+        inset: 0;
+        transform: rotateX(58deg) rotateZ(-37deg);
+        transform-style: preserve-3d;
+      }
+
+      .scan-ghost {
+        position: absolute;
+        width: 142px;
+        height: 142px;
+        left: calc(50% - 71px);
+        top: calc(50% - 71px);
+        border: 1.5px dashed rgba(59, 78, 112, 0.4);
+        border-radius: 7px;
+        background:
+          linear-gradient(rgba(59, 78, 112, 0.12) 1px, transparent 1px) 0 0 /
+            47.3px 47.3px,
+          linear-gradient(90deg, rgba(59, 78, 112, 0.12) 1px, transparent 1px)
+            0 0 / 47.3px 47.3px,
+          rgba(255, 255, 255, 0.4);
+      }
+
+      .scan-ghost:nth-child(1) {
+        transform: translateZ(-54px);
+      }
+
+      .scan-ghost:nth-child(2) {
+        transform: translateZ(0);
+      }
+
+      .scan-ghost:nth-child(3) {
+        transform: translateZ(54px);
+      }
+
+      .scan-ghost.active {
+        border: 2px solid #e4632e;
+        background: rgba(255, 215, 192, 0.6);
+        box-shadow: 0 16px 38px rgba(228, 99, 46, 0.28);
+      }
+
+      .scan-slice {
+        aspect-ratio: 1;
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+        padding: 10px;
+        border: 2px solid rgba(228, 99, 46, 0.5);
+        border-radius: 9px;
+        background: #fffdf9;
+        box-shadow: 0 22px 54px rgba(59, 78, 112, 0.18);
+      }
+
+      .scan-slice .cell {
+        border-radius: 7px;
+        background: #f3e9df;
+        color: #2c2418;
+        font-size: 1.4rem;
+      }
+
+      .scan-slice .empty {
+        color: rgba(44, 36, 24, 0.3);
+      }
+
+      .scan-rail {
+        position: relative;
+        height: 230px;
+      }
+
+      .scan-track {
+        position: absolute;
+        left: 50%;
+        top: 0;
+        bottom: 0;
+        width: 4px;
+        margin-left: -2px;
+        border-radius: 99px;
+        background: rgba(59, 78, 112, 0.22);
+      }
+
+      .scan-stop {
+        position: absolute;
+        left: 50%;
+        width: 16px;
+        height: 16px;
+        margin-left: -8px;
+        border-radius: 50%;
+        border: 2px solid rgba(59, 78, 112, 0.45);
+        background: #ffffff;
+        cursor: pointer;
+      }
+
+      .scan-stop.on {
+        width: 24px;
+        height: 24px;
+        margin-left: -12px;
+        border-color: #c14e1f;
+        background: #e4632e;
+        box-shadow: 0 0 0 6px rgba(228, 99, 46, 0.18);
+      }
+
+      @media (max-width: 900px) {
+        main {
+          padding: 14px;
+        }
+
+        header {
+          display: grid;
+        }
+
+        .gallery {
+          grid-template-columns: 1fr;
+        }
+
+        .concept {
+          min-height: 500px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>Playable Area Concepts</h1>
+        <p>
+          Board-layout directions A–J. Pick the one that makes the 27 playable
+          cells easiest and most enjoyable to read. E2–E5 riff on the Glass
+          Cube — I and J are clickable.
+        </p>
+      </header>
+
+      <section class="gallery">
+        <article class="concept">
+          <div class="concept-title">
+            <h2>Stacked Floors</h2>
+            <span class="tag">A</span>
+          </div>
+          <div class="stage stack-stage">
+            <div class="stack-board" id="stackBoard"></div>
+          </div>
+          <p class="caption">
+            Three transparent 3x3 floors stacked vertically. Best when the game
+            should feel like a true cube.
+          </p>
+        </article>
+
+        <article class="concept">
+          <div class="concept-title">
+            <h2>Exploded Layers</h2>
+            <span class="tag">B</span>
+          </div>
+          <div class="stage exploded-stage">
+            <div class="exploded-board" id="explodedBoard"></div>
+          </div>
+          <p class="caption">
+            The three depth layers are separated. Less magical, much easier to
+            tap and understand.
+          </p>
+        </article>
+
+        <article class="concept">
+          <div class="concept-title">
+            <h2>Node Lattice</h2>
+            <span class="tag">C</span>
+          </div>
+          <div class="stage node-stage">
+            <div class="node-board" id="nodeBoard"></div>
+          </div>
+          <p class="caption">
+            Cells become large nodes instead of translucent cubes. This removes
+            visual clutter while keeping the 3D structure.
+          </p>
+        </article>
+
+        <article class="concept">
+          <div class="concept-title">
+            <h2>Focus Layer</h2>
+            <span class="tag">D</span>
+          </div>
+          <div class="stage focus-stage">
+            <div class="focus-board" id="focusBoard"></div>
+          </div>
+          <p class="caption">
+            One layer is large and playable, other layers sit as previews. Best
+            candidate for mobile-first gameplay.
+          </p>
+        </article>
+
+        <article class="concept">
+          <div class="concept-title">
+            <h2>Glass Cube</h2>
+            <span class="tag">E</span>
+          </div>
+          <div class="stage cube-stage">
+            <div class="cube-world" id="cubeBoard"></div>
+          </div>
+          <p class="caption">
+            One real glass cube that slowly sways. Marks are shape-coded
+            (diamond vs ring) so they read from any angle. The most atmospheric
+            direction.
+          </p>
+        </article>
+
+        <article class="concept">
+          <div class="concept-title">
+            <h2>Neon Hologram</h2>
+            <span class="tag">E2</span>
+          </div>
+          <div class="stage holo-stage">
+            <div class="cube-world" id="holoBoard"></div>
+          </div>
+          <p class="caption">
+            The glass cube goes Tron: wireframe edges, a scan-grid floor and
+            neon outline marks. The strongest identity for a dark theme.
+          </p>
+        </article>
+
+        <article class="concept">
+          <div class="concept-title">
+            <h2>Frosted Slabs</h2>
+            <span class="tag">E3</span>
+          </div>
+          <div class="stage slab-stage">
+            <div class="cube-world" id="slabBoard"></div>
+          </div>
+          <p class="caption">
+            The cube sliced into three frosted-glass floors with open gaps —
+            marks become glossy beads resting on each slab. A lighter,
+            friendlier take.
+          </p>
+        </article>
+
+        <article class="concept">
+          <div class="concept-title">
+            <h2>Crystal Core</h2>
+            <span class="tag">E4</span>
+          </div>
+          <div class="stage crystal-stage">
+            <div class="cube-world" id="crystalBoard"></div>
+          </div>
+          <p class="caption">
+            A glass cube with an inner glow; marks are energy orbs, and a win
+            fires a pulsing beam through the cube — shown here on the long
+            diagonal.
+          </p>
+        </article>
+
+        <article class="concept">
+          <div class="concept-title">
+            <h2>Lattice Cage</h2>
+            <span class="tag">E5</span>
+          </div>
+          <div class="stage cage-stage">
+            <div class="cube-world" id="cageBoard"></div>
+          </div>
+          <p class="caption">
+            Concept C rebuilt in true 3D: a swaying cage of rods with marks as
+            solid balls on the joints. Maximum structure, zero glass.
+          </p>
+        </article>
+
+        <article class="concept">
+          <div class="concept-title">
+            <h2>Gravity Pillars</h2>
+            <span class="tag">F</span>
+          </div>
+          <div class="stage pillar-stage">
+            <div class="pillar-board" id="pillarBoard"></div>
+          </div>
+          <p class="caption">
+            Depth becomes height: nine pillars with three slots each. Feels
+            like dropping tokens, so the third axis is instantly intuitive.
+          </p>
+        </article>
+
+        <article class="concept">
+          <div class="concept-title">
+            <h2>Step Cascade</h2>
+            <span class="tag">G</span>
+          </div>
+          <div class="stage cascade-stage">
+            <div class="cascade-board" id="cascadeBoard"></div>
+          </div>
+          <p class="caption">
+            Floors climb like a staircase. Every cell stays tappable while the
+            depth order stays visible — a middle ground between A and B.
+          </p>
+        </article>
+
+        <article class="concept">
+          <div class="concept-title">
+            <h2>Tracer Triptych</h2>
+            <span class="tag">H</span>
+          </div>
+          <div class="stage tracer-stage">
+            <div class="tracer-board" id="tracerBoard"></div>
+          </div>
+          <p class="caption">
+            Zero perspective: three flat grids, plus glowing tracers that draw
+            cross-floor lines (here steps 1→2→3). The most readable on small
+            phones.
+          </p>
+        </article>
+
+        <article class="concept">
+          <div class="concept-title">
+            <h2>Floor Carousel</h2>
+            <span class="tag">I</span>
+          </div>
+          <div class="stage carousel-stage">
+            <div class="carousel-board" id="carouselBoard"></div>
+          </div>
+          <p class="caption">
+            Floors are cards in a carousel — tap a side card to bring that
+            floor forward. A familiar mobile gesture with a strong depth feel.
+          </p>
+        </article>
+
+        <article class="concept">
+          <div class="concept-title">
+            <h2>Slice Scanner</h2>
+            <span class="tag">J</span>
+          </div>
+          <div class="stage scan-stage">
+            <div class="scan-board" id="scanBoard"></div>
+          </div>
+          <p class="caption">
+            A scanner rail slices the ghost cube and enlarges the active floor
+            for play — click the rail stops. Context on the left, comfort on
+            the right.
+          </p>
+        </article>
+      </section>
+    </main>
+
+    <script>
+      const marks = ['X', '', '', '', 'O', '', 'X', '', '', '', '', 'O', '', 'X', '', '', '', '', '', 'O', '', 'X', '', '', '', '', 'O'];
+
+      const markClass = (value) => (value === 'X' ? 'x' : value === 'O' ? 'o' : 'empty');
+
+      function makeCell(value, className = 'cell') {
+        const cell = document.createElement('div');
+        cell.className = `${className} ${markClass(value)}`;
+        cell.textContent = value || '+';
+        return cell;
+      }
+
+      function layerMarks(layer) {
+        return marks.slice(layer * 9, layer * 9 + 9);
+      }
+
+      for (let layer = 0; layer < 3; layer += 1) {
+        const stackLayer = document.createElement('div');
+        stackLayer.className = 'stack-layer';
+        layerMarks(layer).forEach((mark) => stackLayer.append(makeCell(mark)));
+        stackBoard.append(stackLayer);
+
+        const explodedLayer = document.createElement('div');
+        explodedLayer.className = 'exploded-layer';
+        explodedLayer.dataset.layer = `Layer ${layer + 1}`;
+        layerMarks(layer).forEach((mark) => explodedLayer.append(makeCell(mark)));
+        explodedBoard.append(explodedLayer);
+      }
+
+      const nodePositions = [];
+      for (let z = 0; z < 3; z += 1) {
+        for (let y = 0; y < 3; y += 1) {
+          for (let x = 0; x < 3; x += 1) {
+            nodePositions.push({
+              x: 120 + x * 116,
+              y: 80 + y * 106,
+              z: (z - 1) * 84,
+            });
+          }
+        }
+      }
+
+      const makeLine = (a, b) => {
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const line = document.createElement('div');
+        line.className = 'node-line';
+        line.style.width = `${Math.hypot(dx, dy)}px`;
+        line.style.left = `${a.x}px`;
+        line.style.top = `${a.y}px`;
+        line.style.transform = `translateZ(${a.z}px) rotate(${Math.atan2(dy, dx)}rad)`;
+        nodeBoard.append(line);
+      };
+
+      nodePositions.forEach((point, index) => {
+        const { x, y, z } = point;
+        if (index % 3 !== 2) makeLine(point, nodePositions[index + 1]);
+        if (Math.floor(index / 3) % 3 !== 2) makeLine(point, nodePositions[index + 3]);
+        if (index < 18) makeLine(point, nodePositions[index + 9]);
+        const node = makeCell(marks[index], 'node');
+        node.style.left = `${x}px`;
+        node.style.top = `${y}px`;
+        node.style.transform = `translateZ(${z}px)`;
+        nodeBoard.append(node);
+      });
+
+      const focusActive = document.createElement('div');
+      focusActive.className = 'focus-active';
+      layerMarks(1).forEach((mark) => focusActive.append(makeCell(mark)));
+      const focusRail = document.createElement('div');
+      focusRail.className = 'focus-rail';
+      for (let layer = 0; layer < 3; layer += 1) {
+        const mini = document.createElement('div');
+        mini.className = `mini-layer ${layer === 1 ? 'active' : ''}`;
+        for (let i = 0; i < 9; i += 1) {
+          const miniCell = document.createElement('div');
+          miniCell.className = 'mini-cell';
+          mini.append(miniCell);
+        }
+        focusRail.append(mini);
+      }
+      focusBoard.append(focusActive, focusRail);
+
+      const cubeCore = document.createElement('div');
+      cubeCore.className = 'cube-core';
+      [
+        'translateZ(126px)',
+        'rotateY(180deg) translateZ(126px)',
+        'rotateY(90deg) translateZ(126px)',
+        'rotateY(-90deg) translateZ(126px)',
+        'rotateX(90deg) translateZ(126px)',
+        'rotateX(-90deg) translateZ(126px)',
+      ].forEach((faceTransform) => {
+        const face = document.createElement('div');
+        face.className = 'cube-face';
+        face.style.transform = faceTransform;
+        cubeCore.append(face);
+      });
+      marks.forEach((mark, index) => {
+        const x = (index % 3) - 1;
+        const y = (Math.floor(index / 3) % 3) - 1;
+        const z = Math.floor(index / 9) - 1;
+        const holder = document.createElement('div');
+        holder.className = 'cube-mark';
+        holder.style.transform = `translate3d(${x * 84}px, ${y * 84}px, ${z * 84}px)`;
+        const shape = document.createElement('div');
+        shape.className =
+          mark === 'X' ? 'cube-x' : mark === 'O' ? 'cube-o' : 'cube-dot';
+        holder.append(shape);
+        cubeCore.append(holder);
+      });
+      cubeBoard.append(cubeCore);
+
+      const CUBE_FACES = [
+        'translateZ(126px)',
+        'rotateY(180deg) translateZ(126px)',
+        'rotateY(90deg) translateZ(126px)',
+        'rotateY(-90deg) translateZ(126px)',
+        'rotateX(90deg) translateZ(126px)',
+        'rotateX(-90deg) translateZ(126px)',
+      ];
+
+      const markPosition = (index) => ({
+        x: (index % 3) - 1,
+        y: (Math.floor(index / 3) % 3) - 1,
+        z: Math.floor(index / 9) - 1,
+      });
+
+      function makeSwayCore(boardEl) {
+        const core = document.createElement('div');
+        core.className = 'cube-core';
+        boardEl.append(core);
+        return core;
+      }
+
+      function addFaces(core, className) {
+        CUBE_FACES.forEach((faceTransform) => {
+          const face = document.createElement('div');
+          face.className = className;
+          face.style.transform = faceTransform;
+          core.append(face);
+        });
+      }
+
+      function addMark(core, index, shapeClass) {
+        const { x, y, z } = markPosition(index);
+        const holder = document.createElement('div');
+        holder.className = 'cube-mark';
+        holder.style.transform = `translate3d(${x * 84}px, ${y * 84}px, ${z * 84}px)`;
+        const shape = document.createElement('div');
+        shape.className = shapeClass;
+        holder.append(shape);
+        core.append(holder);
+        return shape;
+      }
+
+      const holoCore = makeSwayCore(holoBoard);
+      const holoFloor = document.createElement('div');
+      holoFloor.className = 'holo-floor';
+      holoCore.append(holoFloor);
+      addFaces(holoCore, 'holo-face');
+      marks.forEach((mark, index) => {
+        addMark(
+          holoCore,
+          index,
+          mark === 'X' ? 'holo-x' : mark === 'O' ? 'holo-o' : 'holo-dot',
+        );
+      });
+
+      const slabCore = makeSwayCore(slabBoard);
+      for (let layer = 0; layer < 3; layer += 1) {
+        const floor = document.createElement('div');
+        floor.className = 'slab-floor';
+        floor.style.transform = `rotateX(90deg) translateZ(${(layer - 1) * 84}px)`;
+        slabCore.append(floor);
+      }
+      marks.forEach((mark, index) => {
+        const col = (index % 3) - 1;
+        const row = (Math.floor(index / 3) % 3) - 1;
+        const layer = Math.floor(index / 9) - 1;
+        const lift = mark ? 18 : 7;
+        const holder = document.createElement('div');
+        holder.className = 'cube-mark';
+        holder.style.transform = `translate3d(${col * 84}px, ${-layer * 84 - lift}px, ${row * 84}px)`;
+        const shape = document.createElement('div');
+        shape.className =
+          mark === 'X' ? 'slab-x' : mark === 'O' ? 'slab-o' : 'slab-dot';
+        holder.append(shape);
+        slabCore.append(holder);
+      });
+
+      const crystalGlow = document.createElement('div');
+      crystalGlow.className = 'crystal-glow';
+      crystalBoard.append(crystalGlow);
+      const crystalCore = makeSwayCore(crystalBoard);
+      addFaces(crystalCore, 'crystal-face');
+      const crystalMarks = marks.slice();
+      crystalMarks[26] = 'X';
+      const crystalHot = [0, 13, 26];
+      crystalMarks.forEach((mark, index) => {
+        const shape = addMark(
+          crystalCore,
+          index,
+          mark === 'X' ? 'crystal-x' : mark === 'O' ? 'crystal-o' : 'crystal-dot',
+        );
+        if (mark && crystalHot.includes(index)) {
+          shape.classList.add('hot');
+        }
+      });
+      const crystalBeam = document.createElement('div');
+      crystalBeam.className = 'crystal-beam';
+      crystalCore.append(crystalBeam);
+
+      const cageCore = makeSwayCore(cageBoard);
+      for (let a = -1; a <= 1; a += 1) {
+        for (let b = -1; b <= 1; b += 1) {
+          const rodX = document.createElement('div');
+          rodX.className = 'cage-rod';
+          rodX.style.transform = `translate3d(0px, ${a * 84}px, ${b * 84}px)`;
+          const rodY = document.createElement('div');
+          rodY.className = 'cage-rod';
+          rodY.style.transform = `translate3d(${a * 84}px, 0px, ${b * 84}px) rotateZ(90deg)`;
+          const rodZ = document.createElement('div');
+          rodZ.className = 'cage-rod';
+          rodZ.style.transform = `translate3d(${a * 84}px, ${b * 84}px, 0px) rotateY(90deg)`;
+          cageCore.append(rodX, rodY, rodZ);
+        }
+      }
+      marks.forEach((mark, index) => {
+        addMark(
+          cageCore,
+          index,
+          mark === 'X' ? 'cage-x' : mark === 'O' ? 'cage-o' : 'cage-dot',
+        );
+      });
+
+      for (let cy = 0; cy < 3; cy += 1) {
+        for (let cx = 0; cx < 3; cx += 1) {
+          const baseX = 258 + (cx - cy) * 78;
+          const baseY = 196 + (cx + cy) * 42;
+          const base = document.createElement('div');
+          base.className = 'pillar-base';
+          base.style.left = `${baseX}px`;
+          base.style.top = `${baseY}px`;
+          const rod = document.createElement('div');
+          rod.className = 'pillar-rod';
+          rod.style.left = `${baseX}px`;
+          rod.style.top = `${baseY - 124}px`;
+          rod.style.height = '124px';
+          pillarBoard.append(base, rod);
+          for (let level = 0; level < 3; level += 1) {
+            const slot = makeCell(
+              marks[level * 9 + cy * 3 + cx],
+              'cell pillar-slot',
+            );
+            slot.style.left = `${baseX}px`;
+            slot.style.top = `${baseY - 30 - level * 40}px`;
+            pillarBoard.append(slot);
+          }
+        }
+      }
+
+      const cascadeRail = document.createElement('div');
+      cascadeRail.className = 'cascade-rail';
+      cascadeBoard.append(cascadeRail);
+      [
+        { left: 34, top: 188 },
+        { left: 158, top: 103 },
+        { left: 282, top: 18 },
+      ].forEach((spot, layer) => {
+        const cascadeLayer = document.createElement('div');
+        cascadeLayer.className = 'cascade-layer';
+        cascadeLayer.dataset.floor = `Floor ${layer + 1}`;
+        cascadeLayer.style.left = `${spot.left}px`;
+        cascadeLayer.style.top = `${spot.top}px`;
+        layerMarks(layer).forEach((mark) => cascadeLayer.append(makeCell(mark)));
+        cascadeBoard.append(cascadeLayer);
+      });
+
+      const tracerMarks = marks.slice();
+      tracerMarks[26] = 'X';
+      const tracerHot = [0, 13, 26];
+      const tracerCells = [];
+      for (let layer = 0; layer < 3; layer += 1) {
+        const grid = document.createElement('div');
+        grid.className = 'tracer-grid';
+        grid.dataset.floor = `Floor ${layer + 1}`;
+        tracerMarks.slice(layer * 9, layer * 9 + 9).forEach((mark, cellIndex) => {
+          const cell = makeCell(mark);
+          const hotIndex = tracerHot.indexOf(layer * 9 + cellIndex);
+          if (hotIndex !== -1) {
+            cell.classList.add('hot');
+            cell.dataset.step = `${hotIndex + 1}`;
+            tracerCells.push(cell);
+          }
+          grid.append(cell);
+        });
+        tracerBoard.append(grid);
+      }
+      const svgNS = 'http://www.w3.org/2000/svg';
+      const tracerSvg = document.createElementNS(svgNS, 'svg');
+      tracerSvg.setAttribute('class', 'tracer-svg');
+      const tracerPath = document.createElementNS(svgNS, 'path');
+      tracerPath.setAttribute('class', 'tracer-path');
+      tracerSvg.append(tracerPath);
+      tracerBoard.append(tracerSvg);
+
+      function drawTracer() {
+        const boardRect = tracerBoard.getBoundingClientRect();
+        const points = tracerCells.map((cell) => {
+          const rect = cell.getBoundingClientRect();
+          return {
+            x: rect.left + rect.width / 2 - boardRect.left,
+            y: rect.top + rect.height / 2 - boardRect.top,
+          };
+        });
+        tracerSvg.setAttribute(
+          'viewBox',
+          `0 0 ${boardRect.width} ${boardRect.height}`,
+        );
+        tracerPath.setAttribute(
+          'd',
+          points
+            .map((point, index) =>
+              `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`,
+            )
+            .join(' '),
+        );
+      }
+
+      drawTracer();
+      window.addEventListener('load', drawTracer);
+      window.addEventListener('resize', drawTracer);
+
+      const carouselCards = [];
+      for (let layer = 0; layer < 3; layer += 1) {
+        const card = document.createElement('div');
+        card.className = 'carousel-card';
+        layerMarks(layer).forEach((mark) => card.append(makeCell(mark)));
+        card.addEventListener('click', () => setCarouselFront(layer));
+        carouselCards.push(card);
+        carouselBoard.append(card);
+      }
+      const carouselHint = document.createElement('div');
+      carouselHint.className = 'carousel-hint';
+      carouselHint.textContent = 'Tap a side floor';
+      const carouselDots = document.createElement('div');
+      carouselDots.className = 'carousel-dots';
+      const dotElements = [0, 1, 2].map(() => {
+        const dot = document.createElement('span');
+        carouselDots.append(dot);
+        return dot;
+      });
+      carouselBoard.append(carouselHint, carouselDots);
+
+      function setCarouselFront(front) {
+        carouselCards.forEach((card, index) => {
+          card.classList.remove('front', 'left', 'right');
+          if (index === front) {
+            card.classList.add('front');
+          } else if (index === (front + 1) % 3) {
+            card.classList.add('right');
+          } else {
+            card.classList.add('left');
+          }
+        });
+        dotElements.forEach((dot, index) => {
+          dot.classList.toggle('on', index === front);
+        });
+      }
+
+      setCarouselFront(1);
+
+      const scanCube = document.createElement('div');
+      scanCube.className = 'scan-cube';
+      const scanCubeInner = document.createElement('div');
+      scanCubeInner.className = 'scan-cube-inner';
+      const scanGhosts = [0, 1, 2].map(() => {
+        const ghost = document.createElement('div');
+        ghost.className = 'scan-ghost';
+        scanCubeInner.append(ghost);
+        return ghost;
+      });
+      scanCube.append(scanCubeInner);
+      const scanSlice = document.createElement('div');
+      scanSlice.className = 'scan-slice';
+      const scanRail = document.createElement('div');
+      scanRail.className = 'scan-rail';
+      const scanTrack = document.createElement('div');
+      scanTrack.className = 'scan-track';
+      scanRail.append(scanTrack);
+      const scanStops = [0, 1, 2].map((layer) => {
+        const stop = document.createElement('div');
+        stop.className = 'scan-stop';
+        stop.style.top = `${8 + (2 - layer) * 38}%`;
+        stop.addEventListener('click', () => setScanLayer(layer));
+        scanRail.append(stop);
+        return stop;
+      });
+      scanBoard.append(scanCube, scanSlice, scanRail);
+
+      function setScanLayer(layer) {
+        scanGhosts.forEach((ghost, index) => {
+          ghost.classList.toggle('active', index === layer);
+        });
+        scanStops.forEach((stop, index) => {
+          stop.classList.toggle('on', index === layer);
+        });
+        scanSlice.replaceChildren();
+        layerMarks(layer).forEach((mark) => scanSlice.append(makeCell(mark)));
+      }
+
+      setScanLayer(1);
+    </script>
+  </body>
+</html>
