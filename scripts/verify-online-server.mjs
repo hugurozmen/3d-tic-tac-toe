@@ -57,19 +57,38 @@ const server = await createOnlineServer({
 const url = `ws://127.0.0.1:${server.port}`;
 let host = await openClient(url);
 const guest = await openClient(url);
+const invalidClient = await openClient(url);
 
 try {
   const health = await fetch(`http://127.0.0.1:${server.port}/health`).then(
     (response) => response.json(),
   );
 
-  host.send(JSON.stringify({ type: 'create-room' }));
+  invalidClient.send(
+    JSON.stringify({
+      settings: { classicPieRule: false, ruleset: 'arcade' },
+      type: 'create-room',
+    }),
+  );
+  const invalidSettingsRejected = await waitFor(
+    invalidClient,
+    (message) =>
+      message.type === 'error' && message.message === 'Invalid room settings',
+    'invalid settings rejection',
+  );
+  invalidClient.close();
+
+  const settings = { classicPieRule: false, ruleset: 'classic' };
+
+  host.send(JSON.stringify({ settings, type: 'create-room' }));
   const room = await waitFor(
     host,
     (message) =>
       message.type === 'room-created' &&
       message.player === 'X' &&
-      typeof message.sessionId === 'string',
+      typeof message.sessionId === 'string' &&
+      message.settings?.ruleset === settings.ruleset &&
+      message.settings?.classicPieRule === settings.classicPieRule,
     'room-created',
   );
 
@@ -79,12 +98,20 @@ try {
     waitFor(
       guest,
       (message) =>
-        message.type === 'room-joined' &&
-        message.player === 'O' &&
-        typeof message.sessionId === 'string',
+      message.type === 'room-joined' &&
+      message.player === 'O' &&
+      typeof message.sessionId === 'string' &&
+      message.settings?.ruleset === settings.ruleset &&
+      message.settings?.classicPieRule === settings.classicPieRule,
       'room-joined',
     ),
-    waitFor(host, (message) => message.type === 'peer-joined', 'peer-joined'),
+    waitFor(
+      host,
+      (message) =>
+        message.type === 'peer-joined' &&
+        message.settings?.ruleset === settings.ruleset,
+      'peer-joined',
+    ),
   ]);
 
   guest.send(JSON.stringify({ index: 12, player: 'X', type: 'move' }));
@@ -122,12 +149,16 @@ try {
       (message) =>
         message.type === 'room-rejoined' &&
         message.player === 'X' &&
-        message.peerConnected === true,
+        message.peerConnected === true &&
+        message.settings?.ruleset === settings.ruleset &&
+        message.settings?.classicPieRule === settings.classicPieRule,
       'room-rejoined',
     ),
     waitFor(
       guest,
-      (message) => message.type === 'peer-joined',
+      (message) =>
+        message.type === 'peer-joined' &&
+        message.settings?.ruleset === settings.ruleset,
       'peer rejoined',
     ),
   ]);
@@ -155,6 +186,7 @@ try {
     JSON.stringify(
       {
         health,
+        invalidSettingsRejected,
         joined,
         move,
         moveAfterRejoin,
@@ -173,5 +205,6 @@ try {
 } finally {
   host.close();
   guest.close();
+  invalidClient.close();
   await server.close();
 }

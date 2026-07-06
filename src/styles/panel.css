@@ -641,6 +641,18 @@ h1 {
   gap: 12px;
 }
 
+.online-settings {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 34px;
+  padding: 8px 10px;
+  border: 1px solid var(--app-border);
+  border-radius: var(--radius-s);
+  background: color-mix(in srgb, var(--app-panel-strong) 52%, transparent);
+}
+
 .online-status > span {
   display: inline-flex;
   align-items: center;
@@ -701,6 +713,7 @@ h1 {
 }
 
 .online-status span,
+.online-settings span,
 .signal-field span,
 .online-error {
   color: var(--app-muted);
@@ -713,6 +726,15 @@ h1 {
 .online-status strong {
   color: var(--app-text);
   font-size: 0.9rem;
+}
+
+.online-settings strong {
+  color: var(--app-text);
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .online-actions {
