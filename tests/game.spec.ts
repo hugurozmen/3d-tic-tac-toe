@@ -282,6 +282,38 @@ test('compact desktop gives Cube and Floors the full stage width', async ({
   }
 });
 
+test('narrow persisted 3D views refresh safely through Scanner', async ({
+  page,
+}) => {
+  for (const view of ['cube', 'floors'] as const) {
+    await openGame(page, {
+      layout: view,
+      viewport: { height: 863, width: 599 },
+    });
+
+    await expect(page.locator('.app-shell')).toHaveAttribute(
+      'data-layout',
+      'scanner',
+    );
+    await expect(page.locator('.scanner-grid')).toBeVisible();
+
+    await page
+      .getByRole('button', { name: view === 'cube' ? 'Cube' : 'Floors' })
+      .click();
+    await page.waitForTimeout(650);
+    await expect(page.locator('.app-shell')).toHaveAttribute('data-layout', view);
+    await expectCanvasHasPixels(page);
+
+    await page.reload({ waitUntil: 'domcontentloaded' });
+
+    await expect(page.locator('.app-shell')).toHaveAttribute(
+      'data-layout',
+      'scanner',
+    );
+    await expect(page.locator('.scanner-grid')).toBeVisible();
+  }
+});
+
 test('solo panel shows local progress and the daily puzzle', async ({ page }) => {
   await openGame(page, { layout: 'scanner' });
 
