@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { GameDialogs, PendingConfirm } from './components/GameDialogs';
 import { GamePanel } from './components/GamePanel';
 import { GameStage, preloadBoardScene } from './components/GameStage';
@@ -60,6 +67,8 @@ const getInitialLayout = (): BoardLayout => {
 const COACH_OPTIONS = ['auto', 'on', 'off'] as const;
 type CoachSetting = (typeof COACH_OPTIONS)[number];
 const ONLINE_CLASSIC_PIE_RULE = false;
+const NARROW_3D_RETRY_DELAY_MS = 140;
+const NARROW_3D_SETTLE_DELAY_MS = 420;
 
 const aiThinkingDelay: Record<Difficulty, number> = {
   easy: 520,
@@ -114,6 +123,11 @@ export function App() {
     getInitialLayout(),
     LAYOUT_OPTIONS,
   );
+  const didNormalizeNarrow3dBoot = useRef(false);
+  const needsNarrow3dWarmup = useRef(
+    window.matchMedia('(max-width: 900px)').matches,
+  );
+  const narrow3dWarmupTimers = useRef<number[]>([]);
   const [humanSide, setHumanSide] = useLocalStorageState<Player>(
     '3dxox-side',
     'X',
@@ -228,6 +242,29 @@ export function App() {
     lifetimeScore.X + lifetimeScore.O + lifetimeScore.draws;
   const showCoachPrompt =
     mode !== 'online' && !coachEnabled && completedLocalRounds < 3;
+
+  // Narrow embedded browsers can cold-paint WebGL blank when restored into 3D.
+  useLayoutEffect(() => {
+    if (
+      didNormalizeNarrow3dBoot.current ||
+      layout === 'scanner' ||
+      !window.matchMedia('(max-width: 900px)').matches
+    ) {
+      return;
+    }
+
+    didNormalizeNarrow3dBoot.current = true;
+    needsNarrow3dWarmup.current = true;
+    setLayout('scanner');
+  }, [layout, setLayout]);
+
+  useEffect(() => {
+    return () => {
+      narrow3dWarmupTimers.current.forEach((timer) => {
+        window.clearTimeout(timer);
+      });
+    };
+  }, []);
 
   useEffect(() => {
     setFeedbackMuted(soundSetting === 'off');
@@ -776,10 +813,45 @@ export function App() {
 
   const handleLayoutChange = useCallback(
     (nextLayout: BoardLayout) => {
+      if (
+        nextLayout !== 'scanner' &&
+        layout === 'scanner' &&
+        needsNarrow3dWarmup.current &&
+        window.matchMedia('(max-width: 900px)').matches
+      ) {
+        const warmupLayout = nextLayout === 'cube' ? 'floors' : 'cube';
+
+        // The first 3D canvas may be blank; one 3D layout retry wakes it.
+        didNormalizeNarrow3dBoot.current = true;
+        needsNarrow3dWarmup.current = false;
+        setLayout(nextLayout);
+        restoreStageForMobile();
+
+        narrow3dWarmupTimers.current.forEach((timer) => {
+          window.clearTimeout(timer);
+        });
+        narrow3dWarmupTimers.current = [
+          window.setTimeout(
+            () => setLayout(warmupLayout),
+            NARROW_3D_RETRY_DELAY_MS,
+          ),
+          window.setTimeout(() => {
+            setLayout(nextLayout);
+            restoreStageForMobile();
+            narrow3dWarmupTimers.current = [];
+          }, NARROW_3D_SETTLE_DELAY_MS),
+        ];
+        return;
+      }
+
+      if (nextLayout !== 'scanner') {
+        didNormalizeNarrow3dBoot.current = true;
+      }
+
       setLayout(nextLayout);
       restoreStageForMobile();
     },
-    [restoreStageForMobile, setLayout],
+    [layout, restoreStageForMobile, setLayout],
   );
 
   const sendViewCommand = useCallback((action: BoardViewAction) => {
@@ -996,7 +1068,12 @@ export function App() {
   }, [humanSide, match.score, match.winner, matchWinnerText, mode]);
 
   return (
-    <main className="app-shell" data-theme={themeId} style={themeStyle}>
+    <main
+      className="app-shell"
+      data-layout={layout}
+      data-theme={themeId}
+      style={themeStyle}
+    >
       <GameStage
         ref={stageRef}
         board={board}
@@ -1021,6 +1098,7 @@ export function App() {
         onResetMatch={handleResetMatch}
         onResetRound={handleResetRound}
         onSelect={handleSelect}
+        onUseScanner={() => handleLayoutChange('scanner')}
         onViewCommand={sendViewCommand}
       />
 
