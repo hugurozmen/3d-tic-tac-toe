@@ -754,7 +754,7 @@ export function GamePanel({
           <span>New round</span>
         </button>
         <button className="secondary-action" type="button" onClick={onResetMatch}>
-          Reset
+          Reset match
         </button>
       </div>
     </aside>

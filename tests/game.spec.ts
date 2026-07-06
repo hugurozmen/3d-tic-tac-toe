@@ -177,6 +177,20 @@ test('first-time guide teaches Lines, views, Coach, and 3D diagonals', async ({
   await expect(page.getByRole('button', { name: /Cell 10, X/ })).toBeVisible();
 });
 
+test('guide dialog closes with Escape and returns focus', async ({ page }) => {
+  await openGame(page, { layout: 'scanner' });
+
+  const helpButton = page.getByRole('button', { name: 'How to play' });
+
+  await helpButton.click();
+  await expect(page.getByRole('dialog', { name: 'How to play' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Got it' })).toBeFocused();
+
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog', { name: 'How to play' })).toHaveCount(0);
+  await expect(helpButton).toBeFocused();
+});
+
 test('desktop 3D cube renders real canvas pixels', async ({ page }) => {
   await openGame(page, { layout: 'cube' });
 
@@ -212,6 +226,24 @@ test('first few games offer a non-blocking Try Coach prompt', async ({
   await expect(page.locator('.coach-legend')).toContainText('Block');
 });
 
+test('scanner supports keyboard navigation between cells and floors', async ({
+  page,
+}) => {
+  await openGame(page, { layout: 'scanner' });
+  await showFloor(page, 2);
+
+  await page.getByRole('button', { name: /Place X at cell 10\b/ }).focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(
+    page.getByRole('button', { name: /Place X at cell 11\b/ }),
+  ).toBeFocused();
+
+  await page.keyboard.press('PageUp');
+  await expect(
+    page.getByRole('button', { name: /Place X at cell 20\b/ }),
+  ).toBeFocused();
+});
+
 test('scanner board supports a complete 2P winning round', async ({ page }) => {
   await openGame(page, { layout: 'scanner' });
   await page.getByRole('button', { name: 'Classic' }).click();
@@ -225,8 +257,11 @@ test('scanner board supports a complete 2P winning round', async ({ page }) => {
   await place(page, 'X', 12);
 
   await expect(page.getByText('X wins the round')).toBeVisible();
-  await expect(page.getByRole('button', { name: /Cell 10, X, winning line/ }))
-    .toBeVisible();
+  await expect(
+    page.getByRole('button', {
+      name: /Cell 10, X, winning line, floor 2/,
+    }),
+  ).toBeVisible();
 });
 
 test('best-of-5 match alternates openers and ends at 3 wins', async ({
@@ -319,7 +354,7 @@ test('multi-line scoring gets special scanner feedback', async ({ page }) => {
   );
   await expect(page.locator('.line-score-x.score-bump.multi-line')).toBeVisible();
   await expect(
-    page.getByRole('button', { name: /Cell 14, X, scored line/ }),
+    page.getByRole('button', { name: /Cell 14, X, scored line, floor 2/ }),
   ).toBeVisible();
 });
 
@@ -340,7 +375,7 @@ test('coach mode marks blocking and combined cells on the scanner board', async 
 
   await expect(
     page.getByRole('button', {
-      name: /Place O at cell 12\b.*blocks X through cells 10-11-12/,
+      name: /Place O at cell 12, floor 2.*blocks X through cells 10-11-12/,
     }),
   ).toBeVisible();
 
@@ -356,9 +391,12 @@ test('coach mode marks blocking and combined cells on the scanner board', async 
 
   await expect(
     page.getByRole('button', {
-      name: /Place O at cell 3\b.*completes a line.*blocks X/,
+      name: /Place O at cell 3, floor 1.*completes a line.*blocks X/,
     }),
   ).toBeVisible();
+  await expect(page.locator('.scanner-hint-glyph.hint-glyph-both')).toContainText(
+    'S+B',
+  );
 });
 
 test('scanner coach explains cross-floor threats with rail and connector cues', async ({
@@ -405,7 +443,9 @@ test('lines final result explains the score and filled board', async ({ page }) 
   await expect(page.getByText('X wins by lines, 12–6')).toBeVisible();
   await expect(page.getByText('Final board filled - X opened')).toBeVisible();
   await expect(
-    page.getByRole('button', { name: /Cell 27, X, final winning line/ }),
+    page.getByRole('button', {
+      name: /Cell 27, X, final winning line, floor 3/,
+    }),
   ).toBeVisible();
 });
 

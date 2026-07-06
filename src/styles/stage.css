@@ -95,10 +95,38 @@
 
 .round-result.win-x {
   border-color: color-mix(in srgb, var(--mark-x) 50%, transparent);
+  box-shadow:
+    0 22px 50px rgba(0, 0, 0, 0.35),
+    0 0 32px color-mix(in srgb, var(--mark-x) 18%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--app-text) 8%, transparent);
 }
 
 .round-result.win-o {
   border-color: color-mix(in srgb, var(--mark-o) 50%, transparent);
+  box-shadow:
+    0 22px 50px rgba(0, 0, 0, 0.35),
+    0 0 32px color-mix(in srgb, var(--mark-o) 18%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--app-text) 8%, transparent);
+}
+
+.round-result.win-x .round-result-label svg,
+.round-result.win-o .round-result-label svg {
+  animation: result-trophy-pop 900ms ease-out 920ms both;
+}
+
+@keyframes result-trophy-pop {
+  0%,
+  100% {
+    transform: scale(1) rotate(0deg);
+  }
+
+  34% {
+    transform: scale(1.18) rotate(-7deg);
+  }
+
+  62% {
+    transform: scale(1.05) rotate(4deg);
+  }
 }
 
 .round-result-label {
@@ -236,15 +264,63 @@
 .stage-loading {
   position: absolute;
   inset: 0;
-  display: flex;
+  display: grid;
   align-items: center;
+  align-content: center;
   justify-content: center;
-  gap: 10px;
+  justify-items: center;
+  gap: 14px;
   color: var(--app-muted);
   font-size: 0.86rem;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
+}
+
+.stage-loading-cube {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  display: grid;
+  place-items: center;
+  transform: rotateX(58deg) rotateZ(-37deg);
+  transform-style: preserve-3d;
+}
+
+.stage-loading-cube i {
+  position: absolute;
+  width: 56px;
+  height: 56px;
+  border: 1.5px solid color-mix(in srgb, var(--app-primary) 48%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--app-panel-strong) 28%, transparent);
+  box-shadow: 0 0 18px color-mix(in srgb, var(--app-primary) 14%, transparent);
+  animation: loading-floor-pulse 1.6s ease-in-out infinite;
+}
+
+.stage-loading-cube i:nth-child(1) {
+  transform: translateZ(-24px);
+}
+
+.stage-loading-cube i:nth-child(2) {
+  transform: translateZ(0);
+  animation-delay: 130ms;
+}
+
+.stage-loading-cube i:nth-child(3) {
+  transform: translateZ(24px);
+  animation-delay: 260ms;
+}
+
+@keyframes loading-floor-pulse {
+  0%,
+  100% {
+    opacity: 0.32;
+  }
+
+  50% {
+    opacity: 0.92;
+  }
 }
 
 .confirm-overlay {

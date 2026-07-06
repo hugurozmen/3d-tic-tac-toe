@@ -1,3 +1,5 @@
+import { KeyboardEvent, useEffect, useRef } from 'react';
+
 export type PendingConfirm = {
   message: string;
   run: () => void;
@@ -24,6 +26,85 @@ export function GameDialogs({
   onKeepPie,
   onSwapPie,
 }: GameDialogsProps) {
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+  const activeDialog = pendingConfirm
+    ? 'confirm'
+    : piePromptOpen
+      ? 'pie'
+      : guideOpen
+        ? 'guide'
+        : null;
+
+  useEffect(() => {
+    if (!activeDialog) {
+      return;
+    }
+
+    previousFocusRef.current = document.activeElement as HTMLElement | null;
+
+    window.requestAnimationFrame(() => {
+      const firstButton = dialogRef.current?.querySelector<HTMLButtonElement>(
+        'button:not(:disabled)',
+      );
+
+      firstButton?.focus();
+    });
+
+    return () => {
+      previousFocusRef.current?.focus?.();
+      previousFocusRef.current = null;
+    };
+  }, [activeDialog]);
+
+  const getFocusableElements = () =>
+    Array.from(
+      dialogRef.current?.querySelectorAll<HTMLElement>(
+        'button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    );
+
+  const handleDialogKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Escape') {
+      if (pendingConfirm) {
+        event.preventDefault();
+        onCancelConfirm();
+        return;
+      }
+
+      if (guideOpen) {
+        event.preventDefault();
+        onCloseGuide();
+      }
+
+      return;
+    }
+
+    if (event.key !== 'Tab') {
+      return;
+    }
+
+    const focusable = getFocusableElements();
+
+    if (focusable.length === 0) {
+      return;
+    }
+
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+      return;
+    }
+
+    if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  };
+
   return (
     <>
       {pendingConfirm ? (
@@ -32,9 +113,14 @@ export function GameDialogs({
           role="dialog"
           aria-modal="true"
           aria-label="Abandon this round?"
+          onKeyDown={handleDialogKeyDown}
           onClick={onCancelConfirm}
         >
-          <div className="confirm-card" onClick={(event) => event.stopPropagation()}>
+          <div
+            ref={dialogRef}
+            className="confirm-card"
+            onClick={(event) => event.stopPropagation()}
+          >
             <strong>Abandon this round?</strong>
             <p>{pendingConfirm.message}</p>
             <div className="confirm-actions">
@@ -63,8 +149,9 @@ export function GameDialogs({
           role="dialog"
           aria-modal="true"
           aria-label="Pie Rule decision"
+          onKeyDown={handleDialogKeyDown}
         >
-          <div className="confirm-card">
+          <div ref={dialogRef} className="confirm-card">
             <strong>Pie Rule</strong>
             <p>The second player may swap sides after the first move.</p>
             <div className="confirm-actions">
@@ -93,9 +180,11 @@ export function GameDialogs({
           role="dialog"
           aria-modal="true"
           aria-label="How to play"
+          onKeyDown={handleDialogKeyDown}
           onClick={onCloseGuide}
         >
           <div
+            ref={dialogRef}
             className="confirm-card guide-card"
             onClick={(event) => event.stopPropagation()}
           >

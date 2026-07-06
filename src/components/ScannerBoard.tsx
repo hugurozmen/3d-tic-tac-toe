@@ -1,3 +1,4 @@
+import { KeyboardEvent, useRef } from 'react';
 import { Board, Player } from '../game/rules';
 import type { CoachHint, CoachHintKind } from '../game/coach';
 import { SceneTheme, ThemeStyle } from '../theme';
@@ -40,6 +41,7 @@ export function ScannerBoard({
   onFloorChange,
   onSelect,
 }: ScannerBoardProps) {
+  const gridRef = useRef<HTMLDivElement | null>(null);
   const lastMoveFloor = lastMove === null ? null : floorOf(lastMove);
   const classicWinningCells = new Set(winningLine);
   const scoredCells = new Set(scoredLines.flatMap((line) => line));
@@ -136,6 +138,82 @@ export function ScannerBoard({
     return connectorKind ? `dot-connector-${connectorKind}` : '';
   };
 
+  const focusCell = (index: number) => {
+    window.requestAnimationFrame(() => {
+      const cell = gridRef.current?.querySelector<HTMLButtonElement>(
+        `[data-cell-index="${index}"]`,
+      );
+
+      cell?.focus();
+    });
+  };
+
+  const moveFocusOnFloor = (index: number, targetCell: number) => {
+    const targetIndex = floor * 9 + targetCell;
+
+    if (targetIndex !== index) {
+      focusCell(targetIndex);
+    }
+  };
+
+  const handleCellKeyDown = (
+    event: KeyboardEvent<HTMLButtonElement>,
+    index: number,
+  ) => {
+    const localCell = index % 9;
+    const row = Math.floor(localCell / 3);
+    const column = localCell % 3;
+
+    if (event.key === 'ArrowRight') {
+      event.preventDefault();
+      moveFocusOnFloor(index, row * 3 + Math.min(2, column + 1));
+      return;
+    }
+
+    if (event.key === 'ArrowLeft') {
+      event.preventDefault();
+      moveFocusOnFloor(index, row * 3 + Math.max(0, column - 1));
+      return;
+    }
+
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      moveFocusOnFloor(index, Math.min(2, row + 1) * 3 + column);
+      return;
+    }
+
+    if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      moveFocusOnFloor(index, Math.max(0, row - 1) * 3 + column);
+      return;
+    }
+
+    if (event.key === 'Home') {
+      event.preventDefault();
+      focusCell(floor * 9);
+      return;
+    }
+
+    if (event.key === 'End') {
+      event.preventDefault();
+      focusCell(floor * 9 + 8);
+      return;
+    }
+
+    if (event.key === 'PageUp' && floor < 2) {
+      event.preventDefault();
+      onFloorChange(floor + 1);
+      focusCell(index + 9);
+      return;
+    }
+
+    if (event.key === 'PageDown' && floor > 0) {
+      event.preventDefault();
+      onFloorChange(floor - 1);
+      focusCell(index - 9);
+    }
+  };
+
   const stopClass = (layer: number) =>
     [
       'scanner-stop',
@@ -182,7 +260,12 @@ export function ScannerBoard({
       </div>
 
       <div className="scanner-center">
-        <div className="scanner-grid">
+        <div
+          ref={gridRef}
+          aria-label={`Floor ${floor + 1} board. Use arrow keys to move, Page Up and Page Down to change floors.`}
+          className="scanner-grid"
+          role="group"
+        >
           {Array.from({ length: 9 }, (_, cell) => floor * 9 + cell).map(
             (index) => {
               const value = board[index];
@@ -195,6 +278,19 @@ export function ScannerBoard({
               const isCoachBoth = isCoachScore && isCoachBlock;
               const coachHint = hintsByCell.get(index);
               const connectorKind = connectorKindForCell(index);
+              const hintGlyph = isCoachBoth
+                ? 'S+B'
+                : isCoachScore
+                  ? 'S'
+                  : isCoachBlock
+                    ? 'B'
+                    : connectorKind
+                      ? connectorKind === 'both'
+                        ? 'S+B'
+                        : connectorKind === 'score'
+                          ? 'S'
+                          : 'B'
+                      : null;
               const isPlayable = !value && !disabled;
               const cellClass = [
                 'scanner-cell',
@@ -226,25 +322,41 @@ export function ScannerBoard({
                   : isCoachBlock
                     ? `, ${coachHint?.accessibleLabel ?? 'blocks a line'}`
                     : '';
+              const connectorLabel =
+                !coachLabel && connectorKind
+                  ? `, part of a cross-floor ${connectorKind === 'both' ? 'score and block' : connectorKind} hint`
+                  : '';
               const cellLabel = value
-                ? `Cell ${index + 1}, ${value}${lineLabel}`
+                ? `Cell ${index + 1}, ${value}${lineLabel}, floor ${floor + 1}`
                 : isPlayable
                   ? `Place ${currentPlayer} at cell ${index + 1}, floor ${
                       floor + 1
-                    }${coachLabel}`
-                  : `Cell ${index + 1}, empty${lineLabel}${coachLabel}`;
+                    }${coachLabel}${connectorLabel}`
+                  : `Cell ${index + 1}, empty, floor ${
+                      floor + 1
+                    }${lineLabel}${coachLabel}${connectorLabel}`;
 
               return (
                 <button
                   key={index}
                   aria-label={cellLabel}
                   className={cellClass}
+                  data-cell-index={index}
                   disabled={!isPlayable}
                   title={coachHint?.explanation}
                   type="button"
+                  onKeyDown={(event) => handleCellKeyDown(event, index)}
                   onClick={() => onSelect(index)}
                 >
                   {value ?? ''}
+                  {hintGlyph ? (
+                    <span
+                      aria-hidden="true"
+                      className={`scanner-hint-glyph hint-glyph-${connectorKind ?? coachHint?.kind ?? 'score'}`}
+                    >
+                      {hintGlyph}
+                    </span>
+                  ) : null}
                   {connectorKind ? (
                     <span
                       aria-hidden="true"
