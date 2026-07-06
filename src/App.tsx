@@ -224,6 +224,10 @@ export function App() {
       : [];
   const recentLineCount = recentImpact?.linesCompleted.length ?? 0;
   const recentBlockCount = recentImpact?.blockedLines.length ?? 0;
+  const completedLocalRounds =
+    lifetimeScore.X + lifetimeScore.O + lifetimeScore.draws;
+  const showCoachPrompt =
+    mode !== 'online' && !coachEnabled && completedLocalRounds < 3;
 
   useEffect(() => {
     setFeedbackMuted(soundSetting === 'off');
@@ -763,6 +767,11 @@ export function App() {
     setDifficulty(nextDifficulty);
   };
 
+  const handleTryCoach = () => {
+    setCoachSetting('on');
+    flashNotice('Coach on: green scores, red blocks');
+  };
+
   const restoreStageForMobile = useCallback(() => {
     if (!window.matchMedia('(max-width: 900px)').matches) {
       return;
@@ -1067,6 +1076,7 @@ export function App() {
         result={result}
         retentionStats={retentionStats}
         ruleset={ruleset}
+        showCoachPrompt={showCoachPrompt}
         soundSetting={soundSetting}
         status={status}
         themeId={themeId}
@@ -1086,6 +1096,7 @@ export function App() {
         onRulesetChange={handleRulesetChange}
         onSideChange={handleSideChange}
         onThemeChange={setThemeId}
+        onTryCoach={handleTryCoach}
         onShareDailyPuzzle={handleShareDailyPuzzle}
         onToggleSound={() =>
           setSoundSetting(soundSetting === 'on' ? 'off' : 'on')

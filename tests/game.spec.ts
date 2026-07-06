@@ -6,22 +6,27 @@ const appUrl = 'http://127.0.0.1:5173/';
 async function openGame(
   page: Page,
   {
+    guide = 'done',
     layout,
     viewport = { height: 720, width: 1280 },
   }: {
+    guide?: 'done' | 'pending';
     layout?: 'cube' | 'floors' | 'scanner';
     viewport?: { height: number; width: number };
   } = {},
 ) {
   await page.setViewportSize(viewport);
-  await page.addInitScript((preferredLayout) => {
+  await page.addInitScript(({ preferredGuide, preferredLayout }) => {
     window.localStorage.clear();
-    window.localStorage.setItem('3dxox-guide', 'done');
+
+    if (preferredGuide === 'done') {
+      window.localStorage.setItem('3dxox-guide', 'done');
+    }
 
     if (preferredLayout) {
       window.localStorage.setItem('3dxox-layout', preferredLayout);
     }
-  }, layout);
+  }, { preferredGuide: guide, preferredLayout: layout });
   await page.goto(appUrl);
 }
 
@@ -147,6 +152,31 @@ test('mobile first run starts on the playable scanner board', async ({ page }) =
   expect(metrics.gridWidth).toBeGreaterThanOrEqual(280);
 });
 
+test('first-time guide teaches Lines, views, Coach, and 3D diagonals', async ({
+  page,
+}) => {
+  await openGame(page, { guide: 'pending', layout: 'scanner' });
+
+  const guide = page.getByRole('dialog', { name: 'How to play' });
+
+  await expect(guide).toBeVisible();
+  await expect(guide.locator('.guide-list li').first()).toContainText(
+    'Lines is the main game',
+  );
+  await expect(guide).toContainText('all 27 cells fill');
+  await expect(guide).toContainText('Classic is a variant');
+  await expect(guide).toContainText('Cells 1, 14, and 27');
+  await expect(guide).toContainText('Coach hints');
+  await expect(guide).toContainText('Scanner is fastest');
+  await expect(guide).toContainText('Cube shows the shape');
+  await expect(guide).toContainText('Floors compares layers');
+
+  await page.getByRole('button', { name: 'Got it' }).click();
+  await expect(guide).toHaveCount(0);
+  await place(page, 'X', 10);
+  await expect(page.getByRole('button', { name: /Cell 10, X/ })).toBeVisible();
+});
+
 test('desktop 3D cube renders real canvas pixels', async ({ page }) => {
   await openGame(page, { layout: 'cube' });
 
@@ -165,6 +195,21 @@ test('solo panel shows local progress and the daily puzzle', async ({ page }) =>
   await expect(page.locator('.daily-puzzle-card')).toContainText(/Daily #\d+/);
   await expect(page.locator('.daily-puzzle-card')).toContainText(/Find the|Score the/);
   await expect(page.locator('.daily-cell')).toHaveCount(27);
+});
+
+test('first few games offer a non-blocking Try Coach prompt', async ({
+  page,
+}) => {
+  await openGame(page, { layout: 'scanner' });
+
+  const prompt = page.locator('.coach-prompt');
+
+  await expect(prompt).toContainText('Try Coach');
+  await expect(prompt).toContainText('cross-floor threats');
+  await prompt.getByRole('button', { name: 'Try Coach' }).click();
+  await expect(prompt).toHaveCount(0);
+  await expect(page.locator('.coach-legend')).toContainText('Score');
+  await expect(page.locator('.coach-legend')).toContainText('Block');
 });
 
 test('scanner board supports a complete 2P winning round', async ({ page }) => {

@@ -127,22 +127,32 @@ export function GameDialogs({
               <circle cx="66" cy="16" r="5.5" fill="var(--mark-x)" />
               <circle cx="86" cy="48" r="5.5" fill="var(--mark-x)" />
               <circle cx="106" cy="80" r="5.5" fill="var(--mark-x)" />
+              <g className="guide-cell-labels">
+                <text x="66" y="30">1</text>
+                <text x="86" y="62">14</text>
+                <text x="106" y="94">27</text>
+              </g>
             </svg>
             <ul className="guide-list">
               <li>
-                <strong>27 cells, 3 floors.</strong> The board is a 3×3×3 cube.
+                <strong>Lines is the main game.</strong> Keep playing until all
+                27 cells fill; every 3-cell row scores, and the higher total wins.
               </li>
               <li>
-                <strong>Lines mode scores every row.</strong> Fill the board,
-                then the higher line total wins. Classic ends on the first row.
+                <strong>Classic is a variant.</strong> It ends immediately on the
+                first 3-in-a-row.
               </li>
               <li>
-                <strong>Three views.</strong> Cube shows everything, Floors
-                separates the layers, Scanner plays one floor at a time.
+                <strong>3D lines cross floors.</strong> Cells 1, 14, and 27 form
+                one diagonal through the cube.
               </li>
               <li>
-                <strong>On touch:</strong> tap a cell to preview, tap again to
-                place your mark.
+                <strong>Coach hints teach threats.</strong> Green scores, red
+                blocks, and gold does both.
+              </li>
+              <li>
+                <strong>Pick the view for the job.</strong> Scanner is fastest
+                to play, Cube shows the shape, and Floors compares layers.
               </li>
             </ul>
             <button className="primary-action" type="button" onClick={onCloseGuide}>

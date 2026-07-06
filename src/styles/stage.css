@@ -318,6 +318,15 @@
   color: var(--app-stage-line);
 }
 
+.guide-cell-labels text {
+  fill: var(--app-text);
+  font:
+    700 9px/1 var(--font-body),
+    system-ui,
+    sans-serif;
+  text-anchor: middle;
+}
+
 .guide-list {
   display: grid;
   gap: 9px;

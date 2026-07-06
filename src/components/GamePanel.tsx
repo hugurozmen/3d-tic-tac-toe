@@ -87,6 +87,7 @@ type GamePanelProps = {
   result: GameResult;
   retentionStats: RetentionStats;
   ruleset: GameRuleset;
+  showCoachPrompt: boolean;
   soundSetting: SoundSetting;
   status: string;
   themeId: ThemeId;
@@ -107,6 +108,7 @@ type GamePanelProps = {
   onSideChange: (side: Player) => void;
   onShareDailyPuzzle: () => void;
   onThemeChange: (themeId: ThemeId) => void;
+  onTryCoach: () => void;
   onToggleSound: () => void;
 };
 
@@ -149,6 +151,7 @@ export function GamePanel({
   result,
   retentionStats,
   ruleset,
+  showCoachPrompt,
   soundSetting,
   status,
   themeId,
@@ -169,6 +172,7 @@ export function GamePanel({
   onSideChange,
   onShareDailyPuzzle,
   onThemeChange,
+  onTryCoach,
   onToggleSound,
 }: GamePanelProps) {
   const lineScoreEventClass = [
@@ -567,6 +571,18 @@ export function GamePanel({
               <i className="legend-dot legend-both" aria-hidden="true" />
               Score + block
             </span>
+          </div>
+        ) : null}
+        {showCoachPrompt ? (
+          <div className="coach-prompt" aria-label="Try Coach prompt">
+            <div>
+              <strong>Try Coach</strong>
+              <span>See scoring moves, blocks, and cross-floor threats.</span>
+            </div>
+            <button type="button" onClick={onTryCoach}>
+              <Lightbulb size={15} />
+              <span>Try Coach</span>
+            </button>
           </div>
         ) : null}
       </div>
