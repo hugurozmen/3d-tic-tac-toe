@@ -15,6 +15,7 @@ import type { CellProps } from './types';
 export function Cell({
   armed,
   coachMark,
+  coachExplanation,
   currentPlayer,
   disabled,
   index,
@@ -23,6 +24,7 @@ export function Cell({
   theme,
   value,
   onArm,
+  onHover,
   onSelect,
 }: CellProps) {
   const [hovered, setHovered] = useState(false);
@@ -34,6 +36,12 @@ export function Cell({
   const isActive = armed || (hovered && isPlayable);
   const isLineMarked = lineMark !== null;
   const isFinalLine = lineMark === 'final' || lineMark === 'win';
+  const prefersReducedMotion = useMemo(
+    () =>
+      typeof window !== 'undefined' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+    [],
+  );
   const coachColor =
     coachMark === 'score'
       ? '#74f0a7'
@@ -50,15 +58,19 @@ export function Cell({
       return;
     }
 
-    const pulse = isFinalLine
-      ? 1 + Math.sin(clock.elapsedTime * 5.2) * 0.055
-      : lineMark === 'scored'
-        ? 1 + Math.sin(clock.elapsedTime * 6.6) * 0.045
-      : coachMark && isPlayable
-        ? 1 + Math.sin(clock.elapsedTime * 3.1) * 0.025
-      : isActive && isPlayable
-        ? 1.06
-        : 1;
+    const pulse = prefersReducedMotion
+      ? isActive && isPlayable
+        ? 1.04
+        : 1
+      : isFinalLine
+        ? 1 + Math.sin(clock.elapsedTime * 5.2) * 0.055
+        : lineMark === 'scored'
+          ? 1 + Math.sin(clock.elapsedTime * 6.6) * 0.045
+          : coachMark && isPlayable
+            ? 1 + Math.sin(clock.elapsedTime * 3.1) * 0.025
+            : isActive && isPlayable
+              ? 1.06
+              : 1;
 
     ref.current.scale.lerp(new THREE.Vector3(pulse, pulse, pulse), 0.22);
   });
@@ -92,8 +104,12 @@ export function Cell({
         onPointerEnter={(event) => {
           event.stopPropagation();
           setHovered(true);
+          onHover(index);
         }}
-        onPointerLeave={() => setHovered(false)}
+        onPointerLeave={() => {
+          setHovered(false);
+          onHover(null);
+        }}
       >
         <meshStandardMaterial
           color={theme.cell}
@@ -134,6 +150,18 @@ export function Cell({
           transparent
         />
       </lineSegments>
+      {coachColor && isPlayable ? (
+        <mesh rotation={[Math.PI / 2, 0, 0]} scale={isActive ? 1.08 : 1}>
+          <torusGeometry args={[0.42, 0.018, 8, 48]} />
+          <meshBasicMaterial
+            blending={THREE.AdditiveBlending}
+            color={coachColor}
+            depthWrite={false}
+            opacity={isActive ? 0.48 : 0.28}
+            transparent
+          />
+        </mesh>
+      ) : null}
       {isGhost && !value ? (
         <mesh geometry={theme.cubeShell ? dotGeometry : jointGeometry}>
           {theme.cubeShell ? (
@@ -170,6 +198,21 @@ export function Cell({
           }}
         >
           {index + 1}
+        </Html>
+      ) : null}
+      {(hovered || armed) && coachExplanation ? (
+        <Html
+          center
+          className={`cell-coach-badge coach-${coachMark ?? 'hint'}`}
+          distanceFactor={9}
+          position={[0, 0.62, 0]}
+          style={{
+            background: theme.labelBackground,
+            borderColor: coachColor ?? theme.labelBorder,
+            color: theme.labelText,
+          }}
+        >
+          {coachExplanation}
         </Html>
       ) : null}
     </group>

@@ -12,9 +12,11 @@ export type {
 
 export function BoardScene(props: BoardSceneProps) {
   const [armedCell, setArmedCell] = useState<number | null>(null);
+  const [hoveredCell, setHoveredCell] = useState<number | null>(null);
 
   useEffect(() => {
     setArmedCell(null);
+    setHoveredCell(null);
   }, [props.board, props.disabled, props.layout]);
 
   return (
@@ -30,7 +32,9 @@ export function BoardScene(props: BoardSceneProps) {
       <SceneContent
         {...props}
         armedCell={armedCell}
+        hoveredCell={hoveredCell}
         onArmCell={setArmedCell}
+        onHoverCell={setHoveredCell}
       />
     </Canvas>
   );

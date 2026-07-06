@@ -471,6 +471,46 @@ h1 {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.coach-legend {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--app-muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.coach-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--app-border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--app-panel-strong) 52%, transparent);
+}
+
+.legend-dot {
+  width: 8px;
+  height: 8px;
+  display: inline-block;
+  border-radius: 50%;
+}
+
+.legend-score {
+  background: var(--hint-score);
+}
+
+.legend-block {
+  background: var(--hint-block);
+}
+
+.legend-both {
+  background: var(--hint-both);
+}
+
 .segmented-control button {
   min-height: 42px;
   display: inline-flex;

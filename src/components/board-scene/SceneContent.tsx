@@ -6,6 +6,7 @@ import { CameraControls, CameraRig } from './Camera';
 import { Cell } from './Cell';
 import {
   BoardRails,
+  CoachLinePath,
   CoreGlow,
   CubeShell,
   FloorPlates,
@@ -18,16 +19,19 @@ export function SceneContent({
   armedCell,
   board,
   coachBlockCells,
+  coachHints,
   coachScoreCells,
   currentPlayer,
   disabled,
   finalLines,
+  hoveredCell,
   layout,
   scoredLines,
   theme,
   viewCommand,
   winningLine,
   onArmCell,
+  onHoverCell,
   onSelect,
 }: SceneContentProps) {
   const group = useRef<THREE.Group>(null);
@@ -36,6 +40,18 @@ export function SceneContent({
   const finalCells = new Set(finalLines.flatMap((line) => line));
   const scoreCells = new Set(coachScoreCells);
   const blockCells = new Set(coachBlockCells);
+  const hintsByCell = new Map(coachHints.map((hint) => [hint.cell, hint]));
+  const activeCoachCell = armedCell ?? hoveredCell;
+  const activeCoachHint =
+    activeCoachCell === null ? null : hintsByCell.get(activeCoachCell) ?? null;
+  const activeCoachColor =
+    activeCoachHint?.kind === 'score'
+      ? '#74f0a7'
+      : activeCoachHint?.kind === 'block'
+        ? '#ff6f76'
+        : activeCoachHint?.kind === 'both'
+          ? '#f8d65a'
+          : null;
   const beamLine =
     scoredLines[0] ??
     (winningLine.length === 3 ? winningLine : finalLines[0] ?? []);
@@ -64,17 +80,26 @@ export function SceneContent({
         {theme.winBeam && beamLine.length === 3 ? (
           <WinBeam color={beamColor} layout={layout} line={beamLine} theme={theme} />
         ) : null}
+        {activeCoachHint && activeCoachColor ? (
+          <CoachLinePath
+            color={activeCoachColor}
+            layout={layout}
+            line={activeCoachHint.primaryLine}
+          />
+        ) : null}
         {board.map((value, index) => {
           const isScore = !value && scoreCells.has(index);
           const isBlock = !value && blockCells.has(index);
+          const coachHint = hintsByCell.get(index);
           const coachMark =
-            isScore && isBlock
+            coachHint?.kind ??
+            (isScore && isBlock
               ? 'both'
               : isScore
                 ? 'score'
                 : isBlock
                   ? 'block'
-                  : null;
+                  : null);
 
           return (
             <Cell
@@ -84,6 +109,7 @@ export function SceneContent({
               currentPlayer={currentPlayer}
               disabled={disabled}
               index={index}
+              coachExplanation={coachHint?.shortLabel ?? null}
               lineMark={
                 classicWinningCells.has(index)
                   ? 'win'
@@ -97,6 +123,7 @@ export function SceneContent({
               theme={theme}
               value={value}
               onArm={onArmCell}
+              onHover={onHoverCell}
               onSelect={onSelect}
             />
           );

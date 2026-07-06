@@ -9,6 +9,7 @@ import type {
   BoardViewCommand,
 } from './game/boardView';
 import { chooseAiMove, shouldSwapClassicPie } from './game/ai';
+import { getCoachHints } from './game/coach';
 import { setFeedbackMuted } from './game/feedback';
 import {
   DIFFICULTY_OPTIONS,
@@ -23,9 +24,7 @@ import {
   GameRuleset,
   PLAYERS,
   Player,
-  getBlockingCells,
   getOtherPlayer,
-  getThreatCells,
 } from './game/rules';
 import {
   getThemeUnlockHooks,
@@ -164,19 +163,26 @@ export function App() {
     !pieDecisionPending;
   const coachEnabled =
     coachSetting === 'on' || (coachSetting === 'auto' && difficulty === 'easy');
-  const coachScoreCells = useMemo(
+  const coachHints = useMemo(
     () =>
       coachEnabled && !result.winner && !result.isDraw
-        ? getThreatCells(board, currentPlayer)
+        ? getCoachHints(board, currentPlayer)
         : [],
     [board, coachEnabled, currentPlayer, result.isDraw, result.winner],
   );
+  const coachScoreCells = useMemo(
+    () =>
+      coachHints
+        .filter((hint) => hint.kind === 'score' || hint.kind === 'both')
+        .map((hint) => hint.cell),
+    [coachHints],
+  );
   const coachBlockCells = useMemo(
     () =>
-      coachEnabled && !result.winner && !result.isDraw
-        ? getBlockingCells(board, currentPlayer)
-        : [],
-    [board, coachEnabled, currentPlayer, result.isDraw, result.winner],
+      coachHints
+        .filter((hint) => hint.kind === 'block' || hint.kind === 'both')
+        .map((hint) => hint.cell),
+    [coachHints],
   );
   const scoredLines = ruleset === 'lines' ? recentLines : [];
   const finalLines: number[][] =
@@ -833,6 +839,7 @@ export function App() {
         ref={stageRef}
         board={board}
         coachBlockCells={coachBlockCells}
+        coachHints={coachHints}
         coachScoreCells={coachScoreCells}
         currentPlayer={currentPlayer}
         disabled={isBoardDisabled}

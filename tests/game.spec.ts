@@ -30,7 +30,7 @@ async function chooseTwoPlayer(page: Page) {
 }
 
 async function showFloor(page: Page, floor: 1 | 2 | 3) {
-  await page.getByRole('button', { name: `Floor ${floor}`, exact: true }).click();
+  await page.locator('.scanner-stop').filter({ hasText: `${floor}` }).click();
 }
 
 async function place(page: Page, player: 'X' | 'O', cell: number) {
@@ -197,12 +197,18 @@ test('coach mode marks blocking and combined cells on the scanner board', async 
   await chooseTwoPlayer(page);
   await page.getByRole('button', { name: 'On', exact: true }).click();
 
+  await expect(page.locator('.coach-legend')).toContainText('Score');
+  await expect(page.locator('.coach-legend')).toContainText('Block');
+  await expect(page.locator('.coach-legend')).toContainText('Score + block');
+
   await place(page, 'X', 10);
   await place(page, 'O', 13);
   await place(page, 'X', 11);
 
   await expect(
-    page.getByRole('button', { name: /Place O at cell 12\b.*blocks a line/ }),
+    page.getByRole('button', {
+      name: /Place O at cell 12\b.*blocks X through cells 10-11-12/,
+    }),
   ).toBeVisible();
 
   await page.getByRole('button', { name: 'New round' }).click();
@@ -217,9 +223,32 @@ test('coach mode marks blocking and combined cells on the scanner board', async 
 
   await expect(
     page.getByRole('button', {
-      name: /Place O at cell 3\b.*completes and blocks lines/,
+      name: /Place O at cell 3\b.*completes a line.*blocks X/,
     }),
   ).toBeVisible();
+});
+
+test('scanner coach explains cross-floor threats with rail and connector cues', async ({
+  page,
+}) => {
+  await openGame(page, { layout: 'scanner' });
+  await chooseTwoPlayer(page);
+  await page.getByRole('button', { name: 'On', exact: true }).click();
+
+  await showFloor(page, 1);
+  await place(page, 'X', 1);
+  await place(page, 'O', 4);
+  await showFloor(page, 2);
+  await place(page, 'X', 10);
+  await showFloor(page, 1);
+
+  await expect(
+    page.getByRole('button', { name: /Floor 3, block hint/ }),
+  ).toBeVisible();
+  await expect(page.locator('.scanner-cell.coach-connector-block')).toBeVisible();
+  await expect(page.locator('.scanner-coach-note.note-block')).toContainText(
+    'Cell 19 blocks X',
+  );
 });
 
 test('lines final result explains the score and filled board', async ({ page }) => {

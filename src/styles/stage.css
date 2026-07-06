@@ -337,3 +337,30 @@
   pointer-events: none;
   user-select: none;
 }
+
+.cell-coach-badge {
+  width: max-content;
+  max-width: 150px;
+  padding: 5px 8px;
+  border: 1px solid rgba(122, 162, 255, 0.3);
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 850;
+  line-height: 1.15;
+  text-align: center;
+  backdrop-filter: blur(8px);
+  pointer-events: none;
+  user-select: none;
+}
+
+.cell-coach-badge.coach-score {
+  box-shadow: 0 0 14px color-mix(in srgb, var(--hint-score) 24%, transparent);
+}
+
+.cell-coach-badge.coach-block {
+  box-shadow: 0 0 14px color-mix(in srgb, var(--hint-block) 24%, transparent);
+}
+
+.cell-coach-badge.coach-both {
+  box-shadow: 0 0 16px color-mix(in srgb, var(--hint-both) 28%, transparent);
+}
