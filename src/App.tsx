@@ -75,12 +75,12 @@ export function App() {
     currentPlayer,
     currentPlayerRef,
     lastMove,
+    lifetimeScore,
+    match,
     oMoves,
     resetMatch,
     resetRound,
     result,
-    roundsPlayed,
-    score,
     xMoves,
     opener,
     recentLines,
@@ -494,6 +494,14 @@ export function App() {
   }, [aiPlayer, applyMove, board, difficulty, isAiTurn, ruleset]);
 
   const status = useMemo(() => {
+    if (match.winner) {
+      if (mode === 'solo') {
+        return match.winner === humanSide ? 'You win match' : 'AI wins match';
+      }
+
+      return `${match.winner} wins match`;
+    }
+
     if (result.winner) {
       if (ruleset === 'lines') {
         return `${result.winner} wins ${result.lineScores.X}-${result.lineScores.O}`;
@@ -536,7 +544,9 @@ export function App() {
   }, [
     aiPlayer,
     currentPlayer,
+    humanSide,
     isAiTurn,
+    match.winner,
     mode,
     online.isConnected,
     online.localPlayer,
@@ -739,6 +749,11 @@ export function App() {
   };
 
   const handleResetRound = () => {
+    if (match.isComplete) {
+      handleResetMatch();
+      return;
+    }
+
     if (mode === 'online' && !online.sendRoundReset()) {
       flashNotice('Reconnect the room before resetting');
       return;
@@ -778,53 +793,78 @@ export function App() {
     return `${opener} opens`;
   }, [humanSide, mode, opener]);
 
+  const nextOpenerText = useMemo(() => {
+    if (mode === 'solo') {
+      return match.nextOpener === humanSide ? 'You open' : 'AI opens';
+    }
+
+    return `${match.nextOpener} opens`;
+  }, [humanSide, match.nextOpener, mode]);
+
+  const openedByText = useMemo(() => {
+    if (mode === 'solo') {
+      return opener === humanSide ? 'You opened' : 'AI opened';
+    }
+
+    return `${opener} opened`;
+  }, [humanSide, mode, opener]);
+
   const openedText = useMemo(() => {
     const context =
       ruleset === 'lines' && (result.winner || result.isDraw)
         ? 'Final board filled - '
         : '';
+    const nextContext = match.isComplete
+      ? 'Match complete'
+      : `${nextOpenerText} next`;
 
-    if (mode === 'solo') {
-      return `${context}${opener === humanSide ? 'You opened' : 'AI opened'}`;
-    }
-
-    return `${context}${opener} opened`;
-  }, [humanSide, mode, opener, result.isDraw, result.winner, ruleset]);
+    return `${context}${openedByText} - ${nextContext}`;
+  }, [
+    match.isComplete,
+    nextOpenerText,
+    openedByText,
+    result.isDraw,
+    result.winner,
+    ruleset,
+  ]);
 
   const resultLabel = useMemo(() => {
     if (!result.winner && !result.isDraw) {
       return null;
     }
 
+    const roundPrefix = `Round ${match.roundNumber}: `;
+
     if (ruleset === 'lines') {
       const scoreText = `${result.lineScores.X}\u2013${result.lineScores.O}`;
 
       if (result.isDraw) {
-        return `Draw by lines, ${scoreText}`;
+        return `${roundPrefix}Draw by lines, ${scoreText}`;
       }
 
       if (mode === 'solo') {
         return result.winner === humanSide
-          ? `You win by lines, ${scoreText}`
-          : `AI wins by lines, ${scoreText}`;
+          ? `${roundPrefix}You win by lines, ${scoreText}`
+          : `${roundPrefix}AI wins by lines, ${scoreText}`;
       }
 
-      return `${result.winner} wins by lines, ${scoreText}`;
+      return `${roundPrefix}${result.winner} wins by lines, ${scoreText}`;
     }
 
     if (result.isDraw) {
-      return 'Round drawn';
+      return `${roundPrefix}Round drawn`;
     }
 
     if (mode === 'solo') {
       return result.winner === humanSide
-        ? 'You win the round'
-        : 'AI wins the round';
+        ? `${roundPrefix}You win the round`
+        : `${roundPrefix}AI wins the round`;
     }
 
-    return `${result.winner} wins the round`;
+    return `${roundPrefix}${result.winner} wins the round`;
   }, [
     humanSide,
+    match.roundNumber,
     mode,
     result.isDraw,
     result.lineScores.O,
@@ -832,6 +872,34 @@ export function App() {
     result.winner,
     ruleset,
   ]);
+
+  const matchWinnerText = useMemo(() => {
+    if (!match.winner) {
+      return null;
+    }
+
+    if (mode === 'solo') {
+      return match.winner === humanSide ? 'You' : 'AI';
+    }
+
+    return match.winner;
+  }, [humanSide, match.winner, mode]);
+
+  const matchResultLabel = useMemo(() => {
+    if (!match.winner || !matchWinnerText) {
+      return null;
+    }
+
+    if (mode === 'solo') {
+      const humanWins = match.score[humanSide];
+      const aiWins = match.score[getOtherPlayer(humanSide)];
+      return match.winner === humanSide
+        ? `You win the match, ${humanWins}\u2013${aiWins}`
+        : `AI wins the match, ${aiWins}\u2013${humanWins}`;
+    }
+
+    return `${match.winner} wins the match, ${match.score.X}\u2013${match.score.O}`;
+  }, [humanSide, match.score, match.winner, matchWinnerText, mode]);
 
   return (
     <main className="app-shell" data-theme={themeId} style={themeStyle}>
@@ -846,6 +914,7 @@ export function App() {
         finalLines={finalLines}
         lastMove={lastMove}
         layout={layout}
+        matchResultLabel={matchResultLabel}
         openedText={openedText}
         result={result}
         resultLabel={resultLabel}
@@ -855,6 +924,7 @@ export function App() {
         theme={theme.scene}
         viewCommand={viewCommand}
         onFloorChange={setScannerFloor}
+        onResetMatch={handleResetMatch}
         onResetRound={handleResetRound}
         onSelect={handleSelect}
         onViewCommand={sendViewCommand}
@@ -877,8 +947,11 @@ export function App() {
         lastMove={lastMove}
         layout={layout}
         lineScores={result.lineScores}
+        lifetimeScore={lifetimeScore}
+        match={match}
+        matchWinnerText={matchWinnerText}
         mode={mode}
-        oMoves={oMoves}
+        nextOpenerText={nextOpenerText}
         online={online}
         openerText={openerText}
         remoteSignal={remoteSignal}
@@ -887,13 +960,10 @@ export function App() {
         recentLinePlayer={recentImpact?.player ?? null}
         remainingCells={result.remainingCells}
         result={result}
-        roundsPlayed={roundsPlayed}
         ruleset={ruleset}
-        score={score}
         soundSetting={soundSetting}
         status={status}
         themeId={themeId}
-        xMoves={xMoves}
         onCoachSettingChange={setCoachSetting}
         onCopySignal={handleCopySignal}
         onDifficultyChange={handleDifficultyChange}

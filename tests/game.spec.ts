@@ -41,6 +41,40 @@ async function place(page: Page, player: 'X' | 'O', cell: number) {
     .click();
 }
 
+async function keepPieIfVisible(page: Page) {
+  const keepSides = page.getByRole('button', { name: 'Keep sides?' });
+
+  if (await keepSides.isVisible()) {
+    await keepSides.click();
+  }
+}
+
+async function winClassicRoundForX(page: Page, opener: 'X' | 'O') {
+  if (opener === 'X') {
+    await showFloor(page, 2);
+    await place(page, 'X', 10);
+    await keepPieIfVisible(page);
+    await place(page, 'O', 13);
+    await place(page, 'X', 11);
+    await place(page, 'O', 14);
+    await place(page, 'X', 12);
+    return;
+  }
+
+  await showFloor(page, 1);
+  await place(page, 'O', 1);
+  await showFloor(page, 2);
+  await place(page, 'X', 10);
+  await showFloor(page, 1);
+  await place(page, 'O', 2);
+  await showFloor(page, 2);
+  await place(page, 'X', 11);
+  await showFloor(page, 1);
+  await place(page, 'O', 4);
+  await showFloor(page, 2);
+  await place(page, 'X', 12);
+}
+
 async function expectCanvasHasPixels(page: Page) {
   const canvas = page.locator('canvas');
 
@@ -133,6 +167,45 @@ test('scanner board supports a complete 2P winning round', async ({ page }) => {
   await expect(page.getByText('X wins the round')).toBeVisible();
   await expect(page.getByRole('button', { name: /Cell 10, X, winning line/ }))
     .toBeVisible();
+});
+
+test('best-of-5 match alternates openers and ends at 3 wins', async ({
+  page,
+}) => {
+  await openGame(page, { layout: 'scanner' });
+  await page.getByRole('button', { name: 'Classic' }).click();
+  await chooseTwoPlayer(page);
+
+  await expect(page.locator('.score-row')).toContainText('X wins');
+  await expect(page.locator('.match-card')).toContainText('Race to 3');
+  await expect(page.locator('.match-card')).toContainText('X opens');
+
+  await winClassicRoundForX(page, 'X');
+  await expect(page.getByText('Round 1: X wins the round')).toBeVisible();
+  await expect(page.getByText('X opened - O opens next')).toBeVisible();
+  await expect(page.locator('.score-x strong')).toHaveText('1');
+
+  await page.getByRole('button', { name: 'Play again' }).click();
+  await expect(page.locator('.match-card')).toContainText('O opens');
+
+  await winClassicRoundForX(page, 'O');
+  await expect(page.getByText('Round 2: X wins the round')).toBeVisible();
+  await expect(page.getByText('O opened - X opens next')).toBeVisible();
+  await expect(page.locator('.score-x strong')).toHaveText('2');
+
+  await page.getByRole('button', { name: 'Play again' }).click();
+  await expect(page.locator('.match-card')).toContainText('X opens');
+
+  await winClassicRoundForX(page, 'X');
+  await expect(page.getByText('Round 3: X wins the round')).toBeVisible();
+  await expect(page.getByText('X wins the match, 3–0')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'New match' })).toBeVisible();
+  await expect(page.locator('.score-x strong')).toHaveText('3');
+
+  await page.getByRole('button', { name: 'New match' }).click();
+  await expect(page.locator('.score-x strong')).toHaveText('0');
+  await expect(page.locator('.match-card')).toContainText('Lifetime');
+  await expect(page.locator('.match-card')).toContainText('3-0');
 });
 
 test('lines mode scores completed lines without ending the round', async ({

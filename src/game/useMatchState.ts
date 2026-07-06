@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { feedback } from './feedback';
 import {
+  MatchState,
+  Score,
+  advanceMatchRound,
+  createMatchState,
+  createScore,
+  recordMatchRound,
+} from './match';
+import {
   Board,
   GameRuleset,
   Player,
@@ -11,8 +19,6 @@ import {
   getOtherPlayer,
   getNewCompletedLines,
 } from './rules';
-
-export type Score = Record<Player | 'draws', number>;
 
 export type MoveImpact = {
   blockedLines: number[][];
@@ -44,24 +50,19 @@ const loadScore = (): Score => {
   return { X: 0, O: 0, draws: 0 };
 };
 
-const createScore = (): Score => ({
-  X: 0,
-  O: 0,
-  draws: 0,
-});
-
 export function useMatchState(ruleset: GameRuleset) {
   const [board, setBoard] = useState<Board>(() => createBoard());
   const [currentPlayer, setCurrentPlayer] = useState<Player>('X');
   const [lastMove, setLastMove] = useState<number | null>(null);
-  const [score, setScore] = useState<Score>(loadScore);
+  const [lifetimeScore, setLifetimeScore] = useState<Score>(loadScore);
+  const [match, setMatch] = useState<MatchState>(() => createMatchState());
   const [scoredRound, setScoredRound] = useState<string | null>(null);
   const [recentLines, setRecentLines] = useState<number[][]>([]);
   const [recentImpact, setRecentImpact] = useState<MoveImpact | null>(null);
   const boardRef = useRef(board);
   const currentPlayerRef = useRef(currentPlayer);
+  const matchRef = useRef(match);
   const rulesetRef = useRef(ruleset);
-  const startingPlayerRef = useRef<Player>('X');
   const recentLinesTimeoutRef = useRef<number | null>(null);
   const moveImpactIdRef = useRef(0);
   const result = useMemo(() => evaluateBoard(board, ruleset), [board, ruleset]);
@@ -69,10 +70,9 @@ export function useMatchState(ruleset: GameRuleset) {
     () => board.map((cell) => cell ?? '-').join(''),
     [board],
   );
-  const roundsPlayed = score.X + score.O + score.draws;
   const xMoves = countMarks(board, 'X');
   const oMoves = countMarks(board, 'O');
-  const opener = startingPlayerRef.current;
+  const opener = match.opener;
 
   const clearRecentLines = useCallback(() => {
     if (recentLinesTimeoutRef.current !== null) {
@@ -86,11 +86,11 @@ export function useMatchState(ruleset: GameRuleset) {
 
   useEffect(() => {
     try {
-      window.localStorage.setItem('3dxox-score', JSON.stringify(score));
+      window.localStorage.setItem('3dxox-score', JSON.stringify(lifetimeScore));
     } catch {
       // best-effort persistence only
     }
-  }, [score]);
+  }, [lifetimeScore]);
 
   useEffect(() => {
     boardRef.current = board;
@@ -99,6 +99,10 @@ export function useMatchState(ruleset: GameRuleset) {
   useEffect(() => {
     currentPlayerRef.current = currentPlayer;
   }, [currentPlayer]);
+
+  useEffect(() => {
+    matchRef.current = match;
+  }, [match]);
 
   useEffect(() => {
     rulesetRef.current = ruleset;
@@ -116,16 +120,21 @@ export function useMatchState(ruleset: GameRuleset) {
   const resetRound = useCallback((starter?: Player) => {
     const previousResult = evaluateBoard(boardRef.current, rulesetRef.current);
     const roundFinished = Boolean(previousResult.winner) || previousResult.isDraw;
-    const nextStarter =
-      starter ??
-      (roundFinished
-        ? getOtherPlayer(startingPlayerRef.current)
-        : startingPlayerRef.current);
+    const activeMatch = matchRef.current;
+    const nextStarter = starter ?? (roundFinished ? activeMatch.nextOpener : activeMatch.opener);
+    const nextMatch = roundFinished
+      ? advanceMatchRound(activeMatch, nextStarter)
+      : {
+          ...activeMatch,
+          nextOpener: getOtherPlayer(nextStarter),
+          opener: nextStarter,
+        };
     const nextBoard = createBoard();
 
-    startingPlayerRef.current = nextStarter;
+    matchRef.current = nextMatch;
     boardRef.current = nextBoard;
     currentPlayerRef.current = nextStarter;
+    setMatch(nextMatch);
     setBoard(nextBoard);
     setCurrentPlayer(nextStarter);
     setLastMove(null);
@@ -135,9 +144,20 @@ export function useMatchState(ruleset: GameRuleset) {
   }, [clearRecentLines]);
 
   const resetMatch = useCallback(() => {
-    resetRound('X');
-    setScore(createScore());
-  }, [resetRound]);
+    const nextMatch = createMatchState('X');
+    const nextBoard = createBoard();
+
+    matchRef.current = nextMatch;
+    boardRef.current = nextBoard;
+    currentPlayerRef.current = nextMatch.opener;
+    setMatch(nextMatch);
+    setBoard(nextBoard);
+    setCurrentPlayer(nextMatch.opener);
+    setLastMove(null);
+    setScoredRound(null);
+    setRecentImpact(null);
+    clearRecentLines();
+  }, [clearRecentLines]);
 
   const applyMove = useCallback((index: number, player?: Player) => {
     const activeBoard = boardRef.current;
@@ -245,7 +265,7 @@ export function useMatchState(ruleset: GameRuleset) {
       feedback.draw();
     }
 
-    setScore((previous) => {
+    setLifetimeScore((previous) => {
       if (result.winner) {
         return {
           ...previous,
@@ -258,6 +278,12 @@ export function useMatchState(ruleset: GameRuleset) {
         draws: previous.draws + 1,
       };
     });
+    setMatch((previous) => {
+      const next = recordMatchRound(previous, result.winner, result.isDraw);
+
+      matchRef.current = next;
+      return next;
+    });
     setScoredRound(boardSignature);
   }, [boardSignature, result.isDraw, result.winner, scoredRound]);
 
@@ -267,12 +293,12 @@ export function useMatchState(ruleset: GameRuleset) {
     currentPlayer,
     currentPlayerRef,
     lastMove,
+    lifetimeScore,
+    match,
     oMoves,
     resetMatch,
     resetRound,
     result,
-    roundsPlayed,
-    score,
     xMoves,
     opener,
     recentLines,

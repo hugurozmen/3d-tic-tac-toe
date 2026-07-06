@@ -127,6 +127,17 @@
   white-space: nowrap;
 }
 
+.round-result-match {
+  padding: 6px 10px;
+  border: 1px solid color-mix(in srgb, var(--app-win) 45%, transparent);
+  border-radius: 999px;
+  color: var(--app-win);
+  background: color-mix(in srgb, var(--app-win) 10%, transparent);
+  font-size: 0.78rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
 .round-result button {
   display: inline-flex;
   align-items: center;

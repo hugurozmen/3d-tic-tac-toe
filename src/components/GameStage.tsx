@@ -40,6 +40,7 @@ type GameStageProps = {
   finalLines: number[][];
   lastMove: number | null;
   layout: BoardLayout;
+  matchResultLabel: string | null;
   openedText: string;
   result: GameResult;
   resultLabel: string | null;
@@ -54,6 +55,7 @@ type GameStageProps = {
   theme: SceneTheme;
   viewCommand: BoardViewCommand | null;
   onFloorChange: (floor: number) => void;
+  onResetMatch: () => void;
   onResetRound: () => void;
   onSelect: (index: number) => void;
   onViewCommand: (action: BoardViewAction) => void;
@@ -71,6 +73,7 @@ export const GameStage = forwardRef<HTMLElement, GameStageProps>(
       finalLines,
       lastMove,
       layout,
+      matchResultLabel,
       openedText,
       result,
       resultLabel,
@@ -80,6 +83,7 @@ export const GameStage = forwardRef<HTMLElement, GameStageProps>(
       theme,
       viewCommand,
       onFloorChange,
+      onResetMatch,
       onResetRound,
       onSelect,
       onViewCommand,
@@ -163,9 +167,15 @@ export const GameStage = forwardRef<HTMLElement, GameStageProps>(
               </strong>
             </span>
             <span className="round-result-opener">{openedText}</span>
-            <button type="button" onClick={onResetRound}>
+            {matchResultLabel ? (
+              <span className="round-result-match">{matchResultLabel}</span>
+            ) : null}
+            <button
+              type="button"
+              onClick={matchResultLabel ? onResetMatch : onResetRound}
+            >
               <RefreshCw size={15} />
-              <span>Play again</span>
+              <span>{matchResultLabel ? 'New match' : 'Play again'}</span>
             </button>
           </div>
         ) : null}
