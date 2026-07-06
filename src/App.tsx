@@ -742,21 +742,6 @@ export function App() {
     flashNotice(swap ? 'Sides swapped' : 'Sides kept');
   };
 
-  useEffect(() => {
-    if (!pendingConfirm) {
-      return;
-    }
-
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setPendingConfirm(null);
-      }
-    };
-
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [pendingConfirm]);
-
   const closeGuide = () => {
     setGuideOpen(false);
     setOnboarded('done');

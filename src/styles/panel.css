@@ -596,6 +596,7 @@ h1 {
 
 .segmented-control button:focus-visible,
 .stage-actions button:focus-visible,
+.round-result button:focus-visible,
 .online-actions button:focus-visible,
 .online-connect:focus-visible,
 .theme-option:focus-visible,

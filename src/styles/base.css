@@ -104,3 +104,10 @@ button {
     color 220ms ease;
   overflow: hidden;
 }
+
+.app-shell[data-theme="frosted"] {
+  --hint-block: #b91c1c;
+  --hint-both: #8a6500;
+  --hint-score: #087f73;
+  --line-scored: #087f73;
+}

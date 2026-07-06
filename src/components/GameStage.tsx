@@ -112,9 +112,13 @@ export const GameStage = forwardRef<HTMLElement, GameStageProps>(
         ) : (
           <Suspense
             fallback={
-              <div className="stage-loading">
-                <span className="online-spinner" aria-hidden="true" />
-                <span>Preparing the board…</span>
+              <div className="stage-loading" role="status" aria-live="polite">
+                <span className="stage-loading-cube" aria-hidden="true">
+                  <i />
+                  <i />
+                  <i />
+                </span>
+                <span>Preparing 3D board</span>
               </div>
             }
           >

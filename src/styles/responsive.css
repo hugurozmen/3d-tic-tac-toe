@@ -8,10 +8,23 @@
   .stage-toast,
   .stage-toast.notice-score.multi,
   .confirm-card,
+  .round-result.win-x .round-result-label svg,
+  .round-result.win-o .round-result-label svg,
+  .stage-loading-cube i,
   .line-score-tile.score-bump,
   .line-score-tile.score-bump::before,
   .line-score-empty.tension {
     animation: none;
+  }
+
+  .scanner-cell,
+  .scanner-stop,
+  .scanner-ghost-layer,
+  .stage-actions button,
+  .primary-action,
+  .secondary-action,
+  .segmented-control button {
+    transition-duration: 0.01ms;
   }
 }
 
@@ -216,6 +229,22 @@
 
   .line-score-card {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .coach-prompt {
+    grid-template-columns: 1fr;
+  }
+
+  .coach-prompt button {
+    justify-content: center;
+  }
+
+  .streak-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .retention-stat-grid {
+    grid-template-columns: 1fr;
   }
 
   .line-score-card div:nth-child(3) {
