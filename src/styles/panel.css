@@ -492,6 +492,52 @@ h1 {
   background: color-mix(in srgb, var(--app-panel-strong) 52%, transparent);
 }
 
+.coach-prompt {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--hint-both) 42%, var(--app-border));
+  border-radius: var(--radius-s);
+  background: color-mix(in srgb, var(--hint-both) 9%, var(--app-panel-strong));
+}
+
+.coach-prompt div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.coach-prompt strong {
+  color: var(--app-text);
+  font-size: 0.83rem;
+  font-weight: 900;
+}
+
+.coach-prompt span {
+  color: var(--app-muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.coach-prompt button {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-s);
+  color: var(--app-primary-text);
+  background: var(--app-primary);
+  cursor: pointer;
+  font-size: 0.76rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
 .legend-dot {
   width: 8px;
   height: 8px;
@@ -555,6 +601,7 @@ h1 {
 .theme-option:focus-visible,
 .daily-cell:focus-visible,
 .daily-share:focus-visible,
+.coach-prompt button:focus-visible,
 .primary-action:focus-visible,
 .secondary-action:focus-visible,
 .scanner-cell:focus-visible,
