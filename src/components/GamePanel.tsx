@@ -187,9 +187,11 @@ export function GamePanel({
     remainingCells < 6 &&
     !result.isComplete;
   const onlineSettingsText = online.settings
-    ? `${RULESET_LABEL[online.settings.ruleset]} room - Pie ${
-        online.settings.classicPieRule ? 'on' : 'off'
-      }`
+    ? online.settings.ruleset === 'classic'
+      ? `${RULESET_LABEL[online.settings.ruleset]} room - Pie ${
+          online.settings.classicPieRule ? 'on' : 'off'
+        }`
+      : `${RULESET_LABEL[online.settings.ruleset]} room`
     : `${RULESET_LABEL[ruleset]} room`;
 
   return (
