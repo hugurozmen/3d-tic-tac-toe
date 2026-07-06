@@ -14,6 +14,7 @@ import type { CellProps } from './types';
 
 export function Cell({
   armed,
+  coachMark,
   currentPlayer,
   disabled,
   index,
@@ -31,6 +32,14 @@ export function Cell({
   const isGhost = theme.cellStyle === 'ghost';
   const isWire = theme.cellStyle === 'wire';
   const isActive = armed || (hovered && isPlayable);
+  const coachColor =
+    coachMark === 'score'
+      ? '#74f0a7'
+      : coachMark === 'block'
+        ? '#ff6f76'
+        : coachMark === 'both'
+          ? '#f8d65a'
+          : null;
 
   useCursor(isPlayable && hovered);
 
@@ -41,6 +50,8 @@ export function Cell({
 
     const pulse = isWinning
       ? 1 + Math.sin(clock.elapsedTime * 5.2) * 0.055
+      : coachMark && isPlayable
+        ? 1 + Math.sin(clock.elapsedTime * 3.1) * 0.025
       : isActive && isPlayable
         ? 1.06
         : 1;
@@ -95,6 +106,8 @@ export function Cell({
           color={
             isWinning
               ? theme.win
+              : coachColor
+                ? coachColor
               : isActive && isPlayable
                 ? theme.hover
                 : theme.edge
@@ -102,6 +115,8 @@ export function Cell({
           opacity={
             isWinning
               ? 1
+              : coachColor
+                ? 0.98
               : isActive && isPlayable
                 ? 0.95
                 : isGhost

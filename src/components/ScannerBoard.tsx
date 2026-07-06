@@ -3,9 +3,12 @@ import { SceneTheme, ThemeStyle } from '../theme';
 
 type ScannerBoardProps = {
   board: Board;
+  coachBlockCells: number[];
+  coachScoreCells: number[];
   currentPlayer: Player;
   disabled: boolean;
   floor: number;
+  highlightLines: number[][];
   lastMove: number | null;
   theme: SceneTheme;
   winningLine: number[];
@@ -20,9 +23,12 @@ const floorOf = (index: number) => Math.floor(index / 9);
 
 export function ScannerBoard({
   board,
+  coachBlockCells,
+  coachScoreCells,
   currentPlayer,
   disabled,
   floor,
+  highlightLines,
   lastMove,
   theme,
   winningLine,
@@ -30,7 +36,13 @@ export function ScannerBoard({
   onSelect,
 }: ScannerBoardProps) {
   const lastMoveFloor = lastMove === null ? null : floorOf(lastMove);
-  const winningFloors = new Set(winningLine.map(floorOf));
+  const highlightedCells = new Set([
+    ...winningLine,
+    ...highlightLines.flatMap((line) => line),
+  ]);
+  const scoreCells = new Set(coachScoreCells);
+  const blockCells = new Set(coachBlockCells);
+  const winningFloors = new Set(Array.from(highlightedCells).map(floorOf));
   const style: ThemeStyle = { '--scan-win': theme.win };
 
   const stopClass = (layer: number) =>
@@ -81,12 +93,16 @@ export function ScannerBoard({
           {Array.from({ length: 9 }, (_, cell) => floor * 9 + cell).map(
             (index) => {
               const value = board[index];
-              const isWinning = winningLine.includes(index);
+              const isWinning = highlightedCells.has(index);
+              const isCoachScore = !value && scoreCells.has(index);
+              const isCoachBlock = !value && blockCells.has(index);
               const isPlayable = !value && !disabled;
               const cellClass = [
                 'scanner-cell',
                 value === 'X' ? 'mark-x' : value === 'O' ? 'mark-o' : '',
                 isWinning ? 'win' : '',
+                isCoachScore ? 'coach-score' : '',
+                isCoachBlock ? 'coach-block' : '',
                 lastMove === index ? 'last' : '',
                 isPlayable ? `preview-${currentPlayer.toLowerCase()}` : '',
               ]
@@ -96,7 +112,15 @@ export function ScannerBoard({
               const cellLabel = value
                 ? `Cell ${index + 1}, ${value}${isWinning ? ', winning line' : ''}`
                 : isPlayable
-                  ? `Place ${currentPlayer} at cell ${index + 1}, floor ${floor + 1}`
+                  ? `Place ${currentPlayer} at cell ${index + 1}, floor ${
+                      floor + 1
+                    }${
+                      isCoachScore
+                        ? ', completes a line'
+                        : isCoachBlock
+                          ? ', blocks a line'
+                          : ''
+                    }`
                   : `Cell ${index + 1}, empty`;
 
               return (

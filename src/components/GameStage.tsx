@@ -31,11 +31,16 @@ export const preloadBoardScene = () => {
 
 type GameStageProps = {
   board: Board;
+  coachBlockCells: number[];
+  coachScoreCells: number[];
   currentPlayer: Player;
   disabled: boolean;
+  highlightLines: number[][];
   lastMove: number | null;
   layout: BoardLayout;
+  openedText: string;
   result: GameResult;
+  resultLabel: string | null;
   scannerFloor: number;
   stageNotice: string | null;
   theme: SceneTheme;
@@ -50,11 +55,16 @@ export const GameStage = forwardRef<HTMLElement, GameStageProps>(
   function GameStage(
     {
       board,
+      coachBlockCells,
+      coachScoreCells,
       currentPlayer,
       disabled,
+      highlightLines,
       lastMove,
       layout,
+      openedText,
       result,
+      resultLabel,
       scannerFloor,
       stageNotice,
       theme,
@@ -74,6 +84,9 @@ export const GameStage = forwardRef<HTMLElement, GameStageProps>(
             currentPlayer={currentPlayer}
             disabled={disabled}
             floor={scannerFloor}
+            coachBlockCells={coachBlockCells}
+            coachScoreCells={coachScoreCells}
+            highlightLines={highlightLines}
             lastMove={lastMove}
             theme={theme}
             winningLine={result.winningLine}
@@ -91,8 +104,11 @@ export const GameStage = forwardRef<HTMLElement, GameStageProps>(
           >
             <BoardScene
               board={board}
+              coachBlockCells={coachBlockCells}
+              coachScoreCells={coachScoreCells}
               currentPlayer={currentPlayer}
               disabled={disabled}
+              highlightLines={highlightLines}
               layout={layout}
               theme={theme}
               viewCommand={viewCommand}
@@ -120,11 +136,13 @@ export const GameStage = forwardRef<HTMLElement, GameStageProps>(
             <span className="round-result-label">
               {result.winner ? <Trophy size={17} /> : <Equal size={17} />}
               <strong>
-                {result.winner
-                  ? `${result.winner} wins the round`
-                  : 'Round drawn'}
+                {resultLabel ??
+                  (result.winner
+                    ? `${result.winner} wins the round`
+                    : 'Round drawn')}
               </strong>
             </span>
+            <span className="round-result-opener">{openedText}</span>
             <button type="button" onClick={onResetRound}>
               <RefreshCw size={15} />
               <span>Play again</span>

@@ -116,9 +116,11 @@ test('desktop 3D cube renders real canvas pixels', async ({ page }) => {
 
 test('scanner board supports a complete 2P winning round', async ({ page }) => {
   await openGame(page, { layout: 'scanner' });
+  await page.getByRole('button', { name: 'Classic' }).click();
   await chooseTwoPlayer(page);
 
   await place(page, 'X', 10);
+  await page.getByRole('button', { name: 'Keep sides?' }).click();
   await place(page, 'O', 13);
   await place(page, 'X', 11);
   await place(page, 'O', 14);
@@ -127,6 +129,41 @@ test('scanner board supports a complete 2P winning round', async ({ page }) => {
   await expect(page.getByText('X wins the round')).toBeVisible();
   await expect(page.getByRole('button', { name: /Cell 10, X, winning line/ }))
     .toBeVisible();
+});
+
+test('lines mode scores completed lines without ending the round', async ({
+  page,
+}) => {
+  await openGame(page, { layout: 'scanner' });
+  await chooseTwoPlayer(page);
+
+  await place(page, 'X', 10);
+  await place(page, 'O', 13);
+  await place(page, 'X', 11);
+  await place(page, 'O', 14);
+  await place(page, 'X', 12);
+
+  await expect(page.locator('.line-score-card')).toContainText('X lines');
+  await expect(page.locator('.line-score-card')).toContainText('1');
+  await expect(page.getByText('X +1 line')).toBeVisible();
+  await expect(page.getByText(/wins the round/i)).toHaveCount(0);
+  await expect(
+    page.getByRole('button', { name: /Place O at cell 15\b/ }),
+  ).toBeVisible();
+});
+
+test('coach mode marks blocking cells on the scanner board', async ({ page }) => {
+  await openGame(page, { layout: 'scanner' });
+  await chooseTwoPlayer(page);
+  await page.getByRole('button', { name: 'On', exact: true }).click();
+
+  await place(page, 'X', 10);
+  await place(page, 'O', 13);
+  await place(page, 'X', 11);
+
+  await expect(
+    page.getByRole('button', { name: /Place O at cell 12\b.*blocks a line/ }),
+  ).toBeVisible();
 });
 
 test('mobile view selector can enter and leave the 3D board', async ({ page }) => {

@@ -156,6 +156,19 @@ h1 {
   animation: badge-glow 1.6s ease-in-out infinite;
 }
 
+.turn-badge.thinking {
+  animation: thinking-shimmer 1.15s ease-in-out infinite;
+}
+
+.thinking-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid color-mix(in srgb, currentColor 28%, transparent);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: spinner-turn 760ms linear infinite;
+}
+
 @keyframes badge-glow {
   0%,
   100% {
@@ -168,6 +181,21 @@ h1 {
     box-shadow:
       0 0 32px color-mix(in srgb, var(--app-win) 46%, transparent),
       inset 0 0 16px color-mix(in srgb, var(--app-win) 14%, transparent);
+  }
+}
+
+@keyframes thinking-shimmer {
+  0%,
+  100% {
+    box-shadow:
+      0 0 16px color-mix(in srgb, var(--app-primary) 16%, transparent),
+      inset 0 0 12px color-mix(in srgb, var(--app-primary) 7%, transparent);
+  }
+
+  50% {
+    box-shadow:
+      0 0 28px color-mix(in srgb, var(--app-primary) 32%, transparent),
+      inset 0 0 16px color-mix(in srgb, var(--app-primary) 12%, transparent);
   }
 }
 
@@ -268,6 +296,46 @@ h1 {
   color: var(--mark-o);
 }
 
+.line-score-card {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border: 1px solid var(--app-border);
+  border-radius: var(--radius-l);
+  background: color-mix(in srgb, var(--app-panel-strong) 48%, transparent);
+  overflow: hidden;
+}
+
+.line-score-card div {
+  min-height: 58px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 9px 6px;
+  text-align: center;
+}
+
+.line-score-card div + div {
+  border-left: 1px solid var(--app-border);
+}
+
+.line-score-card span {
+  color: var(--app-muted);
+  font-size: 0.64rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.line-score-card strong {
+  color: var(--app-text);
+  font-family: var(--font-display);
+  font-size: 1.24rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
 .control-group {
   display: grid;
   gap: 9px;
@@ -306,6 +374,15 @@ h1 {
 }
 
 .mode-control {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.ruleset-control,
+.coach-control {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.coach-control {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
@@ -594,7 +671,7 @@ h1 {
 
 .match-card {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   border: 1px solid var(--app-border);
   border-radius: var(--radius-l);
   background: linear-gradient(
@@ -623,9 +700,10 @@ h1 {
 
 .match-card strong {
   font-family: var(--font-display);
-  font-size: 1.4rem;
+  font-size: clamp(1rem, 1.7vw, 1.32rem);
   font-variant-numeric: tabular-nums;
   line-height: 1;
+  overflow-wrap: anywhere;
 }
 
 .action-row {

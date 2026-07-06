@@ -8,20 +8,32 @@ import type {
   BoardViewAction,
   BoardViewCommand,
 } from './game/boardView';
-import { chooseAiMove } from './game/ai';
+import { chooseAiMove, shouldSwapClassicPie } from './game/ai';
 import { setFeedbackMuted } from './game/feedback';
 import {
   DIFFICULTY_OPTIONS,
   LAYOUT_OPTIONS,
   MODE_DESCRIPTION,
+  RULESET_DESCRIPTION,
+  RULESET_OPTIONS,
 } from './game/options';
 import {
   Difficulty,
   GameMode,
+  GameRuleset,
   PLAYERS,
   Player,
+  getBlockingCells,
   getOtherPlayer,
+  getThreatCells,
 } from './game/rules';
+import {
+  getThemeUnlockHooks,
+  loadDifficultyStreaks,
+  saveDifficultyStreaks,
+  saveThemeUnlockHooks,
+  updateDifficultyStreak,
+} from './game/retention';
 import { useMatchState } from './game/useMatchState';
 import { useOnlineGame } from './game/useOnlineGame';
 import { THEME_ORDER, THEMES, ThemeId, themeToCssVariables } from './theme';
@@ -35,7 +47,22 @@ const getInitialLayout = (): BoardLayout => {
   return 'cube';
 };
 
+const COACH_OPTIONS = ['auto', 'on', 'off'] as const;
+type CoachSetting = (typeof COACH_OPTIONS)[number];
+
+const aiThinkingDelay: Record<Difficulty, number> = {
+  easy: 650,
+  balanced: 1050,
+  hard: 1250,
+  master: 1400,
+};
+
 export function App() {
+  const [ruleset, setRuleset] = useLocalStorageState<GameRuleset>(
+    '3dxox-ruleset',
+    'lines',
+    RULESET_OPTIONS,
+  );
   const {
     applyMove,
     board,
@@ -49,7 +76,9 @@ export function App() {
     roundsPlayed,
     score,
     xMoves,
-  } = useMatchState();
+    opener,
+    recentLines,
+  } = useMatchState(ruleset);
   const [mode, setMode] = useState<GameMode>('solo');
   const [difficulty, setDifficulty] = useLocalStorageState<Difficulty>(
     '3dxox-difficulty',
@@ -76,6 +105,11 @@ export function App() {
     'on',
     ['on', 'off'] as const,
   );
+  const [coachSetting, setCoachSetting] = useLocalStorageState<CoachSetting>(
+    '3dxox-coach',
+    'auto',
+    COACH_OPTIONS,
+  );
   const [onboarded, setOnboarded] = useLocalStorageState(
     '3dxox-guide',
     'pending',
@@ -90,19 +124,58 @@ export function App() {
   const aiWorkerRef = useRef<Worker | null>(null);
   const aiRequestIdRef = useRef(0);
   const noticeTimeoutRef = useRef<number | null>(null);
+  const streakRoundRef = useRef<string | null>(null);
   const [scannerFloor, setScannerFloor] = useState(1);
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(
     null,
   );
   const [stageNotice, setStageNotice] = useState<string | null>(null);
+  const [piePromptOpen, setPiePromptOpen] = useState(false);
+  const [pieDecisionDone, setPieDecisionDone] = useState(false);
+  const [isAiThinking, setIsAiThinking] = useState(false);
+  const [difficultyStreaks, setDifficultyStreaks] = useState(
+    loadDifficultyStreaks,
+  );
   const theme = THEMES[themeId];
   const themeStyle = useMemo(() => themeToCssVariables(theme), [theme]);
   const aiPlayer = getOtherPlayer(humanSide);
+  const moveCount = xMoves + oMoves;
+  const pieRuleEnabled = ruleset === 'classic' && mode !== 'online';
+  const pieDecisionPending =
+    pieRuleEnabled &&
+    !pieDecisionDone &&
+    moveCount === 1 &&
+    currentPlayer === 'O' &&
+    !result.winner &&
+    !result.isDraw;
   const isAiTurn =
     mode === 'solo' &&
     currentPlayer === aiPlayer &&
     !result.winner &&
-    !result.isDraw;
+    !result.isDraw &&
+    !pieDecisionPending;
+  const coachEnabled =
+    coachSetting === 'on' || (coachSetting === 'auto' && difficulty === 'easy');
+  const coachScoreCells = useMemo(
+    () =>
+      coachEnabled && !result.winner && !result.isDraw
+        ? getThreatCells(board, currentPlayer)
+        : [],
+    [board, coachEnabled, currentPlayer, result.isDraw, result.winner],
+  );
+  const coachBlockCells = useMemo(
+    () =>
+      coachEnabled && !result.winner && !result.isDraw
+        ? getBlockingCells(board, currentPlayer)
+        : [],
+    [board, coachEnabled, currentPlayer, result.isDraw, result.winner],
+  );
+  const highlightLines =
+    ruleset === 'lines'
+      ? recentLines
+      : result.winningLine.length === 3
+        ? [result.winningLine]
+        : [];
 
   useEffect(() => {
     setFeedbackMuted(soundSetting === 'off');
@@ -145,6 +218,116 @@ export function App() {
     [],
   );
 
+  useEffect(() => {
+    if (moveCount === 0) {
+      setPieDecisionDone(false);
+      setPiePromptOpen(false);
+    }
+  }, [moveCount]);
+
+  useEffect(() => {
+    if (ruleset !== 'lines' || recentLines.length === 0 || lastMove === null) {
+      return;
+    }
+
+    const scoringPlayer = board[lastMove];
+
+    if (!scoringPlayer) {
+      return;
+    }
+
+    const lineText = recentLines.length === 1 ? 'line' : 'lines';
+    flashNotice(
+      `${scoringPlayer} +${recentLines.length} ${lineText} (${result.lineScores.X}-${result.lineScores.O})`,
+    );
+  }, [
+    board,
+    flashNotice,
+    lastMove,
+    recentLines.length,
+    result.lineScores.O,
+    result.lineScores.X,
+    ruleset,
+  ]);
+
+  useEffect(() => {
+    if (!pieDecisionPending) {
+      return;
+    }
+
+    if (mode === 'solo' && currentPlayer === aiPlayer) {
+      const shouldSwap = shouldSwapClassicPie(board, difficulty);
+
+      setPieDecisionDone(true);
+
+      if (shouldSwap) {
+        setHumanSide(getOtherPlayer(humanSide));
+        flashNotice('AI swapped sides');
+      } else {
+        flashNotice('AI kept sides');
+      }
+
+      return;
+    }
+
+    setPiePromptOpen(true);
+  }, [
+    aiPlayer,
+    board,
+    currentPlayer,
+    difficulty,
+    flashNotice,
+    humanSide,
+    mode,
+    pieDecisionPending,
+    setHumanSide,
+  ]);
+
+  useEffect(() => {
+    if (!result.winner && !result.isDraw) {
+      streakRoundRef.current = null;
+      return;
+    }
+
+    if (mode !== 'solo') {
+      return;
+    }
+
+    const roundSignature = `${ruleset}:${board
+      .map((cell) => cell ?? '-')
+      .join('')}`;
+
+    if (streakRoundRef.current === roundSignature) {
+      return;
+    }
+
+    const outcome = result.isDraw
+      ? 'draw'
+      : result.winner === humanSide
+        ? 'win'
+        : 'loss';
+    const nextStreaks = updateDifficultyStreak(
+      difficultyStreaks,
+      difficulty,
+      outcome,
+    );
+    const unlocks = getThemeUnlockHooks(nextStreaks);
+
+    streakRoundRef.current = roundSignature;
+    setDifficultyStreaks(nextStreaks);
+    saveDifficultyStreaks(nextStreaks);
+    saveThemeUnlockHooks(unlocks);
+  }, [
+    board,
+    difficulty,
+    difficultyStreaks,
+    humanSide,
+    mode,
+    result.isDraw,
+    result.winner,
+    ruleset,
+  ]);
+
   const onlineHandlers = useMemo(
     () => ({
       onRemoteMatchReset: () => {
@@ -181,6 +364,7 @@ export function App() {
     online.localPlayer === currentPlayer;
   const isBoardDisabled =
     isAiTurn ||
+    pieDecisionPending ||
     Boolean(result.winner) ||
     result.isDraw ||
     (mode === 'online' && !isOnlineTurn);
@@ -203,26 +387,33 @@ export function App() {
 
   useEffect(() => {
     if (!isAiTurn) {
+      setIsAiThinking(false);
       return;
     }
 
     const id = aiRequestIdRef.current + 1;
 
     aiRequestIdRef.current = id;
+    setIsAiThinking(true);
 
     const startedAt = performance.now();
     let pendingTimeout: number | null = null;
 
     const applyAiMove = (move: number | null) => {
       if (aiRequestIdRef.current !== id || move === null) {
+        setIsAiThinking(false);
         return;
       }
 
       // keep a short "thinking" pause even when the move comes back instantly
-      const remaining = Math.max(0, 520 - (performance.now() - startedAt));
+      const remaining = Math.max(
+        0,
+        aiThinkingDelay[difficulty] - (performance.now() - startedAt),
+      );
 
       pendingTimeout = window.setTimeout(() => {
         if (aiRequestIdRef.current === id) {
+          setIsAiThinking(false);
           applyMove(move, aiPlayer);
         }
       }, remaining);
@@ -243,7 +434,7 @@ export function App() {
 
     if (!worker) {
       pendingTimeout = window.setTimeout(
-        () => applyAiMove(chooseAiMove(board, aiPlayer, difficulty)),
+        () => applyAiMove(chooseAiMove(board, aiPlayer, difficulty, ruleset)),
         40,
       );
     } else {
@@ -257,27 +448,40 @@ export function App() {
       worker.onerror = () => {
         worker.terminate();
         aiWorkerRef.current = null;
-        applyAiMove(chooseAiMove(board, aiPlayer, difficulty));
+        applyAiMove(chooseAiMove(board, aiPlayer, difficulty, ruleset));
       };
-      worker.postMessage({ board, difficulty, id, player: aiPlayer });
+      worker.postMessage({ board, difficulty, id, player: aiPlayer, ruleset });
     }
 
     return () => {
       aiRequestIdRef.current += 1;
+      setIsAiThinking(false);
 
       if (pendingTimeout !== null) {
         window.clearTimeout(pendingTimeout);
       }
     };
-  }, [aiPlayer, applyMove, board, difficulty, isAiTurn]);
+  }, [aiPlayer, applyMove, board, difficulty, isAiTurn, ruleset]);
 
   const status = useMemo(() => {
     if (result.winner) {
+      if (ruleset === 'lines') {
+        return `${result.winner} wins ${result.lineScores.X}-${result.lineScores.O}`;
+      }
+
       return `${result.winner} wins`;
     }
 
     if (result.isDraw) {
+      if (ruleset === 'lines') {
+        return `Draw ${result.lineScores.X}-${result.lineScores.O}`;
+      }
+
       return 'Draw';
+    }
+
+    if (pieDecisionPending) {
+      return 'Swap choice';
     }
 
     if (isAiTurn) {
@@ -308,7 +512,11 @@ export function App() {
     online.localPlayer,
     online.status,
     result.isDraw,
+    result.lineScores.O,
+    result.lineScores.X,
     result.winner,
+    ruleset,
+    pieDecisionPending,
   ]);
 
   const handleSelect = useCallback(
@@ -381,6 +589,22 @@ export function App() {
     );
   };
 
+  const handleRulesetChange = (nextRuleset: GameRuleset) => {
+    if (nextRuleset === ruleset) {
+      return;
+    }
+
+    requestRoundReset(
+      `Switching to ${RULESET_DESCRIPTION[nextRuleset]} resets the active best of 5.`,
+      () => {
+        setRuleset(nextRuleset);
+        resetMatch();
+        setPieDecisionDone(false);
+        setPiePromptOpen(false);
+      },
+    );
+  };
+
   const handleSideChange = (side: Player) => {
     if (side === humanSide) {
       return;
@@ -398,6 +622,16 @@ export function App() {
   const confirmPending = () => {
     pendingConfirm?.run();
     setPendingConfirm(null);
+  };
+
+  const resolvePieDecision = (swap: boolean) => {
+    if (swap && mode === 'solo') {
+      setHumanSide(getOtherPlayer(humanSide));
+    }
+
+    setPieDecisionDone(true);
+    setPiePromptOpen(false);
+    flashNotice(swap ? 'Sides swapped' : 'Sides kept');
   };
 
   useEffect(() => {
@@ -506,16 +740,79 @@ export function App() {
     }
   };
 
+  const openerText = useMemo(() => {
+    if (mode === 'solo') {
+      return opener === humanSide ? 'You open' : 'AI opens';
+    }
+
+    return `${opener} opens`;
+  }, [humanSide, mode, opener]);
+
+  const openedText = useMemo(() => {
+    if (mode === 'solo') {
+      return opener === humanSide ? 'You opened' : 'AI opened';
+    }
+
+    return `${opener} opened`;
+  }, [humanSide, mode, opener]);
+
+  const resultLabel = useMemo(() => {
+    if (!result.winner && !result.isDraw) {
+      return null;
+    }
+
+    if (ruleset === 'lines') {
+      const scoreText = `${result.lineScores.X}-${result.lineScores.O}`;
+
+      if (result.isDraw) {
+        return `Draw, ${scoreText}`;
+      }
+
+      if (mode === 'solo') {
+        return result.winner === humanSide
+          ? `You win by lines, ${scoreText}`
+          : `AI wins by lines, ${scoreText}`;
+      }
+
+      return `${result.winner} wins by lines, ${scoreText}`;
+    }
+
+    if (result.isDraw) {
+      return 'Round drawn';
+    }
+
+    if (mode === 'solo') {
+      return result.winner === humanSide
+        ? 'You win the round'
+        : 'AI wins the round';
+    }
+
+    return `${result.winner} wins the round`;
+  }, [
+    humanSide,
+    mode,
+    result.isDraw,
+    result.lineScores.O,
+    result.lineScores.X,
+    result.winner,
+    ruleset,
+  ]);
+
   return (
     <main className="app-shell" data-theme={themeId} style={themeStyle}>
       <GameStage
         ref={stageRef}
         board={board}
+        coachBlockCells={coachBlockCells}
+        coachScoreCells={coachScoreCells}
         currentPlayer={currentPlayer}
         disabled={isBoardDisabled}
+        highlightLines={highlightLines}
         lastMove={lastMove}
         layout={layout}
+        openedText={openedText}
         result={result}
+        resultLabel={resultLabel}
         scannerFloor={scannerFloor}
         stageNotice={stageNotice}
         theme={theme.scene}
@@ -533,23 +830,31 @@ export function App() {
       />
 
       <GamePanel
+        coachEnabled={coachEnabled}
+        coachSetting={coachSetting}
         copiedSignal={copiedSignal}
         currentPlayer={currentPlayer}
         difficulty={difficulty}
         humanSide={humanSide}
+        isAiThinking={isAiThinking}
         lastMove={lastMove}
         layout={layout}
+        lineScores={result.lineScores}
         mode={mode}
         oMoves={oMoves}
         online={online}
+        openerText={openerText}
         remoteSignal={remoteSignal}
+        remainingCells={result.remainingCells}
         result={result}
         roundsPlayed={roundsPlayed}
+        ruleset={ruleset}
         score={score}
         soundSetting={soundSetting}
         status={status}
         themeId={themeId}
         xMoves={xMoves}
+        onCoachSettingChange={setCoachSetting}
         onCopySignal={handleCopySignal}
         onDifficultyChange={handleDifficultyChange}
         onHostOnline={handleHostOnline}
@@ -560,6 +865,7 @@ export function App() {
         onRemoteSignalChange={setRemoteSignal}
         onResetMatch={handleResetMatch}
         onResetRound={handleResetRound}
+        onRulesetChange={handleRulesetChange}
         onSideChange={handleSideChange}
         onThemeChange={setThemeId}
         onToggleSound={() =>
@@ -570,9 +876,12 @@ export function App() {
       <GameDialogs
         guideOpen={guideOpen}
         pendingConfirm={pendingConfirm}
+        piePromptOpen={piePromptOpen}
         onCancelConfirm={() => setPendingConfirm(null)}
         onCloseGuide={closeGuide}
         onConfirmPending={confirmPending}
+        onKeepPie={() => resolvePieDecision(false)}
+        onSwapPie={() => resolvePieDecision(true)}
       />
     </main>
   );

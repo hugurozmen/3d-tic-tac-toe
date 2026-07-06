@@ -1,5 +1,7 @@
 @media (prefers-reduced-motion: reduce) {
   .turn-win,
+  .turn-badge.thinking,
+  .thinking-spinner,
   .scanner-stop.hinted,
   .round-result,
   .stage-toast,
@@ -138,6 +140,14 @@
     font-size: 1.2rem;
   }
 
+  .line-score-card div {
+    min-height: 50px;
+  }
+
+  .line-score-card strong {
+    font-size: 1.08rem;
+  }
+
   .primary-action,
   .secondary-action {
     min-height: 46px;
@@ -189,6 +199,23 @@
 
   .match-card strong {
     font-size: 1.15rem;
+  }
+
+  .line-score-card {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .line-score-card div:nth-child(3) {
+    border-left: 0;
+    border-top: 1px solid var(--app-border);
+  }
+
+  .line-score-card div:nth-child(4) {
+    border-top: 1px solid var(--app-border);
+  }
+
+  .match-card {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 
   .action-row {

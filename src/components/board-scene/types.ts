@@ -7,8 +7,11 @@ import type { SceneTheme } from '../../theme';
 
 export type BoardSceneProps = {
   board: Board;
+  coachBlockCells: number[];
+  coachScoreCells: number[];
   currentPlayer: Player;
   disabled: boolean;
+  highlightLines: number[][];
   layout: BoardLayout;
   theme: SceneTheme;
   viewCommand: BoardViewCommand | null;
@@ -21,6 +24,7 @@ export type CellProps = {
   currentPlayer: Player;
   disabled: boolean;
   index: number;
+  coachMark: 'score' | 'block' | 'both' | null;
   isWinning: boolean;
   layout: BoardLayout;
   theme: SceneTheme;

@@ -1,5 +1,5 @@
 import type { BoardLayout } from './boardView';
-import type { Difficulty, GameMode } from './rules';
+import type { Difficulty, GameMode, GameRuleset } from './rules';
 
 export const DIFFICULTY_LABEL: Record<Difficulty, string> = {
   easy: 'Casual',
@@ -22,3 +22,15 @@ export const MODE_DESCRIPTION: Record<GameMode, string> = {
   duo: '2-player mode',
   online: 'online mode',
 };
+
+export const RULESET_LABEL: Record<GameRuleset, string> = {
+  lines: 'Lines',
+  classic: 'Classic',
+};
+
+export const RULESET_DESCRIPTION: Record<GameRuleset, string> = {
+  lines: 'line scoring',
+  classic: 'sudden death',
+};
+
+export const RULESET_OPTIONS: GameRuleset[] = ['lines', 'classic'];

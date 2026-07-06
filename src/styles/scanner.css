@@ -135,6 +135,27 @@
     0 0 24px color-mix(in srgb, var(--app-win) 45%, transparent);
 }
 
+.scanner-cell.coach-score:not(.win) {
+  border-color: color-mix(in srgb, #74f0a7 72%, transparent);
+  box-shadow:
+    inset 0 0 0 2px color-mix(in srgb, #74f0a7 68%, transparent),
+    0 0 18px color-mix(in srgb, #74f0a7 30%, transparent);
+}
+
+.scanner-cell.coach-block:not(.win) {
+  border-color: color-mix(in srgb, #ff6f76 72%, transparent);
+  box-shadow:
+    inset 0 0 0 2px color-mix(in srgb, #ff6f76 68%, transparent),
+    0 0 18px color-mix(in srgb, #ff6f76 28%, transparent);
+}
+
+.scanner-cell.coach-score.coach-block:not(.win) {
+  border-color: color-mix(in srgb, #f8d65a 78%, transparent);
+  box-shadow:
+    inset 0 0 0 2px color-mix(in srgb, #f8d65a 70%, transparent),
+    0 0 20px color-mix(in srgb, #f8d65a 32%, transparent);
+}
+
 .scanner-cell.last:not(.win) {
   box-shadow: inset 0 0 0 2px
     color-mix(in srgb, var(--app-focus) 55%, transparent);

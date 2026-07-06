@@ -3,6 +3,8 @@ import {
   Circle,
   Clipboard,
   HelpCircle,
+  Lightbulb,
+  ListChecks,
   Link2,
   RefreshCw,
   Sparkles,
@@ -18,14 +20,24 @@ import type { BoardLayout } from '../game/boardView';
 import {
   DIFFICULTY_LABEL,
   DIFFICULTY_OPTIONS,
+  RULESET_LABEL,
+  RULESET_OPTIONS,
 } from '../game/options';
-import type { Difficulty, GameMode, GameResult, Player } from '../game/rules';
+import type {
+  Difficulty,
+  GameMode,
+  GameResult,
+  GameRuleset,
+  LineScores,
+  Player,
+} from '../game/rules';
 import type { OnlineStatus } from '../game/useOnlineGame';
 import { THEME_ORDER, THEMES, ThemeId } from '../theme';
 import { ViewSelector } from './ViewSelector';
 
 type Score = Record<Player | 'draws', number>;
 type SoundSetting = 'on' | 'off';
+type CoachSetting = 'auto' | 'on' | 'off';
 
 type OnlinePanelState = {
   canReconnect: boolean;
@@ -38,23 +50,31 @@ type OnlinePanelState = {
 };
 
 type GamePanelProps = {
+  coachEnabled: boolean;
+  coachSetting: CoachSetting;
   copiedSignal: boolean;
   currentPlayer: Player;
   difficulty: Difficulty;
   humanSide: Player;
+  isAiThinking: boolean;
   lastMove: number | null;
   layout: BoardLayout;
+  lineScores: LineScores;
   mode: GameMode;
   oMoves: number;
   online: OnlinePanelState;
+  openerText: string;
   remoteSignal: string;
+  remainingCells: number;
   result: GameResult;
   roundsPlayed: number;
+  ruleset: GameRuleset;
   score: Score;
   soundSetting: SoundSetting;
   status: string;
   themeId: ThemeId;
   xMoves: number;
+  onCoachSettingChange: (setting: CoachSetting) => void;
   onCopySignal: () => void;
   onDifficultyChange: (difficulty: Difficulty) => void;
   onHostOnline: () => void;
@@ -65,6 +85,7 @@ type GamePanelProps = {
   onRemoteSignalChange: (signal: string) => void;
   onResetMatch: () => void;
   onResetRound: () => void;
+  onRulesetChange: (ruleset: GameRuleset) => void;
   onSideChange: (side: Player) => void;
   onThemeChange: (themeId: ThemeId) => void;
   onToggleSound: () => void;
@@ -75,23 +96,31 @@ function markIcon(player: Player) {
 }
 
 export function GamePanel({
+  coachEnabled,
+  coachSetting,
   copiedSignal,
   currentPlayer,
   difficulty,
   humanSide,
+  isAiThinking,
   lastMove,
   layout,
+  lineScores,
   mode,
   oMoves,
   online,
+  openerText,
   remoteSignal,
+  remainingCells,
   result,
   roundsPlayed,
+  ruleset,
   score,
   soundSetting,
   status,
   themeId,
   xMoves,
+  onCoachSettingChange,
   onCopySignal,
   onDifficultyChange,
   onHostOnline,
@@ -102,6 +131,7 @@ export function GamePanel({
   onRemoteSignalChange,
   onResetMatch,
   onResetRound,
+  onRulesetChange,
   onSideChange,
   onThemeChange,
   onToggleSound,
@@ -121,10 +151,16 @@ export function GamePanel({
                 : currentPlayer === 'X'
                   ? 'turn-x'
                   : 'turn-o'
-            }`}
+            } ${isAiThinking ? 'thinking' : ''}`}
             aria-label={status}
           >
-            {result.winner ? <Trophy size={20} /> : markIcon(currentPlayer)}
+            {isAiThinking ? (
+              <span className="thinking-spinner" aria-hidden="true" />
+            ) : result.winner ? (
+              <Trophy size={20} />
+            ) : (
+              markIcon(currentPlayer)
+            )}
             <span>{status}</span>
           </div>
           <div className="icon-row">
@@ -172,6 +208,50 @@ export function GamePanel({
         >
           <span>O</span>
           <strong>{score.O}</strong>
+        </div>
+      </div>
+
+      {ruleset === 'lines' ? (
+        <div className="line-score-card" aria-label="Lines score">
+          <div>
+            <span>X lines</span>
+            <strong>{lineScores.X}</strong>
+          </div>
+          <div>
+            <span>Round</span>
+            <strong>
+              {lineScores.X}-{lineScores.O}
+            </strong>
+          </div>
+          <div>
+            <span>O lines</span>
+            <strong>{lineScores.O}</strong>
+          </div>
+          <div>
+            <span>Empty</span>
+            <strong>{remainingCells}</strong>
+          </div>
+        </div>
+      ) : null}
+
+      <div className="control-group">
+        <span className="control-label">Rules</span>
+        <div className="segmented-control ruleset-control">
+          {RULESET_OPTIONS.map((option) => (
+            <button
+              key={option}
+              className={ruleset === option ? 'active' : ''}
+              type="button"
+              onClick={() => onRulesetChange(option)}
+            >
+              {option === 'lines' ? (
+                <ListChecks size={16} />
+              ) : (
+                <Trophy size={16} />
+              )}
+              <span>{RULESET_LABEL[option]}</span>
+            </button>
+          ))}
         </div>
       </div>
 
@@ -367,10 +447,39 @@ export function GamePanel({
         </div>
       ) : null}
 
+      <div className="control-group">
+        <span className="control-label">Coach</span>
+        <div className="segmented-control coach-control">
+          {(['auto', 'on', 'off'] as const).map((setting) => (
+            <button
+              key={setting}
+              className={coachSetting === setting ? 'active' : ''}
+              type="button"
+              onClick={() => onCoachSettingChange(setting)}
+            >
+              <Lightbulb size={16} />
+              <span>
+                {setting === 'auto'
+                  ? coachEnabled
+                    ? 'Auto on'
+                    : 'Auto'
+                  : setting === 'on'
+                    ? 'On'
+                    : 'Off'}
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div className="match-card">
         <div>
-          <span>Round</span>
-          <strong>{roundsPlayed + 1}</strong>
+          <span>Best 5</span>
+          <strong>{Math.min(roundsPlayed + 1, 5)}</strong>
+        </div>
+        <div>
+          <span>Opener</span>
+          <strong>{openerText}</strong>
         </div>
         <div>
           <span>X moves</span>

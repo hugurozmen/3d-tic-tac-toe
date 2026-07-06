@@ -59,8 +59,11 @@
   z-index: 3;
   left: 50%;
   bottom: clamp(18px, 3vw, 34px);
+  max-width: calc(100% - 36px);
   display: flex;
   align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
   gap: 12px;
   padding: 9px 10px 9px 18px;
   border: 1px solid var(--app-border);
@@ -113,6 +116,15 @@
 
 .round-result.draw .round-result-label svg {
   color: var(--app-muted);
+}
+
+.round-result-opener {
+  color: var(--app-muted);
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .round-result button {

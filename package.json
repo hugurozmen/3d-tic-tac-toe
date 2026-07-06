@@ -8,7 +8,8 @@
     "build": "tsc --noEmit && vite build",
     "online:server": "node server/online-server.mjs",
     "online:test": "node scripts/verify-online-server.mjs",
-    "test": "npm run build && npm run online:test && npm run test:e2e",
+    "test": "npm run build && npm run test:unit && npm run online:test && npm run test:e2e",
+    "test:unit": "vitest run src/**/*.test.ts",
     "test:e2e": "playwright test",
     "preview": "vite preview --host 0.0.0.0",
     "mobile:sync": "npm run build && cap sync",
@@ -37,6 +38,7 @@
     "@vitejs/plugin-react": "^6.0.2",
     "pngjs": "^7.0.0",
     "typescript": "^6.0.3",
-    "vite": "^8.0.16"
+    "vite": "^8.0.16",
+    "vitest": "^4.1.10"
   }
 }

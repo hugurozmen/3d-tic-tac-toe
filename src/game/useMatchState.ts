@@ -2,11 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { feedback } from './feedback';
 import {
   Board,
+  GameRuleset,
   Player,
   countMarks,
   createBoard,
   evaluateBoard,
   getOtherPlayer,
+  getNewCompletedLines,
 } from './rules';
 
 export type Score = Record<Player | 'draws', number>;
@@ -40,16 +42,19 @@ const createScore = (): Score => ({
   draws: 0,
 });
 
-export function useMatchState() {
+export function useMatchState(ruleset: GameRuleset) {
   const [board, setBoard] = useState<Board>(() => createBoard());
   const [currentPlayer, setCurrentPlayer] = useState<Player>('X');
   const [lastMove, setLastMove] = useState<number | null>(null);
   const [score, setScore] = useState<Score>(loadScore);
   const [scoredRound, setScoredRound] = useState<string | null>(null);
+  const [recentLines, setRecentLines] = useState<number[][]>([]);
   const boardRef = useRef(board);
   const currentPlayerRef = useRef(currentPlayer);
+  const rulesetRef = useRef(ruleset);
   const startingPlayerRef = useRef<Player>('X');
-  const result = useMemo(() => evaluateBoard(board), [board]);
+  const recentLinesTimeoutRef = useRef<number | null>(null);
+  const result = useMemo(() => evaluateBoard(board, ruleset), [board, ruleset]);
   const boardSignature = useMemo(
     () => board.map((cell) => cell ?? '-').join(''),
     [board],
@@ -57,6 +62,16 @@ export function useMatchState() {
   const roundsPlayed = score.X + score.O + score.draws;
   const xMoves = countMarks(board, 'X');
   const oMoves = countMarks(board, 'O');
+  const opener = startingPlayerRef.current;
+
+  const clearRecentLines = useCallback(() => {
+    if (recentLinesTimeoutRef.current !== null) {
+      window.clearTimeout(recentLinesTimeoutRef.current);
+      recentLinesTimeoutRef.current = null;
+    }
+
+    setRecentLines([]);
+  }, []);
 
   useEffect(() => {
     try {
@@ -74,8 +89,21 @@ export function useMatchState() {
     currentPlayerRef.current = currentPlayer;
   }, [currentPlayer]);
 
+  useEffect(() => {
+    rulesetRef.current = ruleset;
+  }, [ruleset]);
+
+  useEffect(
+    () => () => {
+      if (recentLinesTimeoutRef.current !== null) {
+        window.clearTimeout(recentLinesTimeoutRef.current);
+      }
+    },
+    [],
+  );
+
   const resetRound = useCallback((starter?: Player) => {
-    const previousResult = evaluateBoard(boardRef.current);
+    const previousResult = evaluateBoard(boardRef.current, rulesetRef.current);
     const roundFinished = Boolean(previousResult.winner) || previousResult.isDraw;
     const nextStarter =
       starter ??
@@ -91,7 +119,8 @@ export function useMatchState() {
     setCurrentPlayer(nextStarter);
     setLastMove(null);
     setScoredRound(null);
-  }, []);
+    clearRecentLines();
+  }, [clearRecentLines]);
 
   const resetMatch = useCallback(() => {
     resetRound('X');
@@ -100,7 +129,8 @@ export function useMatchState() {
 
   const applyMove = useCallback((index: number, player?: Player) => {
     const activeBoard = boardRef.current;
-    const activeResult = evaluateBoard(activeBoard);
+    const activeRuleset = rulesetRef.current;
+    const activeResult = evaluateBoard(activeBoard, activeRuleset);
     const movePlayer = player ?? currentPlayerRef.current;
 
     if (activeBoard[index] || activeResult.winner || activeResult.isDraw) {
@@ -111,13 +141,38 @@ export function useMatchState() {
     const nextPlayer = getOtherPlayer(movePlayer);
 
     next[index] = movePlayer;
+    const newCompletedLines =
+      activeRuleset === 'lines'
+        ? getNewCompletedLines(activeBoard, next, movePlayer)
+        : [];
+
     boardRef.current = next;
     currentPlayerRef.current = nextPlayer;
     setBoard(next);
     setCurrentPlayer(nextPlayer);
     setLastMove(index);
-    feedback.place(movePlayer);
-    return true;
+
+    if (newCompletedLines.length > 0) {
+      setRecentLines(newCompletedLines);
+      feedback.win();
+
+      if (recentLinesTimeoutRef.current !== null) {
+        window.clearTimeout(recentLinesTimeoutRef.current);
+      }
+
+      recentLinesTimeoutRef.current = window.setTimeout(() => {
+        setRecentLines([]);
+        recentLinesTimeoutRef.current = null;
+      }, 2600);
+    } else {
+      feedback.place(movePlayer);
+    }
+
+    return {
+      linesCompleted: newCompletedLines,
+      moved: true,
+      player: movePlayer,
+    };
   }, []);
 
   useEffect(() => {
@@ -168,5 +223,7 @@ export function useMatchState() {
     roundsPlayed,
     score,
     xMoves,
+    opener,
+    recentLines,
   };
 }

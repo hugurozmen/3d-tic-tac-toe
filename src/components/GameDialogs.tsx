@@ -6,17 +6,23 @@ export type PendingConfirm = {
 type GameDialogsProps = {
   guideOpen: boolean;
   pendingConfirm: PendingConfirm | null;
+  piePromptOpen: boolean;
   onCancelConfirm: () => void;
   onCloseGuide: () => void;
   onConfirmPending: () => void;
+  onKeepPie: () => void;
+  onSwapPie: () => void;
 };
 
 export function GameDialogs({
   guideOpen,
   pendingConfirm,
+  piePromptOpen,
   onCancelConfirm,
   onCloseGuide,
   onConfirmPending,
+  onKeepPie,
+  onSwapPie,
 }: GameDialogsProps) {
   return (
     <>
@@ -45,6 +51,36 @@ export function GameDialogs({
                 onClick={onConfirmPending}
               >
                 Switch
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {piePromptOpen ? (
+        <div
+          className="confirm-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Pie Rule decision"
+        >
+          <div className="confirm-card">
+            <strong>Pie Rule</strong>
+            <p>The second player may swap sides after the first move.</p>
+            <div className="confirm-actions">
+              <button
+                className="secondary-action"
+                type="button"
+                onClick={onKeepPie}
+              >
+                Keep sides?
+              </button>
+              <button
+                className="primary-action"
+                type="button"
+                onClick={onSwapPie}
+              >
+                Swap sides?
               </button>
             </div>
           </div>
@@ -97,9 +133,8 @@ export function GameDialogs({
                 <strong>27 cells, 3 floors.</strong> The board is a 3×3×3 cube.
               </li>
               <li>
-                <strong>Three in a row wins</strong> — along a floor, straight
-                down through floors, or on any diagonal, even corner to corner
-                across the whole cube.
+                <strong>Lines mode scores every row.</strong> Fill the board,
+                then the higher line total wins. Classic ends on the first row.
               </li>
               <li>
                 <strong>Three views.</strong> Cube shows everything, Floors

@@ -1,18 +1,24 @@
 import {
   Board,
   Difficulty,
+  GameRuleset,
   Player,
   WINNING_LINES,
-  evaluateBoard,
+  evaluateClassicBoard,
+  evaluateLinesBoard,
   getAvailableMoves,
+  getLineScores,
   getLineThreats,
+  getNewCompletedLines,
   getOtherPlayer,
+  getThreatCells,
 } from './rules';
 
 const LINE_WEIGHTS = [0, 4, 34, 420];
 const CENTER_INDEX = 13;
 const CORNERS = new Set([0, 2, 6, 8, 18, 20, 24, 26]);
 const MIDDLE_FACE_CENTERS = new Set([1, 3, 5, 7, 9, 11, 15, 17, 19, 21, 23, 25]);
+const EDGE_CENTERS = new Set([4, 10, 12, 14, 16, 22]);
 
 const takeRandom = (moves: number[]) =>
   moves[Math.floor(Math.random() * moves.length)] ?? null;
@@ -21,7 +27,7 @@ const findWinningMove = (board: Board, player: Player) =>
   getAvailableMoves(board).find((move) => {
     const next = [...board];
     next[move] = player;
-    return evaluateBoard(next).winner === player;
+    return evaluateClassicBoard(next).winner === player;
   }) ?? null;
 
 const lineScore = (ownCount: number, rivalCount: number) => {
@@ -42,7 +48,7 @@ const lineScore = (ownCount: number, rivalCount: number) => {
 
 const scorePosition = (board: Board, player: Player) => {
   const rival = getOtherPlayer(player);
-  const terminal = evaluateBoard(board);
+  const terminal = evaluateClassicBoard(board);
 
   if (terminal.winner === player) {
     return 10000;
@@ -117,7 +123,7 @@ const scoreTerminal = (
   aiPlayer: Player,
   depthRemaining: number,
 ) => {
-  const result = evaluateBoard(board);
+  const result = evaluateClassicBoard(board);
 
   if (result.winner === aiPlayer) {
     return 100000 + depthRemaining * 120;
@@ -253,7 +259,200 @@ const scoreMove = (
   );
 };
 
-export const chooseAiMove = (
+const lineParticipation = (move: number) =>
+  WINNING_LINES.filter((line) => line.includes(move)).length;
+
+const linesPositionalBonus = (move: number) => {
+  if (move === CENTER_INDEX) {
+    return 36;
+  }
+
+  if (CORNERS.has(move)) {
+    return 18;
+  }
+
+  if (EDGE_CENTERS.has(move)) {
+    return 13;
+  }
+
+  if (MIDDLE_FACE_CENTERS.has(move)) {
+    return 9;
+  }
+
+  return 4;
+};
+
+const countOpenLinesThroughMove = (
+  board: Board,
+  move: number,
+  player: Player,
+) => {
+  const rival = getOtherPlayer(player);
+
+  return WINNING_LINES.filter(
+    (line) =>
+      line.includes(move) &&
+      line.every((index) => index === move || board[index] !== rival),
+  ).length;
+};
+
+const scoreLinesBoard = (board: Board, player: Player) => {
+  const rival = getOtherPlayer(player);
+  const result = evaluateLinesBoard(board);
+  let score =
+    (result.lineScores[player] - result.lineScores[rival]) *
+    (result.isComplete ? 900 : 155);
+
+  if (result.isComplete) {
+    if (result.winner === player) {
+      return 120000 + score;
+    }
+
+    if (result.winner === rival) {
+      return -120000 + score;
+    }
+
+    return score;
+  }
+
+  for (const line of WINNING_LINES) {
+    const values = line.map((index) => board[index]);
+    const ownCount = values.filter((cell) => cell === player).length;
+    const rivalCount = values.filter((cell) => cell === rival).length;
+
+    if (ownCount > 0 && rivalCount > 0) {
+      continue;
+    }
+
+    if (ownCount > 0) {
+      score += [0, 9, 54, 170][ownCount];
+    } else if (rivalCount > 0) {
+      score -= [0, 8, 58, 185][rivalCount] * 1.08;
+    } else {
+      score += 2;
+    }
+  }
+
+  score += getThreatCells(board, player).length * 34;
+  score -= getThreatCells(board, rival).length * 42;
+
+  return score;
+};
+
+const scoreLinesCandidateShallow = (
+  board: Board,
+  move: number,
+  player: Player,
+) => {
+  const rival = getOtherPlayer(player);
+  const next = [...board];
+  const beforeScores = getLineScores(board);
+  next[move] = player;
+  const afterScores = getLineScores(next);
+  const immediateGain = afterScores[player] - beforeScores[player];
+  const blocksThreat = getThreatCells(board, rival).includes(move) ? 1 : 0;
+  const createsThreats =
+    getThreatCells(next, player).length - getThreatCells(board, player).length;
+
+  return (
+    scoreLinesBoard(next, player) +
+    immediateGain * 230 +
+    getNewCompletedLines(board, next, player).length * 90 +
+    blocksThreat * 76 +
+    Math.max(0, createsThreats) * 28 +
+    countOpenLinesThroughMove(board, move, player) * 8 +
+    lineParticipation(move) * 5 +
+    linesPositionalBonus(move)
+  );
+};
+
+const getLinesCandidateMoves = (board: Board, player: Player) =>
+  getAvailableMoves(board)
+    .map((move) => ({
+      move,
+      score: scoreLinesCandidateShallow(board, move, player),
+    }))
+    .sort((a, b) => b.score - a.score)
+    .map(({ move }) => move);
+
+const scoreLinesMove = (
+  board: Board,
+  move: number,
+  player: Player,
+  depth: number,
+  candidateLimit: number,
+): number => {
+  const next = [...board];
+  next[move] = player;
+  const ownScore = scoreLinesCandidateShallow(board, move, player);
+
+  if (depth <= 0 || getAvailableMoves(next).length === 0) {
+    return ownScore;
+  }
+
+  const rival = getOtherPlayer(player);
+  const rivalCandidates = getLinesCandidateMoves(next, rival).slice(
+    0,
+    candidateLimit,
+  );
+  const rivalBest = rivalCandidates.reduce((best, rivalMove) => {
+    return Math.max(
+      best,
+      scoreLinesMove(next, rivalMove, rival, depth - 1, candidateLimit),
+    );
+  }, Number.NEGATIVE_INFINITY);
+
+  return ownScore - (Number.isFinite(rivalBest) ? rivalBest * 0.55 : 0);
+};
+
+const chooseLinesMove = (
+  board: Board,
+  player: Player,
+  difficulty: Difficulty,
+) => {
+  const moves = getAvailableMoves(board);
+
+  if (moves.length === 0) {
+    return null;
+  }
+
+  if (difficulty === 'easy' && Math.random() < 0.34) {
+    return takeRandom(moves);
+  }
+
+  const depthByDifficulty: Record<Difficulty, number> = {
+    easy: 0,
+    balanced: 0,
+    hard: 1,
+    master: 2,
+  };
+  const candidateLimitByDifficulty: Record<Difficulty, number> = {
+    easy: 7,
+    balanced: 8,
+    hard: 8,
+    master: 10,
+  };
+  const depth = depthByDifficulty[difficulty];
+  const candidateLimit = candidateLimitByDifficulty[difficulty];
+  const ranked = moves
+    .map((move) => ({
+      move,
+      score: scoreLinesMove(board, move, player, depth, candidateLimit),
+    }))
+    .sort((a, b) => b.score - a.score);
+
+  if (difficulty === 'balanced' && ranked[1] && Math.random() < 0.16) {
+    return ranked[1].move;
+  }
+
+  if (difficulty === 'easy' && ranked[2] && Math.random() < 0.28) {
+    return ranked[2].move;
+  }
+
+  return ranked[0]?.move ?? takeRandom(moves);
+};
+
+const chooseClassicMove = (
   board: Board,
   player: Player,
   difficulty: Difficulty,
@@ -332,3 +531,39 @@ export const chooseAiMove = (
 
   return ranked[0]?.move ?? takeRandom(moves);
 };
+
+export const shouldSwapClassicPie = (
+  board: Board,
+  difficulty: Difficulty,
+) => {
+  const movesPlayed = board.filter(Boolean).length;
+
+  if (movesPlayed !== 1) {
+    return false;
+  }
+
+  const firstMove = board.findIndex(Boolean);
+  const value =
+    positionalBonus(firstMove) * 3 +
+    lineParticipation(firstMove) * 8 +
+    (firstMove === CENTER_INDEX ? 34 : 0);
+
+  const threshold: Record<Difficulty, number> = {
+    easy: 92,
+    balanced: 78,
+    hard: 66,
+    master: 56,
+  };
+
+  return value >= threshold[difficulty];
+};
+
+export const chooseAiMove = (
+  board: Board,
+  player: Player,
+  difficulty: Difficulty,
+  ruleset: GameRuleset = 'classic',
+) =>
+  ruleset === 'lines'
+    ? chooseLinesMove(board, player, difficulty)
+    : chooseClassicMove(board, player, difficulty);

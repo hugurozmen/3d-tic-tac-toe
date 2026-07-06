@@ -17,8 +17,11 @@ import type { SceneContentProps } from './types';
 export function SceneContent({
   armedCell,
   board,
+  coachBlockCells,
+  coachScoreCells,
   currentPlayer,
   disabled,
+  highlightLines,
   layout,
   theme,
   viewCommand,
@@ -27,6 +30,13 @@ export function SceneContent({
   onSelect,
 }: SceneContentProps) {
   const group = useRef<THREE.Group>(null);
+  const highlightedCells = new Set([
+    ...winningLine,
+    ...highlightLines.flatMap((line) => line),
+  ]);
+  const scoreCells = new Set(coachScoreCells);
+  const blockCells = new Set(coachBlockCells);
+  const beamLine = winningLine.length === 3 ? winningLine : highlightLines[0] ?? [];
 
   useFrame(({ clock }) => {
     if (!group.current) {
@@ -48,24 +58,38 @@ export function SceneContent({
         ) : null}
         {layout === 'floors' ? <FloorPlates theme={theme} /> : null}
         {theme.coreGlow ? <CoreGlow theme={theme} /> : null}
-        {theme.winBeam && winningLine.length === 3 ? (
-          <WinBeam layout={layout} line={winningLine} theme={theme} />
+        {theme.winBeam && beamLine.length === 3 ? (
+          <WinBeam layout={layout} line={beamLine} theme={theme} />
         ) : null}
-        {board.map((value, index) => (
-          <Cell
-            key={index}
-            armed={armedCell === index}
-            currentPlayer={currentPlayer}
-            disabled={disabled}
-            index={index}
-            isWinning={winningLine.includes(index)}
-            layout={layout}
-            theme={theme}
-            value={value}
-            onArm={onArmCell}
-            onSelect={onSelect}
-          />
-        ))}
+        {board.map((value, index) => {
+          const isScore = !value && scoreCells.has(index);
+          const isBlock = !value && blockCells.has(index);
+          const coachMark =
+            isScore && isBlock
+              ? 'both'
+              : isScore
+                ? 'score'
+                : isBlock
+                  ? 'block'
+                  : null;
+
+          return (
+            <Cell
+              key={index}
+              armed={armedCell === index}
+              coachMark={coachMark}
+              currentPlayer={currentPlayer}
+              disabled={disabled}
+              index={index}
+              isWinning={highlightedCells.has(index)}
+              layout={layout}
+              theme={theme}
+              value={value}
+              onArm={onArmCell}
+              onSelect={onSelect}
+            />
+          );
+        })}
       </group>
       {theme.scanFloor ? <ScanFloor layout={layout} theme={theme} /> : null}
       <Text
