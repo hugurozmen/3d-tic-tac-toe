@@ -191,6 +191,49 @@ test('guide dialog closes with Escape and returns focus', async ({ page }) => {
   await expect(helpButton).toBeFocused();
 });
 
+test('Lines is the default ruleset and all themes remain switchable', async ({
+  page,
+}) => {
+  await openGame(page, { layout: 'scanner' });
+
+  await expect(
+    page.locator('.ruleset-control button.active'),
+  ).toContainText('Lines');
+  await expect(page.locator('.line-score-card')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Classic' }).click();
+  await expect(
+    page.locator('.ruleset-control button.active'),
+  ).toContainText('Classic');
+  await expect(page.locator('.line-score-card')).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Lines' }).click();
+  await expect(
+    page.locator('.ruleset-control button.active'),
+  ).toContainText('Lines');
+  await expect(page.locator('.line-score-card')).toBeVisible();
+
+  const expectedThemes = [
+    ['Glass', 'glass'],
+    ['Hologram', 'holo'],
+    ['Frosted', 'frosted'],
+    ['Crystal', 'crystal'],
+    ['Cage', 'cage'],
+  ] as const;
+
+  for (const [label, themeId] of expectedThemes) {
+    await page.getByRole('button', { name: label }).click();
+    await expect(page.locator('.app-shell')).toHaveAttribute(
+      'data-theme',
+      themeId,
+    );
+    await expect(page.locator('.theme-option.active')).toContainText(label);
+    await expect(
+      page.getByRole('button', { name: /Place X at cell 10\b/ }),
+    ).toBeVisible();
+  }
+});
+
 test('desktop 3D cube renders real canvas pixels', async ({ page }) => {
   await openGame(page, { layout: 'cube' });
 

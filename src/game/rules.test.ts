@@ -111,6 +111,20 @@ describe('3D XOX rules engine', () => {
     expect(result.lineScores).toEqual({ X: 1, O: 0 });
   });
 
+  it('ignores mixed lines when scoring Lines boards', () => {
+    const board = createBoard();
+    board[0] = 'X';
+    board[1] = 'X';
+    board[2] = 'O';
+    board[3] = 'O';
+    board[4] = 'O';
+    board[5] = 'O';
+
+    expect(getLineScores(board)).toEqual({ X: 0, O: 1 });
+    expect(getCompletedLines(board, 'X')).toHaveLength(0);
+    expect(evaluateLinesBoard(board).lineScores).toEqual({ X: 0, O: 1 });
+  });
+
   it('finishes Lines on a full board and uses line score for the winner', () => {
     const board = createBoard();
     board.fill('X');
