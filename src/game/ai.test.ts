@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { chooseAiMove } from './ai';
+import { chooseAiMove, shouldSwapClassicPie } from './ai';
 import {
   DIFFICULTY_OPTIONS,
   RULESET_OPTIONS,
@@ -76,6 +76,31 @@ describe('Classic AI tactics', () => {
   });
 });
 
+describe('Classic Pie Rule AI state', () => {
+  it('only evaluates a swap decision after exactly one opening move', () => {
+    const board = createBoard();
+
+    expect(shouldSwapClassicPie(board, 'master')).toBe(false);
+
+    board[13] = 'X';
+    expect(shouldSwapClassicPie(board, 'easy')).toBe(true);
+    expect(shouldSwapClassicPie(board, 'master')).toBe(true);
+
+    board[0] = 'O';
+    expect(shouldSwapClassicPie(board, 'master')).toBe(false);
+  });
+
+  it('makes stronger AI more willing to swap valuable corner openings', () => {
+    const board = createBoard();
+    board[0] = 'X';
+
+    expect(shouldSwapClassicPie(board, 'easy')).toBe(false);
+    expect(shouldSwapClassicPie(board, 'balanced')).toBe(false);
+    expect(shouldSwapClassicPie(board, 'hard')).toBe(true);
+    expect(shouldSwapClassicPie(board, 'master')).toBe(true);
+  });
+});
+
 describe('AI legal move guardrails', () => {
   it('returns legal moves across rulesets and difficulties', () => {
     const board: Board = createBoard();
@@ -94,5 +119,30 @@ describe('AI legal move guardrails', () => {
         expect(board[move as number]).toBeNull();
       }
     }
+  });
+
+  it('keeps Master stable for repeated Lines and Classic positions', () => {
+    const linesBoard = createBoard();
+
+    for (const index of [0, 2, 6, 8, 18, 20, 24, 26]) {
+      linesBoard[index] = 'O';
+    }
+
+    const classicBoard = createBoard();
+    classicBoard[0] = 'X';
+    classicBoard[1] = 'X';
+    classicBoard[13] = 'O';
+
+    const linesMoves = Array.from({ length: 5 }, () =>
+      chooseAiMove(linesBoard, 'O', 'master', 'lines'),
+    );
+    const classicMoves = Array.from({ length: 5 }, () =>
+      chooseAiMove(classicBoard, 'O', 'master', 'classic'),
+    );
+
+    expect(new Set(linesMoves).size).toBe(1);
+    expect(linesMoves[0]).toBe(13);
+    expect(new Set(classicMoves).size).toBe(1);
+    expect(classicMoves[0]).toBe(2);
   });
 });

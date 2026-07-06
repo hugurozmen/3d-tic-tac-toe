@@ -58,6 +58,8 @@ const url = `ws://127.0.0.1:${server.port}`;
 let host = await openClient(url);
 const guest = await openClient(url);
 const invalidClient = await openClient(url);
+const defaultHost = await openClient(url);
+const defaultGuest = await openClient(url);
 
 try {
   const health = await fetch(`http://127.0.0.1:${server.port}/health`).then(
@@ -77,6 +79,32 @@ try {
     'invalid settings rejection',
   );
   invalidClient.close();
+
+  defaultHost.send(JSON.stringify({ type: 'create-room' }));
+  const defaultRoom = await waitFor(
+    defaultHost,
+    (message) =>
+      message.type === 'room-created' &&
+      message.player === 'X' &&
+      message.settings?.ruleset === 'lines' &&
+      message.settings?.classicPieRule === false,
+    'default lines room-created',
+  );
+
+  defaultGuest.send(
+    JSON.stringify({ roomId: defaultRoom.roomId, type: 'join-room' }),
+  );
+  const defaultJoined = await waitFor(
+    defaultGuest,
+    (message) =>
+      message.type === 'room-joined' &&
+      message.player === 'O' &&
+      message.settings?.ruleset === 'lines' &&
+      message.settings?.classicPieRule === false,
+    'default lines room-joined',
+  );
+  defaultHost.close();
+  defaultGuest.close();
 
   const settings = { classicPieRule: false, ruleset: 'classic' };
 
@@ -185,6 +213,8 @@ try {
   console.log(
     JSON.stringify(
       {
+        defaultJoined,
+        defaultRoom,
         health,
         invalidSettingsRejected,
         joined,
@@ -206,5 +236,7 @@ try {
   host.close();
   guest.close();
   invalidClient.close();
+  defaultHost.close();
+  defaultGuest.close();
   await server.close();
 }
