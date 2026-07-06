@@ -553,6 +553,8 @@ h1 {
 .online-actions button:focus-visible,
 .online-connect:focus-visible,
 .theme-option:focus-visible,
+.daily-cell:focus-visible,
+.daily-share:focus-visible,
 .primary-action:focus-visible,
 .secondary-action:focus-visible,
 .scanner-cell:focus-visible,
@@ -814,6 +816,282 @@ h1 {
 .online-error {
   margin: 0;
   color: var(--mark-x);
+}
+
+.progress-card,
+.daily-puzzle-card {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--app-border);
+  border-radius: var(--radius-l);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--app-panel-strong) 46%, transparent),
+    color-mix(in srgb, var(--app-tile) 86%, transparent)
+  );
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--app-text) 6%, transparent);
+}
+
+.progress-card-header,
+.daily-puzzle-header,
+.theme-progress-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.progress-card-header span,
+.daily-puzzle-header span,
+.theme-progress-heading span,
+.streak-tile span,
+.retention-stat-grid span,
+.theme-progress-row span,
+.daily-puzzle-floor > span,
+.daily-result-moves span {
+  color: var(--app-muted);
+  font-size: 0.68rem;
+  font-weight: 850;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.progress-card-header strong,
+.daily-puzzle-header strong,
+.theme-progress-heading strong {
+  color: var(--app-text);
+  font-size: 0.82rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.daily-puzzle-header > span {
+  min-height: 26px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 9px;
+  border: 1px solid var(--app-border);
+  border-radius: 999px;
+  color: var(--app-primary);
+  background: color-mix(in srgb, var(--app-primary) 10%, transparent);
+}
+
+.streak-grid,
+.retention-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.retention-stat-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.streak-tile,
+.retention-stat-grid div {
+  min-height: 58px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 8px 6px;
+  border: 1px solid var(--app-border);
+  border-radius: var(--radius-s);
+  background: color-mix(in srgb, var(--app-panel-strong) 54%, transparent);
+  text-align: center;
+}
+
+.streak-tile strong,
+.retention-stat-grid strong {
+  color: var(--app-text);
+  font-family: var(--font-display);
+  font-size: 1.22rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.master-badge.earned {
+  border-color: color-mix(in srgb, var(--app-win) 58%, var(--app-border));
+  background: color-mix(in srgb, var(--app-win) 12%, var(--app-panel-strong));
+}
+
+.theme-progress-list {
+  display: grid;
+  gap: 9px;
+}
+
+.theme-progress-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px 12px;
+  align-items: center;
+}
+
+.theme-progress-row small {
+  display: block;
+  margin-top: 3px;
+  color: var(--app-muted);
+  font-size: 0.72rem;
+  font-weight: 650;
+  line-height: 1.25;
+}
+
+.theme-progress-row strong {
+  color: var(--app-text);
+  font-size: 0.74rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.theme-progress-row i {
+  grid-column: 1 / -1;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--app-text) 10%, transparent);
+}
+
+.theme-progress-row i span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(
+    90deg,
+    var(--app-primary),
+    color-mix(in srgb, var(--app-win) 72%, var(--app-primary))
+  );
+}
+
+.daily-puzzle-card p,
+.daily-puzzle-result p {
+  margin: 0;
+  color: color-mix(in srgb, var(--app-text) 84%, transparent);
+  font-size: 0.82rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.daily-puzzle-board {
+  display: grid;
+  gap: 8px;
+}
+
+.daily-puzzle-floor {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+
+.daily-puzzle-grid {
+  display: grid;
+  grid-template-columns: repeat(9, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.daily-cell {
+  min-width: 0;
+  height: 28px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid var(--app-border);
+  border-radius: 7px;
+  color: var(--app-muted);
+  background: color-mix(in srgb, var(--app-panel-strong) 64%, transparent);
+  cursor: pointer;
+  font-size: 0.66rem;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  transition:
+    border-color 180ms ease,
+    background-color 180ms ease,
+    color 180ms ease,
+    transform 120ms ease;
+}
+
+.daily-cell:active {
+  transform: scale(0.94);
+}
+
+.daily-cell:disabled {
+  cursor: default;
+}
+
+.daily-cell.occupied {
+  color: var(--app-text);
+  background: color-mix(in srgb, var(--app-tile) 88%, transparent);
+}
+
+.daily-cell.mark-x {
+  border-color: color-mix(in srgb, var(--mark-x) 45%, var(--app-border));
+  color: var(--mark-x);
+}
+
+.daily-cell.mark-o {
+  border-color: color-mix(in srgb, var(--mark-o) 45%, var(--app-border));
+  color: var(--mark-o);
+}
+
+.daily-cell.picked {
+  border-color: color-mix(in srgb, var(--app-primary) 68%, var(--app-border));
+  color: var(--app-primary);
+  background: color-mix(in srgb, var(--app-primary) 13%, var(--app-tile));
+}
+
+.daily-cell.best {
+  border-color: color-mix(in srgb, var(--app-win) 74%, var(--app-border));
+  color: var(--app-win);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--app-win) 44%, transparent);
+}
+
+.daily-puzzle-result {
+  display: grid;
+  gap: 9px;
+  padding: 10px;
+  border: 1px solid var(--app-border);
+  border-radius: var(--radius-s);
+  background: color-mix(in srgb, var(--app-panel-strong) 58%, transparent);
+}
+
+.daily-puzzle-result.solved {
+  border-color: color-mix(in srgb, var(--app-win) 52%, var(--app-border));
+}
+
+.daily-puzzle-result.missed {
+  border-color: color-mix(in srgb, var(--app-primary) 42%, var(--app-border));
+}
+
+.daily-result-moves {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.daily-result-moves span {
+  min-height: 24px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 8px;
+  border: 1px solid var(--app-border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--app-tile) 78%, transparent);
+}
+
+.daily-share {
+  min-height: 36px;
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-s);
+  color: var(--app-primary-text);
+  background: var(--app-primary);
+  cursor: pointer;
+  font-weight: 900;
 }
 
 .match-card {
