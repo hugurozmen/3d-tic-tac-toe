@@ -15,6 +15,7 @@ import type {
   BoardViewAction,
   BoardViewCommand,
 } from './game/boardView';
+import { getAnimationTone } from './game/animationEvents';
 import { chooseAiMove, shouldSwapClassicPie } from './game/ai';
 import { getCoachLadder } from './game/coachLadder';
 import { getCoachHints } from './game/coach';
@@ -76,7 +77,14 @@ const getInitialLayout = (): BoardLayout => {
 };
 
 const COACH_OPTIONS = ['auto', 'on', 'off'] as const;
-const ENDGAME_OPTIONS = ['standard', 'powers-v2'] as const;
+const ENDGAME_OPTIONS = ['standard', 'powers-v3'] as const;
+const POWER_SELECTION_BY_ENDGAME: Record<
+  Exclude<LinesEndgameMode, 'standard'>,
+  FinalSixPowerId
+> = {
+  'powers-v2': 'power-cell',
+  'powers-v3': 'charged-cell',
+};
 type CoachSetting = (typeof COACH_OPTIONS)[number];
 const ONLINE_CLASSIC_PIE_RULE = false;
 const NARROW_3D_RETRY_DELAY_MS = 140;
@@ -113,6 +121,7 @@ export function App() {
     ruleset === 'lines' && mode !== 'online' ? linesEndgameMode : 'standard';
   const {
     applyMove,
+    animationEvents,
     baseLineScores,
     board,
     currentPlayer,
@@ -192,7 +201,7 @@ export function App() {
   const [pieDecisionDone, setPieDecisionDone] = useState(false);
   const [isAiThinking, setIsAiThinking] = useState(false);
   const [powerSelection, setPowerSelection] =
-    useState<FinalSixPowerId>('power-cell');
+    useState<FinalSixPowerId>('charged-cell');
   const [difficultyStreaks, setDifficultyStreaks] = useState(
     loadDifficultyStreaks,
   );
@@ -305,6 +314,15 @@ export function App() {
   const showCoachPrompt =
     mode !== 'online' && coachSetting === 'off' && completedLocalRounds < 3;
 
+  useEffect(() => {
+    if (
+      effectiveLinesEndgameMode === 'powers-v3' &&
+      !['charged-cell', 'shield-cell'].includes(powerSelection)
+    ) {
+      setPowerSelection('charged-cell');
+    }
+  }, [effectiveLinesEndgameMode, powerSelection]);
+
   // Narrow embedded browsers can cold-paint WebGL blank when restored into 3D.
   useLayoutEffect(() => {
     if (
@@ -408,7 +426,9 @@ export function App() {
       parts.push(`${blockCount} ${blockText}`);
     }
 
-    if (recentImpact.powerMessage) {
+    if (recentImpact.powerMessages.length > 0) {
+      parts.push(...recentImpact.powerMessages);
+    } else if (recentImpact.powerMessage) {
       parts.push(recentImpact.powerMessage);
     } else if (bonusPoints > 0) {
       parts.push(`+${bonusPoints} bonus`);
@@ -426,6 +446,26 @@ export function App() {
     result.lineScores.X,
     ruleset,
   ]);
+
+  useEffect(() => {
+    const latest = animationEvents[animationEvents.length - 1];
+
+    if (!latest) {
+      return;
+    }
+
+    if (latest.type === 'final-six-start') {
+      flashNotice('Final Six: cube charged', 'system');
+      return;
+    }
+
+    if (latest.type === 'power-selected') {
+      flashNotice(
+        `${latest.player} chose ${FINAL_SIX_POWER_LABEL[latest.power as FinalSixPowerId] ?? latest.power}`,
+        getAnimationTone(latest) === 'block' ? 'block' : 'system',
+      );
+    }
+  }, [animationEvents, flashNotice]);
 
   useEffect(() => {
     if (!pieDecisionPending) {
@@ -595,26 +635,28 @@ export function App() {
       return;
     }
 
-    const choice = chooseFinalSixPower(board, aiPlayer);
+    const choice = chooseFinalSixPower(
+      board,
+      aiPlayer,
+      effectiveLinesEndgameMode === 'powers-v2' ? 'powers-v2' : 'powers-v3',
+    );
 
     if (!choice) {
       return;
     }
 
     const timer = window.setTimeout(() => {
-      if (pickFinalSixPower(aiPlayer, choice)) {
-        flashNotice(`AI chose ${FINAL_SIX_POWER_LABEL[choice.id]}`);
-      }
+      pickFinalSixPower(aiPlayer, choice);
     }, 520);
 
     return () => window.clearTimeout(timer);
   }, [
     aiPlayer,
     board,
-    flashNotice,
     mode,
     pickFinalSixPower,
     powerPicker,
+    effectiveLinesEndgameMode,
     result.isDraw,
     result.winner,
   ]);
@@ -623,7 +665,7 @@ export function App() {
     (suggestedMove: number | null) => {
       if (
         suggestedMove === null ||
-        effectiveLinesEndgameMode !== 'powers-v2' ||
+        !['powers-v2', 'powers-v3'].includes(effectiveLinesEndgameMode) ||
         finalSixPowers.phase !== 'active'
       ) {
         return suggestedMove;
@@ -820,15 +862,11 @@ export function App() {
         }
 
         if (
-          pickFinalSixPower(powerPicker, {
+          !pickFinalSixPower(powerPicker, {
             id: powerSelection,
             targetCell: index,
           })
         ) {
-          flashNotice(
-            `${powerPicker} chose ${FINAL_SIX_POWER_LABEL[powerSelection]}`,
-          );
-        } else {
           flashNotice('Choose a glowing power target');
         }
 
@@ -939,6 +977,9 @@ export function App() {
       'Switching the Lines endgame resets the active best of 5.',
       () => {
         setLinesEndgameMode(nextEndgameMode);
+        if (nextEndgameMode !== 'standard') {
+          setPowerSelection(POWER_SELECTION_BY_ENDGAME[nextEndgameMode]);
+        }
         resetMatch();
       },
     );
@@ -1276,6 +1317,7 @@ export function App() {
       <GameStage
         ref={stageRef}
         board={board}
+        animationEvents={animationEvents}
         coachBlockCells={coachBlockCells}
         coachHints={coachHints}
         coachScoreCells={coachScoreCells}
@@ -1312,6 +1354,7 @@ export function App() {
 
       <GamePanel
         baseLineScores={baseLineScores}
+        animationEvents={animationEvents}
         coachEnabled={coachEnabled}
         coachDisabledOnline={mode === 'online'}
         coachSetting={coachSetting}

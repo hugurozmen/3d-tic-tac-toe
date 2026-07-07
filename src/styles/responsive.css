@@ -8,15 +8,25 @@
   .stage-toast,
   .stage-toast.notice-score.multi,
   .final-phase-cue,
+  .game-stage.final-six-animating::before,
+  .game-stage.match-win-animating .round-result,
   .confirm-card,
   .round-result.win-x .round-result-label svg,
   .round-result.win-o .round-result-label svg,
   .stage-loading-cube i,
   .line-score-tile.score-bump,
   .line-score-tile.score-bump::before,
+  .score-row.match-finished .score-tile,
   .line-score-empty.tension,
-  .scanner-cell.power-trigger {
-    animation: none;
+  .scanner-board.final-six-animating .scanner-grid,
+  .scanner-cell.place-event,
+  .scanner-cell.score-event,
+  .scanner-cell.block-event,
+  .scanner-cell.power-event,
+  .scanner-cell.power-trigger,
+  .scanner-cell.power-cell,
+  .scanner-cell.power-preview-charged-cell {
+    animation: none !important;
   }
 
   .scanner-cell,

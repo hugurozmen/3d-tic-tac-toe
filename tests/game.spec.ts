@@ -476,10 +476,36 @@ test('lines mode scores completed lines without ending the round', async ({
   await expect(page.locator('.line-score-card')).toContainText('X lines');
   await expect(page.locator('.line-score-card')).toContainText('1');
   await expect(page.getByText('X +1 line')).toBeVisible();
+  await expect(page.locator('.scanner-cell.score-event').first()).toBeVisible();
+  await expect(
+    page.getByRole('button', {
+      name: /Cell 12, X, scored line, scoring animation active, floor 2/,
+    }),
+  ).toBeVisible();
   await expect(page.getByText(/wins the round/i)).toHaveCount(0);
   await expect(
     page.getByRole('button', { name: /Place O at cell 15\b/ }),
   ).toBeVisible();
+});
+
+test('blocking a threat gets red scanner feedback', async ({ page }) => {
+  await openGame(page, { layout: 'scanner' });
+  await chooseTwoPlayer(page);
+  await showFloor(page, 2);
+
+  await place(page, 'X', 13);
+  await place(page, 'O', 10);
+  await place(page, 'X', 14);
+  await place(page, 'O', 11);
+  await place(page, 'X', 12);
+
+  await expect(page.locator('.scanner-cell.block-event').first()).toBeVisible();
+  await expect(
+    page.getByRole('button', {
+      name: /Cell 12, X, block animation active, floor 2/,
+    }),
+  ).toBeVisible();
+  await expect(page.locator('.line-score-card.block-event')).toBeVisible();
 });
 
 test('multi-line scoring gets special scanner feedback', async ({ page }) => {
@@ -511,9 +537,31 @@ test('multi-line scoring gets special scanner feedback', async ({ page }) => {
     'X +4 lines',
   );
   await expect(page.locator('.line-score-x.score-bump.multi-line')).toBeVisible();
+  await expect(page.locator('.scanner-cell.score-event').first()).toBeVisible();
   await expect(
-    page.getByRole('button', { name: /Cell 14, X, scored line, floor 2/ }),
+    page.getByRole('button', {
+      name: /Cell 14, X, scored line, scoring animation active, floor 2/,
+    }),
   ).toBeVisible();
+});
+
+test('reduced motion keeps animation states without large scanner motion', async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await openGame(page, { layout: 'scanner' });
+  await chooseTwoPlayer(page);
+
+  await place(page, 'X', 10);
+  await place(page, 'O', 13);
+  await place(page, 'X', 11);
+  await place(page, 'O', 14);
+  await place(page, 'X', 12);
+
+  const scoreEvent = page.locator('.scanner-cell.score-event').first();
+
+  await expect(scoreEvent).toBeVisible();
+  await expect(scoreEvent).toHaveCSS('animation-name', 'none');
 });
 
 test('coach mode marks blocking and combined cells on the scanner board', async ({
@@ -627,11 +675,11 @@ test('local Lines Final Six Powers choose board targets and add bonus score', as
 }) => {
   await openGame(page, { layout: 'scanner' });
   await chooseTwoPlayer(page);
-  await page.getByRole('button', { name: 'Powers v2 Experimental' }).click();
+  await page.getByRole('button', { name: 'Powers v3 Experimental' }).click();
   await expect(page.locator('.line-score-card')).toContainText('X total');
   await expect(page.locator('.line-score-card')).toContainText('Bonus');
   await expect(page.locator('.power-card')).toContainText(
-    'Choose powers on the board',
+    'choose on the board',
   );
   await expect(page.locator('.power-options')).toHaveCount(0);
 
@@ -647,39 +695,45 @@ test('local Lines Final Six Powers choose board targets and add bonus score', as
   }
 
   await expect(page.locator('.power-draft-status')).toContainText('O chooses');
+  await expect(page.locator('.game-stage.final-six-animating')).toBeVisible();
+  await expect(
+    page.locator('.stage-toast.notice-system').getByText('Final Six: cube charged'),
+  ).toBeVisible();
   const powerOptions = page.locator('.power-options');
 
-  await powerOptions.getByRole('button', { name: 'Surge' }).click();
-  await expect(
-    page.locator('.scanner-cell.power-preview-line-surge-line').first(),
-  ).toBeVisible();
   await powerOptions.getByRole('button', { name: 'Shield' }).click();
   await expect(
     page.locator('.scanner-cell.power-preview-line-shield-line').first(),
   ).toBeVisible();
-  await powerOptions.getByRole('button', { name: 'Cell' }).click();
+  await expect(
+    page.locator('.scanner-cell.power-preview-shield-cell').first(),
+  ).toBeVisible();
+  await powerOptions.getByRole('button', { name: 'Charge' }).click();
   await expect(
     page.getByRole('button', {
-      name: /Place O at cell 22, floor 3.*\+2 preview for Power Cell/,
+      name: /Place O at cell 22, floor 3.*\+2 preview for Charged Cell/,
     }),
   ).toBeVisible();
+  await expect(page.locator('.scanner-board.power-charged')).toBeVisible();
   await place(page, 'O', 22);
 
   await expect(page.locator('.power-draft-status')).toContainText('X chooses');
   await expect(
     page.getByRole('button', {
-      name: /Place X at cell 25, floor 3.*\+2 preview for Power Cell/,
+      name: /Place X at cell 25, floor 3.*\+2 preview for Charged Cell/,
     }),
   ).toBeVisible();
   await place(page, 'X', 25);
 
   await expect(page.locator('.power-card')).toContainText('O Power');
-  await expect(page.locator('.power-card')).toContainText('Power Cell');
+  await expect(page.locator('.power-card')).toContainText('Charged Cell');
   await expect(page.locator('.scanner-cell.power-cell')).toHaveCount(2);
 
   await place(page, 'O', 22);
 
-  await expect(page.getByText(/Power Cell \+2/)).toBeVisible();
+  await expect(page.getByText(/Charged Cell \+2/)).toBeVisible();
+  await expect(page.locator('.scanner-cell.power-event').first()).toBeVisible();
+  await expect(page.locator('.line-score-bonus.power-bonus-bump')).toBeVisible();
   await expect(page.locator('.power-card')).toContainText('Bonus 0-2');
   await expect(page.locator('.line-bonus-note')).toContainText(
     'Bonus 0-2',
@@ -727,7 +781,7 @@ test('online host and guest can join and relay a scanner move', async ({
   await expect(
     host
       .locator('.endgame-control')
-      .getByRole('button', { name: 'Powers v2 Experimental' }),
+      .getByRole('button', { name: 'Powers v3 Experimental' }),
   ).toBeDisabled();
 
   await host.getByRole('button', { name: 'Host' }).click();

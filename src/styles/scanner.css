@@ -108,6 +108,12 @@
   box-shadow: 0 0 10px color-mix(in srgb, var(--hint-both) 62%, transparent);
 }
 
+.scanner-dot.dot-power-charged {
+  border-color: color-mix(in srgb, var(--hint-both) 60%, transparent);
+  background: color-mix(in srgb, var(--hint-both) 44%, transparent);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--hint-both) 22%, transparent);
+}
+
 .scanner-dot.dot-power-surge {
   border-color: transparent;
   background: var(--hint-score);
@@ -265,6 +271,34 @@
     0 0 22px color-mix(in srgb, var(--hint-both) 30%, transparent);
 }
 
+.scanner-board.power-charged .scanner-grid {
+  box-shadow:
+    0 18px 44px color-mix(in srgb, var(--hint-both) 9%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, var(--hint-both) 14%, transparent);
+}
+
+.scanner-board.final-six-animating .scanner-grid {
+  animation: final-six-glass-pulse 860ms ease-out both;
+}
+
+.scanner-cell.power-charged-empty:not(.win):not(.power-cell):not(.power-shield) {
+  border-color: color-mix(in srgb, var(--hint-both) 24%, var(--app-border));
+  background:
+    radial-gradient(
+      circle at 50% 50%,
+      color-mix(in srgb, var(--hint-both) 9%, transparent),
+      transparent 62%
+    ),
+    var(--app-tile);
+  box-shadow: inset 0 0 0 1px
+    color-mix(in srgb, var(--hint-both) 18%, transparent);
+}
+
+.scanner-cell.power-cell:not(.win),
+.scanner-cell.power-preview-charged-cell:not(.win) {
+  animation: charged-cell-pulse 1.9s ease-in-out infinite;
+}
+
 .scanner-cell.power-surge:not(.win) {
   border-color: color-mix(in srgb, var(--hint-score) 66%, var(--app-border));
   box-shadow:
@@ -291,6 +325,10 @@
   border-color: color-mix(in srgb, var(--hint-block) 56%, var(--app-border));
 }
 
+.scanner-cell.power-preview-shield-cell:not(.win) {
+  border-color: color-mix(in srgb, var(--hint-block) 64%, var(--app-border));
+}
+
 .scanner-cell.power-preview-line:not(.win):not(.power-preview) {
   box-shadow: inset 0 0 0 1px
     color-mix(in srgb, var(--app-text) 14%, transparent);
@@ -306,6 +344,34 @@
 
 .scanner-cell.power-trigger:not(.win) {
   animation: power-trigger-pulse 900ms ease-out 2;
+}
+
+.scanner-cell.place-event:not(.win) {
+  animation: place-cell-pop 180ms ease-out both;
+}
+
+.scanner-cell.score-event:not(.win) {
+  border-color: color-mix(in srgb, var(--line-scored) 72%, var(--app-border));
+  box-shadow:
+    inset 0 0 0 2px color-mix(in srgb, var(--line-scored) 58%, transparent),
+    0 0 25px color-mix(in srgb, var(--line-scored) 32%, transparent);
+  animation: score-event-pulse 460ms ease-out both;
+}
+
+.scanner-cell.block-event:not(.win) {
+  border-color: color-mix(in srgb, var(--hint-block) 72%, var(--app-border));
+  box-shadow:
+    inset 0 0 0 2px color-mix(in srgb, var(--hint-block) 50%, transparent),
+    0 0 22px color-mix(in srgb, var(--hint-block) 28%, transparent);
+  animation: block-event-pulse 380ms ease-out both;
+}
+
+.scanner-cell.power-event:not(.win) {
+  border-color: color-mix(in srgb, var(--hint-both) 76%, var(--app-border));
+  box-shadow:
+    inset 0 0 0 2px color-mix(in srgb, var(--hint-both) 64%, transparent),
+    0 0 30px color-mix(in srgb, var(--hint-both) 36%, transparent);
+  animation: power-trigger-pulse 760ms ease-out 2;
 }
 
 .scanner-hint-glyph {
@@ -407,6 +473,7 @@
 }
 
 .power-glyph-power-cell,
+.power-glyph-charged-cell,
 .power-glyph-power-preview,
 .power-glyph-power-trigger {
   color: var(--hint-both);
@@ -417,6 +484,10 @@
 }
 
 .power-glyph-shield-line {
+  color: var(--hint-block);
+}
+
+.power-glyph-shield-cell {
   color: var(--hint-block);
 }
 
@@ -476,6 +547,80 @@
 
   100% {
     transform: scale(1);
+  }
+}
+
+@keyframes final-six-glass-pulse {
+  0% {
+    filter: brightness(1);
+    transform: scale(1);
+  }
+
+  44% {
+    filter: brightness(1.12);
+    transform: scale(1.012);
+  }
+
+  100% {
+    filter: brightness(1);
+    transform: scale(1);
+  }
+}
+
+@keyframes place-cell-pop {
+  0% {
+    transform: scale(0.96);
+  }
+
+  70% {
+    transform: scale(1.035);
+  }
+
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes score-event-pulse {
+  0% {
+    transform: scale(0.98);
+  }
+
+  48% {
+    transform: scale(1.045);
+  }
+
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes block-event-pulse {
+  0% {
+    transform: scale(1.025);
+  }
+
+  52% {
+    transform: scale(0.975);
+  }
+
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes charged-cell-pulse {
+  0%,
+  100% {
+    box-shadow:
+      inset 0 0 0 2px color-mix(in srgb, var(--hint-both) 44%, transparent),
+      0 0 16px color-mix(in srgb, var(--hint-both) 20%, transparent);
+  }
+
+  48% {
+    box-shadow:
+      inset 0 0 0 2px color-mix(in srgb, var(--hint-both) 66%, transparent),
+      0 0 27px color-mix(in srgb, var(--hint-both) 34%, transparent);
   }
 }
 

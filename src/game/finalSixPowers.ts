@@ -9,9 +9,15 @@ import {
   getOtherPlayer,
 } from './rules';
 
-export type LinesEndgameMode = 'standard' | 'powers-v2';
+export type LinesEndgameMode = 'standard' | 'powers-v2' | 'powers-v3';
 export type LinesBonusScores = Record<Player, number>;
-export type FinalSixPowerId = 'power-cell' | 'surge-line' | 'shield-line';
+export type FinalSixPowerMode = Exclude<LinesEndgameMode, 'standard'>;
+export type FinalSixPowerId =
+  | 'power-cell'
+  | 'surge-line'
+  | 'shield-line'
+  | 'charged-cell'
+  | 'shield-cell';
 
 export type FinalSixPowerChoice = {
   cell: number | null;
@@ -34,6 +40,7 @@ export type FinalSixPowerEvent = {
 export type FinalSixPowerState = {
   bonusScores: LinesBonusScores;
   lastEvent: FinalSixPowerEvent | null;
+  mode: FinalSixPowerMode;
   phase: 'inactive' | 'choosing' | 'active';
   pickIndex: number;
   pickOrder: Player[];
@@ -47,26 +54,32 @@ export type FinalSixPowerPickRequest = {
 };
 
 export type FinalSixPowerMoveImpact = {
+  bonusByType: Partial<Record<FinalSixPowerId, number>>;
   bonusPoints: number;
+  chargedCellUsed: boolean;
   power: FinalSixPowerId | null;
   powerMessage: string | null;
+  powerMessages: string[];
+  shieldValue: boolean;
   shieldDenied: boolean;
 };
 
 export type FinalSixPowerPreviewCell = {
   cell: number;
   kind: FinalSixPowerId;
-  label: '+2' | 'SH';
+  label: '+2' | '+1' | 'SH';
   player: Player;
 };
 
 export type FinalSixPowerPreviewLine = {
-  kind: 'surge-line' | 'shield-line';
+  kind: 'surge-line' | 'shield-line' | 'shield-cell';
   line: number[];
   player: Player;
 };
 
 export type FinalSixPowerBoardEffects = {
+  chargedEmptyCells: number[];
+  chargedState: boolean;
   powerCells: FinalSixPowerChoice[];
   previewCells: FinalSixPowerPreviewCell[];
   previewLines: FinalSixPowerPreviewLine[];
@@ -76,28 +89,33 @@ export type FinalSixPowerBoardEffects = {
 };
 
 export const FINAL_SIX_POWER_LABEL: Record<FinalSixPowerId, string> = {
+  'charged-cell': 'Charged Cell',
   'power-cell': 'Power Cell',
+  'shield-cell': 'Shield Cell',
   'shield-line': 'Shield Line',
   'surge-line': 'Surge Line',
 };
 
 export const FINAL_SIX_POWER_SHORT_LABEL: Record<FinalSixPowerId, string> = {
+  'charged-cell': 'Charge',
   'power-cell': 'Cell',
+  'shield-cell': 'Shield',
   'shield-line': 'Shield',
   'surge-line': 'Surge',
 };
 
 export const FINAL_SIX_POWER_DESCRIPTION: Record<FinalSixPowerId, string> = {
+  'charged-cell': 'Choose one empty charged cell. If it scores or blocks later, +2.',
   'power-cell': 'Choose an empty cell. If it scores or blocks later, +2.',
+  'shield-cell': 'Choose an opponent threat cell. If they play it, +1 and deny their power bonus.',
   'shield-line': 'Choose an opponent threat line. Its power bonus is denied.',
   'surge-line': 'Choose your open line. Completing it later gives +2.',
 };
 
-const POWER_ORDER: FinalSixPowerId[] = [
-  'power-cell',
-  'surge-line',
-  'shield-line',
-];
+export const FINAL_SIX_POWER_OPTIONS: Record<FinalSixPowerMode, FinalSixPowerId[]> = {
+  'powers-v2': ['power-cell', 'surge-line', 'shield-line'],
+  'powers-v3': ['charged-cell', 'shield-cell'],
+};
 
 const createBonusScores = (): LinesBonusScores => ({ O: 0, X: 0 });
 
@@ -132,9 +150,12 @@ const sortLines = (board: Board, player: Player, lines: number[][]) =>
     );
   });
 
-export const createFinalSixPowerState = (): FinalSixPowerState => ({
+export const createFinalSixPowerState = (
+  mode: FinalSixPowerMode = 'powers-v3',
+): FinalSixPowerState => ({
   bonusScores: createBonusScores(),
   lastEvent: null,
+  mode,
   phase: 'inactive',
   pickIndex: 0,
   pickOrder: [],
@@ -160,11 +181,13 @@ export const getFinalSixPowerPickOrder = (
 export const createFinalSixPowerDraft = ({
   currentPlayer,
   lineScores,
+  mode = 'powers-v3',
 }: {
   currentPlayer: Player;
   lineScores: LineScores;
+  mode?: FinalSixPowerMode;
 }): FinalSixPowerState => ({
-  ...createFinalSixPowerState(),
+  ...createFinalSixPowerState(mode),
   phase: 'choosing',
   pickOrder: getFinalSixPowerPickOrder(lineScores, currentPlayer),
 });
@@ -246,7 +269,40 @@ const normalizeLineTarget = (
   board: Board,
   player: Player,
   request: FinalSixPowerPickRequest,
+  mode: FinalSixPowerMode,
 ) => {
+  if (mode === 'powers-v3') {
+    if (request.id === 'charged-cell') {
+      return {
+        cell:
+          request.targetCell !== undefined && board[request.targetCell] === null
+            ? request.targetCell
+            : null,
+        line: null,
+      };
+    }
+
+    if (request.id !== 'shield-cell') {
+      return { cell: null, line: null };
+    }
+
+    const requestLine = request.line
+      ? getShieldLineCandidates(board, player).find((line) =>
+          isSameLine(line, request.line ?? null),
+        ) ?? null
+      : null;
+    const line =
+      requestLine ??
+      (request.targetCell !== undefined
+        ? getShieldLineForCell(board, player, request.targetCell)
+        : getShieldLineCandidates(board, player)[0] ?? null);
+
+    return {
+      cell: line ? firstEmptyCell(board, line) : null,
+      line,
+    };
+  }
+
   if (request.id === 'power-cell') {
     return {
       cell:
@@ -304,16 +360,16 @@ export const pickFinalSixPower = (
     state.phase !== 'choosing' ||
     picker !== player ||
     state.players[player].choice !== null ||
-    !POWER_ORDER.includes(request.id)
+    !FINAL_SIX_POWER_OPTIONS[state.mode].includes(request.id)
   ) {
     return state;
   }
 
-  const target = normalizeLineTarget(board, player, request);
+  const target = normalizeLineTarget(board, player, request, state.mode);
 
   if (
     target.cell === null ||
-    (request.id !== 'power-cell' && target.line === null)
+    (!['power-cell', 'charged-cell'].includes(request.id) && target.line === null)
   ) {
     return state;
   }
@@ -351,6 +407,7 @@ const scorePowerCellTarget = (board: Board, player: Player, move: number) => {
 export const chooseFinalSixPower = (
   board: Board,
   player: Player,
+  mode: FinalSixPowerMode = 'powers-v3',
 ): FinalSixPowerPickRequest | null => {
   const scoringPowerCells = getPowerCellPreviewCells(board, player).sort(
     (left, right) =>
@@ -358,8 +415,39 @@ export const chooseFinalSixPower = (
         scorePowerCellTarget(board, player, left) || left - right,
   );
 
+  if (mode === 'powers-v3') {
+    const directScoringCells = scoringPowerCells.filter(
+      (cell) => getPowerCellPayoff(board, cell, player).scoreLines.length > 0,
+    );
+
+    if (directScoringCells.length > 0) {
+      return { id: 'charged-cell', targetCell: directScoringCells[0] };
+    }
+
+    const shieldLine = getShieldLineCandidates(board, player)[0] ?? null;
+
+    if (shieldLine) {
+      return {
+        id: 'shield-cell',
+        line: shieldLine,
+        targetCell: firstEmptyCell(board, shieldLine) ?? undefined,
+      };
+    }
+
+    if (scoringPowerCells.length > 0) {
+      return { id: 'charged-cell', targetCell: scoringPowerCells[0] };
+    }
+
+    const fallback = getAvailableMoves(board)[0] ?? null;
+
+    return fallback === null ? null : { id: 'charged-cell', targetCell: fallback };
+  }
+
   if (scoringPowerCells.length > 0) {
-    return { id: 'power-cell', targetCell: scoringPowerCells[0] };
+    return {
+      id: 'power-cell',
+      targetCell: scoringPowerCells[0],
+    };
   }
 
   const surgeLine = getSurgeLineCandidates(board, player)[0] ?? null;
@@ -398,7 +486,10 @@ export const chooseFinalSixPowerMove = (
     return null;
   }
 
-  if (choice.id === 'power-cell' && choice.cell !== null) {
+  if (
+    (choice.id === 'power-cell' || choice.id === 'charged-cell') &&
+    choice.cell !== null
+  ) {
     const payoff = getPowerCellPayoff(board, choice.cell, player);
 
     return payoff.bonus > 0 ? choice.cell : null;
@@ -415,6 +506,17 @@ export const chooseFinalSixPowerMove = (
   return null;
 };
 
+const createEmptyPowerImpact = (): FinalSixPowerMoveImpact => ({
+  bonusByType: {},
+  bonusPoints: 0,
+  chargedCellUsed: false,
+  power: null,
+  powerMessage: null,
+  powerMessages: [],
+  shieldDenied: false,
+  shieldValue: false,
+});
+
 export const applyFinalSixPowerMove = ({
   blockedLines,
   completedLines,
@@ -430,12 +532,7 @@ export const applyFinalSixPowerMove = ({
 }): { impact: FinalSixPowerMoveImpact; nextState: FinalSixPowerState } => {
   if (state.phase !== 'active') {
     return {
-      impact: {
-        bonusPoints: 0,
-        power: null,
-        powerMessage: null,
-        shieldDenied: false,
-      },
+      impact: createEmptyPowerImpact(),
       nextState: state,
     };
   }
@@ -443,6 +540,100 @@ export const applyFinalSixPowerMove = ({
   const opponent = getOtherPlayer(player);
   const playerChoice = state.players[player].choice;
   const opponentChoice = state.players[opponent].choice;
+
+  if (state.mode === 'powers-v3') {
+    const chargedCellUsed =
+      playerChoice?.id === 'charged-cell' &&
+      !playerChoice.triggered &&
+      playerChoice.cell === move;
+    const chargedCellTriggered =
+      chargedCellUsed && (completedLines.length > 0 || blockedLines.length > 0);
+    const shieldTriggered =
+      opponentChoice?.id === 'shield-cell' &&
+      !opponentChoice.triggered &&
+      opponentChoice.cell === move;
+    const shieldDenied = Boolean(shieldTriggered && chargedCellTriggered);
+    const chargedBonus = chargedCellTriggered && !shieldDenied ? 2 : 0;
+    const shieldBonus = shieldTriggered ? 1 : 0;
+    const powerMessages = [
+      shieldDenied ? 'Bonus denied' : null,
+      chargedBonus > 0 ? 'Charged Cell +2' : null,
+      shieldBonus > 0 ? 'Shield +1' : null,
+    ].filter((message): message is string => Boolean(message));
+    const bonusByType: Partial<Record<FinalSixPowerId, number>> = {};
+
+    if (chargedBonus > 0) {
+      bonusByType['charged-cell'] = chargedBonus;
+    }
+
+    if (shieldBonus > 0) {
+      bonusByType['shield-cell'] = shieldBonus;
+    }
+
+    const nextPlayers = {
+      ...state.players,
+      [player]: {
+        choice:
+          playerChoice && chargedCellUsed
+            ? { ...playerChoice, triggered: true }
+            : playerChoice,
+      },
+      [opponent]: {
+        choice:
+          opponentChoice && shieldTriggered
+            ? { ...opponentChoice, triggered: true }
+            : opponentChoice,
+      },
+    };
+    const eventPower: FinalSixPowerId | null =
+      chargedBonus > 0
+        ? 'charged-cell'
+        : shieldTriggered
+          ? 'shield-cell'
+          : null;
+    const event =
+      eventPower && powerMessages.length > 0
+        ? {
+            bonus: chargedBonus + shieldBonus,
+            cell:
+              eventPower === 'shield-cell'
+                ? opponentChoice?.cell ?? null
+                : playerChoice?.cell ?? null,
+            line:
+              eventPower === 'shield-cell'
+                ? opponentChoice?.line ?? null
+                : completedLines[0] ?? blockedLines[0] ?? playerChoice?.line ?? null,
+            player: eventPower === 'shield-cell' ? opponent : player,
+            power: eventPower,
+            shieldDenied,
+            text: powerMessages.join(' + '),
+          }
+        : null;
+
+    return {
+      impact: {
+        bonusByType,
+        bonusPoints: chargedBonus + shieldBonus,
+        chargedCellUsed,
+        power: eventPower,
+        powerMessage: powerMessages[0] ?? null,
+        powerMessages,
+        shieldDenied,
+        shieldValue: shieldTriggered,
+      },
+      nextState: {
+        ...state,
+        bonusScores: {
+          ...state.bonusScores,
+          [player]: state.bonusScores[player] + chargedBonus,
+          [opponent]: state.bonusScores[opponent] + shieldBonus,
+        },
+        lastEvent: event,
+        players: nextPlayers,
+      },
+    };
+  }
+
   const surgeTriggered =
     playerChoice?.id === 'surge-line' &&
     !playerChoice.triggered &&
@@ -465,6 +656,12 @@ export const applyFinalSixPowerMove = ({
     : bonusPower
       ? `${FINAL_SIX_POWER_LABEL[bonusPower]} +2`
       : null;
+  const bonusByType: Partial<Record<FinalSixPowerId, number>> = {};
+
+  if (bonusPower && bonusPoints > 0) {
+    bonusByType[bonusPower] = bonusPoints;
+  }
+
   const nextPlayers = {
     ...state.players,
     [player]: {
@@ -502,10 +699,14 @@ export const applyFinalSixPowerMove = ({
 
   return {
     impact: {
+      bonusByType,
       bonusPoints,
+      chargedCellUsed: false,
       power: bonusPower,
       powerMessage,
+      powerMessages: powerMessage ? [powerMessage] : [],
       shieldDenied: denied,
+      shieldValue: false,
     },
     nextState: {
       ...state,
@@ -533,11 +734,14 @@ export const getFinalSixPowerBoardEffects = ({
   const choices = [state.players.X.choice, state.players.O.choice].filter(
     (choice): choice is FinalSixPowerChoice => choice !== null,
   );
+  const readyChoices = choices.filter((choice) => !choice.triggered);
   const previewCells: FinalSixPowerPreviewCell[] = [];
   const previewLines: FinalSixPowerPreviewLine[] = [];
+  const chargedState = state.mode === 'powers-v3' && state.phase !== 'inactive';
+  const chargedEmptyCells = chargedState ? getAvailableMoves(board) : [];
 
   if (state.phase === 'choosing' && picker) {
-    if (selection === 'power-cell') {
+    if (selection === 'power-cell' || selection === 'charged-cell') {
       for (const cell of getPowerCellPreviewCells(board, picker)) {
         previewCells.push({ cell, kind: selection, label: '+2', player: picker });
       }
@@ -558,8 +762,17 @@ export const getFinalSixPowerBoardEffects = ({
         const cell = firstEmptyCell(board, line);
 
         if (cell !== null) {
-          previewCells.push({ cell, kind: selection, label: 'SH', player: picker });
-          previewLines.push({ kind: selection, line, player: picker });
+          previewCells.push({
+            cell,
+            kind: selection,
+            label: selection === 'shield-cell' ? '+1' : 'SH',
+            player: picker,
+          });
+          previewLines.push({
+            kind: selection === 'shield-cell' ? 'shield-cell' : 'shield-line',
+            line,
+            player: picker,
+          });
         }
       }
     }
@@ -571,7 +784,10 @@ export const getFinalSixPowerBoardEffects = ({
         continue;
       }
 
-      if (choice.id === 'power-cell' && choice.cell !== null) {
+      if (
+        (choice.id === 'power-cell' || choice.id === 'charged-cell') &&
+        choice.cell !== null
+      ) {
         const payoff = getPowerCellPayoff(board, choice.cell, choice.player);
 
         if (payoff.bonus > 0) {
@@ -603,11 +819,17 @@ export const getFinalSixPowerBoardEffects = ({
   }
 
   return {
-    powerCells: choices.filter((choice) => choice.id === 'power-cell'),
+    chargedEmptyCells,
+    chargedState,
+    powerCells: readyChoices.filter(
+      (choice) => choice.id === 'power-cell' || choice.id === 'charged-cell',
+    ),
     previewCells,
     previewLines,
-    shieldLines: choices.filter((choice) => choice.id === 'shield-line'),
-    surgeLines: choices.filter((choice) => choice.id === 'surge-line'),
+    shieldLines: readyChoices.filter(
+      (choice) => choice.id === 'shield-line' || choice.id === 'shield-cell',
+    ),
+    surgeLines: readyChoices.filter((choice) => choice.id === 'surge-line'),
     trigger: state.lastEvent,
   };
 };

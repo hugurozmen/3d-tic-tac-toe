@@ -22,6 +22,7 @@ import type {
   BoardViewAction,
   BoardViewCommand,
 } from '../game/boardView';
+import type { GameAnimationEvent } from '../game/animationEvents';
 import type { CoachHint } from '../game/coach';
 import type { FinalSixPowerBoardEffects } from '../game/finalSixPowers';
 import type { LinesEndgameAnalysis } from '../game/linesTension';
@@ -41,6 +42,7 @@ export const preloadBoardScene = () => {
 };
 
 type GameStageProps = {
+  animationEvents: GameAnimationEvent[];
   board: Board;
   coachBlockCells: number[];
   coachHints: CoachHint[];
@@ -108,6 +110,7 @@ export const GameStage = forwardRef<HTMLElement, GameStageProps>(
   function GameStage(
     {
       board,
+      animationEvents,
       coachBlockCells,
       coachHints,
       coachScoreCells,
@@ -137,6 +140,12 @@ export const GameStage = forwardRef<HTMLElement, GameStageProps>(
     },
     ref,
   ) {
+    const hasFinalSixStartEvent = animationEvents.some(
+      (event) => event.type === 'final-six-start',
+    );
+    const hasMatchEndEvent = animationEvents.some(
+      (event) => event.type === 'match-end',
+    );
     const boardSceneFallback = (
       <div className="stage-error" role="alert">
         <TriangleAlert size={26} />
@@ -150,10 +159,21 @@ export const GameStage = forwardRef<HTMLElement, GameStageProps>(
     );
 
     return (
-      <section ref={ref} className="game-stage" aria-label="3D XOX board">
+      <section
+        ref={ref}
+        className={[
+          'game-stage',
+          hasFinalSixStartEvent ? 'final-six-animating' : '',
+          hasMatchEndEvent ? 'match-win-animating' : '',
+        ]
+          .filter(Boolean)
+          .join(' ')}
+        aria-label="3D XOX board"
+      >
         {layout === 'scanner' ? (
           <ScannerBoard
             board={board}
+            animationEvents={animationEvents}
             currentPlayer={currentPlayer}
             disabled={disabled}
             floor={scannerFloor}
@@ -187,6 +207,7 @@ export const GameStage = forwardRef<HTMLElement, GameStageProps>(
             >
               <BoardScene
                 board={board}
+                animationEvents={animationEvents}
                 coachBlockCells={coachBlockCells}
                 coachHints={coachHints}
                 coachScoreCells={coachScoreCells}
