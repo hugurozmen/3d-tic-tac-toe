@@ -3,6 +3,10 @@ import type {
   BoardViewCommand,
 } from '../../game/boardView';
 import type { CoachHint } from '../../game/coach';
+import type {
+  FinalSixPowerBoardEffects,
+  FinalSixPowerId,
+} from '../../game/finalSixPowers';
 import type { LinesEndgameAnalysis } from '../../game/linesTension';
 import type { Board, Player } from '../../game/rules';
 import type { SceneTheme } from '../../theme';
@@ -18,6 +22,7 @@ export type BoardSceneProps = {
   finalPhase: LinesEndgameAnalysis | null;
   finalLines: number[][];
   layout: BoardLayout;
+  powerEffects: FinalSixPowerBoardEffects;
   scoredLines: number[][];
   theme: SceneTheme;
   viewCommand: BoardViewCommand | null;
@@ -34,6 +39,8 @@ export type CellProps = {
   coachExplanation: string | null;
   lineMark: 'final' | 'scored' | 'win' | null;
   layout: BoardLayout;
+  powerMark: FinalSixPowerId | 'power-preview' | 'power-trigger' | null;
+  powerText: string | null;
   tensionMark: 'score' | 'block' | 'both' | null;
   theme: SceneTheme;
   value: Player | null;

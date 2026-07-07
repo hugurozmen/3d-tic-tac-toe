@@ -21,16 +21,16 @@ import {
   getNewCompletedLines,
 } from './rules';
 import {
-  LinesBonusScores,
   LinesEndgameMode,
-  WildcardId,
-  WildcardState,
-  activateWildcard as activateWildcardState,
-  consumeActiveWildcard,
-  createWildcardDraft,
-  createWildcardState,
-  pickWildcard as pickWildcardState,
-} from './wildcards';
+  LinesBonusScores,
+  FinalSixPowerId,
+  FinalSixPowerPickRequest,
+  FinalSixPowerState,
+  applyFinalSixPowerMove,
+  createFinalSixPowerDraft,
+  createFinalSixPowerState,
+  pickFinalSixPower as pickFinalSixPowerState,
+} from './finalSixPowers';
 
 export type MoveImpact = {
   bonusPoints: number;
@@ -38,7 +38,9 @@ export type MoveImpact = {
   id: number;
   linesCompleted: number[][];
   player: Player;
-  wildcard: WildcardId | null;
+  power: FinalSixPowerId | null;
+  powerMessage: string | null;
+  shieldDenied: boolean;
 };
 
 const addBonusScores = (
@@ -54,7 +56,7 @@ const applyLinesBonusToResult = (
   bonusScores: LinesBonusScores,
   endgameMode: LinesEndgameMode,
 ): GameResult => {
-  if (result.ruleset !== 'lines' || endgameMode !== 'wildcards') {
+  if (result.ruleset !== 'lines' || endgameMode !== 'powers-v2') {
     return result;
   }
 
@@ -110,15 +112,15 @@ export function useMatchState(
   const [scoredRound, setScoredRound] = useState<string | null>(null);
   const [recentLines, setRecentLines] = useState<number[][]>([]);
   const [recentImpact, setRecentImpact] = useState<MoveImpact | null>(null);
-  const [wildcards, setWildcards] = useState<WildcardState>(() =>
-    createWildcardState(),
+  const [finalSixPowers, setFinalSixPowers] = useState<FinalSixPowerState>(() =>
+    createFinalSixPowerState(),
   );
   const boardRef = useRef(board);
   const currentPlayerRef = useRef(currentPlayer);
   const matchRef = useRef(match);
   const rulesetRef = useRef(ruleset);
   const linesEndgameModeRef = useRef(linesEndgameMode);
-  const wildcardsRef = useRef(wildcards);
+  const finalSixPowersRef = useRef(finalSixPowers);
   const recentLinesTimeoutRef = useRef<number | null>(null);
   const moveImpactIdRef = useRef(0);
   const baseResult = useMemo(() => evaluateBoard(board, ruleset), [board, ruleset]);
@@ -126,13 +128,13 @@ export function useMatchState(
     () =>
       applyLinesBonusToResult(
         baseResult,
-        wildcards.bonusScores,
+        finalSixPowers.bonusScores,
         linesEndgameMode,
       ),
-    [baseResult, linesEndgameMode, wildcards.bonusScores],
+    [baseResult, finalSixPowers.bonusScores, linesEndgameMode],
   );
   const baseLineScores = baseResult.lineScores;
-  const linesBonusScores = wildcards.bonusScores;
+  const linesBonusScores = finalSixPowers.bonusScores;
   const boardSignature = useMemo(
     () => board.map((cell) => cell ?? '-').join(''),
     [board],
@@ -180,48 +182,46 @@ export function useMatchState(
   }, [linesEndgameMode]);
 
   useEffect(() => {
-    wildcardsRef.current = wildcards;
-  }, [wildcards]);
+    finalSixPowersRef.current = finalSixPowers;
+  }, [finalSixPowers]);
 
   useEffect(() => {
-    if (ruleset === 'lines' && linesEndgameMode === 'wildcards') {
+    if (ruleset === 'lines' && linesEndgameMode === 'powers-v2') {
       return;
     }
 
-    const nextWildcards = createWildcardState();
+    const nextFinalSixPowers = createFinalSixPowerState();
 
-    wildcardsRef.current = nextWildcards;
-    setWildcards(nextWildcards);
+    finalSixPowersRef.current = nextFinalSixPowers;
+    setFinalSixPowers(nextFinalSixPowers);
   }, [linesEndgameMode, ruleset]);
 
   useEffect(() => {
     if (
       ruleset !== 'lines' ||
-      linesEndgameMode !== 'wildcards' ||
+      linesEndgameMode !== 'powers-v2' ||
       baseResult.isComplete ||
       baseResult.remainingCells !== 6 ||
-      wildcards.phase !== 'inactive'
+      finalSixPowers.phase !== 'inactive'
     ) {
       return;
     }
 
-    const nextWildcards = createWildcardDraft({
+    const nextFinalSixPowers = createFinalSixPowerDraft({
       currentPlayer,
       lineScores: baseResult.lineScores,
-      roundNumber: match.roundNumber,
     });
 
-    wildcardsRef.current = nextWildcards;
-    setWildcards(nextWildcards);
+    finalSixPowersRef.current = nextFinalSixPowers;
+    setFinalSixPowers(nextFinalSixPowers);
   }, [
     baseResult.isComplete,
     baseResult.lineScores,
     baseResult.remainingCells,
     currentPlayer,
+    finalSixPowers.phase,
     linesEndgameMode,
-    match.roundNumber,
     ruleset,
-    wildcards.phase,
   ]);
 
   useEffect(
@@ -246,16 +246,16 @@ export function useMatchState(
           opener: nextStarter,
         };
     const nextBoard = createBoard();
-    const nextWildcards = createWildcardState();
+    const nextFinalSixPowers = createFinalSixPowerState();
 
     matchRef.current = nextMatch;
     boardRef.current = nextBoard;
     currentPlayerRef.current = nextStarter;
-    wildcardsRef.current = nextWildcards;
+    finalSixPowersRef.current = nextFinalSixPowers;
     setMatch(nextMatch);
     setBoard(nextBoard);
     setCurrentPlayer(nextStarter);
-    setWildcards(nextWildcards);
+    setFinalSixPowers(nextFinalSixPowers);
     setLastMove(null);
     setScoredRound(null);
     setRecentImpact(null);
@@ -265,16 +265,16 @@ export function useMatchState(
   const resetMatch = useCallback(() => {
     const nextMatch = createMatchState('X');
     const nextBoard = createBoard();
-    const nextWildcards = createWildcardState();
+    const nextFinalSixPowers = createFinalSixPowerState();
 
     matchRef.current = nextMatch;
     boardRef.current = nextBoard;
     currentPlayerRef.current = nextMatch.opener;
-    wildcardsRef.current = nextWildcards;
+    finalSixPowersRef.current = nextFinalSixPowers;
     setMatch(nextMatch);
     setBoard(nextBoard);
     setCurrentPlayer(nextMatch.opener);
-    setWildcards(nextWildcards);
+    setFinalSixPowers(nextFinalSixPowers);
     setLastMove(null);
     setScoredRound(null);
     setRecentImpact(null);
@@ -285,10 +285,10 @@ export function useMatchState(
     const activeBoard = boardRef.current;
     const activeRuleset = rulesetRef.current;
     const activeEndgameMode = linesEndgameModeRef.current;
-    const activeWildcards = wildcardsRef.current;
+    const activeFinalSixPowers = finalSixPowersRef.current;
     const activeResult = applyLinesBonusToResult(
       evaluateBoard(activeBoard, activeRuleset),
-      activeWildcards.bonusScores,
+      activeFinalSixPowers.bonusScores,
       activeEndgameMode,
     );
     const movePlayer = player ?? currentPlayerRef.current;
@@ -298,8 +298,8 @@ export function useMatchState(
       activeResult.winner ||
       activeResult.isDraw ||
       (activeRuleset === 'lines' &&
-        activeEndgameMode === 'wildcards' &&
-        activeWildcards.phase === 'drafting')
+        activeEndgameMode === 'powers-v2' &&
+        activeFinalSixPowers.phase === 'choosing')
     ) {
       return false;
     }
@@ -321,28 +321,37 @@ export function useMatchState(
                 index,
           )
         : [];
-    const wildcardImpact =
-      activeRuleset === 'lines' && activeEndgameMode === 'wildcards'
-        ? consumeActiveWildcard(activeWildcards, movePlayer, index, activeBoard)
+    const powerImpact =
+      activeRuleset === 'lines' && activeEndgameMode === 'powers-v2'
+        ? applyFinalSixPowerMove({
+            blockedLines,
+            completedLines: newCompletedLines,
+            move: index,
+            player: movePlayer,
+            state: activeFinalSixPowers,
+          })
         : {
-            bonus: {
-              blockLines: 0,
-              bonus: 0,
-              lineCount: 0,
+            impact: {
+              bonusPoints: 0,
+              power: null,
+              powerMessage: null,
+              shieldDenied: false,
             },
-            nextState: activeWildcards,
-            wildcard: null,
+            nextState: activeFinalSixPowers,
           };
-    const bonusPoints = wildcardImpact.bonus.bonus;
+    const bonusPoints = powerImpact.impact.bonusPoints;
     const hasNotableImpact =
-      newCompletedLines.length > 0 || blockedLines.length > 0 || bonusPoints > 0;
+      newCompletedLines.length > 0 ||
+      blockedLines.length > 0 ||
+      bonusPoints > 0 ||
+      powerImpact.impact.shieldDenied;
 
     boardRef.current = next;
     currentPlayerRef.current = nextPlayer;
-    wildcardsRef.current = wildcardImpact.nextState;
+    finalSixPowersRef.current = powerImpact.nextState;
     setBoard(next);
     setCurrentPlayer(nextPlayer);
-    setWildcards(wildcardImpact.nextState);
+    setFinalSixPowers(powerImpact.nextState);
     setLastMove(index);
 
     if (hasNotableImpact && newCompletedLines.length > 0) {
@@ -353,7 +362,9 @@ export function useMatchState(
         id: moveImpactIdRef.current + 1,
         linesCompleted: newCompletedLines,
         player: movePlayer,
-        wildcard: wildcardImpact.wildcard,
+        power: powerImpact.impact.power,
+        powerMessage: powerImpact.impact.powerMessage,
+        shieldDenied: powerImpact.impact.shieldDenied,
       });
       moveImpactIdRef.current += 1;
       feedback.scoreLine(newCompletedLines.length);
@@ -375,7 +386,9 @@ export function useMatchState(
         id: moveImpactIdRef.current + 1,
         linesCompleted: [],
         player: movePlayer,
-        wildcard: wildcardImpact.wildcard,
+        power: powerImpact.impact.power,
+        powerMessage: powerImpact.impact.powerMessage,
+        shieldDenied: powerImpact.impact.shieldDenied,
       });
       moveImpactIdRef.current += 1;
       if (bonusPoints > 0) {
@@ -404,45 +417,26 @@ export function useMatchState(
       bonusPoints,
       moved: true,
       player: movePlayer,
-      wildcard: wildcardImpact.wildcard,
+      power: powerImpact.impact.power,
+      powerMessage: powerImpact.impact.powerMessage,
+      shieldDenied: powerImpact.impact.shieldDenied,
     };
   }, []);
 
-  const pickWildcard = useCallback((player: Player, wildcard: WildcardId) => {
-    const nextWildcards = pickWildcardState(
-      wildcardsRef.current,
+  const pickFinalSixPower = useCallback((player: Player, request: FinalSixPowerPickRequest) => {
+    const nextFinalSixPowers = pickFinalSixPowerState(
+      finalSixPowersRef.current,
+      boardRef.current,
       player,
-      wildcard,
+      request,
     );
 
-    if (nextWildcards === wildcardsRef.current) {
+    if (nextFinalSixPowers === finalSixPowersRef.current) {
       return false;
     }
 
-    wildcardsRef.current = nextWildcards;
-    setWildcards(nextWildcards);
-    return true;
-  }, []);
-
-  const activateWildcard = useCallback((player: Player) => {
-    const activeResult = applyLinesBonusToResult(
-      evaluateBoard(boardRef.current, rulesetRef.current),
-      wildcardsRef.current.bonusScores,
-      linesEndgameModeRef.current,
-    );
-
-    if (activeResult.winner || activeResult.isDraw) {
-      return false;
-    }
-
-    const nextWildcards = activateWildcardState(wildcardsRef.current, player);
-
-    if (nextWildcards === wildcardsRef.current) {
-      return false;
-    }
-
-    wildcardsRef.current = nextWildcards;
-    setWildcards(nextWildcards);
+    finalSixPowersRef.current = nextFinalSixPowers;
+    setFinalSixPowers(nextFinalSixPowers);
     return true;
   }, []);
 
@@ -489,21 +483,20 @@ export function useMatchState(
 
   return {
     applyMove,
-    activateWildcard,
     baseLineScores,
     board,
     currentPlayer,
     currentPlayerRef,
+    finalSixPowers,
     lastMove,
     lifetimeScore,
     linesBonusScores,
     match,
     oMoves,
-    pickWildcard,
+    pickFinalSixPower,
     resetMatch,
     resetRound,
     result,
-    wildcards,
     xMoves,
     opener,
     recentLines,

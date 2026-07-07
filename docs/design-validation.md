@@ -2,15 +2,15 @@
 
 Source of truth: [GitHub issue #15](https://github.com/hugurozmen/3d-tic-tac-toe/issues/15)  
 Generated (Europe/Istanbul): 2026-07-07  
-Command: `npm run design:audit -- --variant final-six-wildcards --games 24 --seed 20260707`
-Variant mode: `final-six-wildcards`
+Command: `npm run design:audit -- --variant final-six-powers-v2 --games 24 --seed 20260707`
+Variant mode: `final-six-powers-v2`
 
 ## Scope
 
-This report validates the current design before any rules changes. It focuses on
-Lines Mode and uses deterministic AI self-play plus automated Coach-hint
-analysis. It does not add retention, cosmetics, permanent rules changes, or AI
-balance changes.
+This report validates the current Lines design plus audit-only/local prototype
+variants. It uses deterministic AI self-play plus automated Coach-hint analysis.
+It does not promote any prototype to default, add retention, add cosmetics, or
+make permanent rules changes.
 
 Human subjective playtest evidence is still missing, so issue #15 should remain
 open after this report. The automated data can identify design risk, but it
@@ -26,6 +26,8 @@ cannot fully answer confusion, satisfaction, frustration, or replay desire.
 - `--variant final-six-wildcards` runs the same deterministic Lines matrix
   with local-only Wildcard draft/use rules and includes bonus scores in final
   totals.
+- `--variant final-six-powers-v2` runs Standard Lines, the current Wildcards
+  experiment, and Final Six Powers v2 for direct comparison.
 
 ## Recommendation
 
@@ -185,6 +187,32 @@ Wildcard audit notes:
   remains the default player-facing ruleset.
 - Winner/tie changed compares the final board result before Wildcard bonus to
   the final total after Wildcard bonus.
+
+## Final Six Powers v2 Experimental Variant
+
+| Scenario | First-player score | Center-owner score | Avg final margin | Final-6 changed | Final move changed | Comeback after 21 | Power triggered | Winner/tie changed | Bonus by power type |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| Casual vs Casual | 47.9% | 64.6% | 1.46 | 37.5% | 33.3% | 28.6% | 62.5% trigger/pick, 100.0% games | 45.8% | Power Cell 2.50/g; Surge Line 0.00/g; Shield denied 0.00/g |
+| Smart vs Smart | 60.4% | 64.6% | 1.42 | 25.0% | 33.3% | 18.2% | 43.8% trigger/pick, 83.3% games | 20.8% | Power Cell 1.75/g; Surge Line 0.00/g; Shield denied 0.00/g |
+| Hard vs Hard | 0.0% | 50.0% | 1.25 | 50.0% | 0.0% | 33.3% | 75.0% trigger/pick, 100.0% games | 50.0% | Power Cell 3.00/g; Surge Line 0.00/g; Shield denied 0.00/g |
+| Master vs Master | 75.0% | 75.0% | 1.25 | 25.0% | 50.0% | 25.0% | 62.5% trigger/pick, 100.0% games | 25.0% | Power Cell 2.50/g; Surge Line 0.00/g; Shield denied 0.00/g |
+| Smart vs Casual | 54.2% | 79.2% | 1.79 | 37.5% | 8.3% | 38.1% | 64.6% trigger/pick, 100.0% games | 33.3% | Power Cell 2.42/g; Surge Line 0.17/g; Shield denied 0.00/g |
+| Casual vs Smart | 35.4% | 68.8% | 2.46 | 54.2% | 4.2% | 42.1% | 64.6% trigger/pick, 100.0% games | 45.8% | Power Cell 2.58/g; Surge Line 0.00/g; Shield denied 0.00/g |
+| Hard vs Smart | 12.5% | 58.3% | 1.79 | 41.7% | 8.3% | 0.0% | 54.2% trigger/pick, 79.2% games | 29.2% | Power Cell 2.17/g; Surge Line 0.00/g; Shield denied 0.00/g |
+| Smart vs Hard | 27.1% | 27.1% | 1.08 | 62.5% | 0.0% | 50.0% | 79.2% trigger/pick, 100.0% games | 41.7% | Power Cell 3.17/g; Surge Line 0.00/g; Shield denied 0.00/g |
+| Master vs Hard | 37.5% | 62.5% | 1.00 | 25.0% | 50.0% | 33.3% | 75.0% trigger/pick, 100.0% games | 25.0% | Power Cell 3.00/g; Surge Line 0.00/g; Shield denied 0.00/g |
+| Hard vs Master | 25.0% | 75.0% | 1.75 | 50.0% | 25.0% | 0.0% | 62.5% trigger/pick, 100.0% games | 25.0% | Power Cell 2.50/g; Surge Line 0.00/g; Shield denied 0.00/g |
+
+Power audit notes:
+
+- Powers are deterministic and local-only: at six empty cells, the trailing
+  player by Lines score chooses first, then the other player chooses.
+- Power Cell, Surge Line, and Shield Line are represented as cell/line targets
+  in the simulation, not hidden text effects.
+- Final scores include normal Lines plus power bonus points; standard Lines
+  remains the default player-facing ruleset.
+- Winner/tie changed compares the final board result before power bonus to the
+  final total after power bonus.
 
 ## Best-of-5 Match Simulation
 

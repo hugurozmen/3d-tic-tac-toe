@@ -21,6 +21,8 @@ export function Cell({
   index,
   lineMark,
   layout,
+  powerMark,
+  powerText,
   tensionMark,
   theme,
   value,
@@ -53,6 +55,16 @@ export function Cell({
         : coachMark === 'both'
           ? '#f8d65a'
           : null;
+  const powerColor =
+    powerMark === 'power-cell' || powerMark === 'power-preview'
+      ? '#f8d65a'
+      : powerMark === 'surge-line'
+        ? '#74f0a7'
+        : powerMark === 'shield-line'
+          ? '#ff6f76'
+          : powerMark === 'power-trigger'
+            ? '#f8d65a'
+            : null;
 
   useCursor(isPlayable && hovered);
 
@@ -69,6 +81,10 @@ export function Cell({
         ? 1 + Math.sin(clock.elapsedTime * 5.2) * 0.055
         : lineMark === 'scored'
           ? 1 + Math.sin(clock.elapsedTime * 6.6) * 0.045
+          : powerMark === 'power-trigger'
+            ? 1 + Math.sin(clock.elapsedTime * 7.4) * 0.06
+          : powerColor && isPlayable
+            ? 1 + Math.sin(clock.elapsedTime * 3.5) * 0.032
           : coachMark && isPlayable
             ? 1 + Math.sin(clock.elapsedTime * 3.1) * 0.025
             : isActive && isPlayable
@@ -135,6 +151,8 @@ export function Cell({
                 ? coachMark === 'soft-score' && !isActive
                   ? theme.edge
                   : coachColor
+              : powerColor
+                ? powerColor
               : tensionMark === 'score'
                 ? '#74f0a7'
               : tensionMark === 'block'
@@ -152,6 +170,10 @@ export function Cell({
                 ? coachMark === 'soft-score' && !isActive
                   ? 0.54
                   : 0.98
+              : powerColor
+                ? powerMark === 'power-preview'
+                  ? 0.72
+                  : 0.96
               : tensionMark
                 ? 0.84
               : isActive && isPlayable
@@ -191,6 +213,24 @@ export function Cell({
             }
             depthWrite={false}
             opacity={isActive ? 0.32 : 0.16}
+            transparent
+          />
+        </mesh>
+      ) : null}
+      {powerColor && !value ? (
+        <mesh rotation={[Math.PI / 2, 0, 0]} scale={isActive ? 1.08 : 1}>
+          <torusGeometry args={[0.43, 0.018, 8, 48]} />
+          <meshBasicMaterial
+            blending={THREE.AdditiveBlending}
+            color={powerColor}
+            depthWrite={false}
+            opacity={
+              powerMark === 'power-preview'
+                ? isActive
+                  ? 0.42
+                  : 0.2
+                : 0.36
+            }
             transparent
           />
         </mesh>
@@ -246,6 +286,21 @@ export function Cell({
           }}
         >
           {coachExplanation}
+        </Html>
+      ) : null}
+      {powerText && !value ? (
+        <Html
+          center
+          className={`cell-power-badge power-${powerMark ?? 'hint'}`}
+          distanceFactor={9}
+          position={[0, 0.54, 0]}
+          style={{
+            background: theme.labelBackground,
+            borderColor: powerColor ?? theme.labelBorder,
+            color: theme.labelText,
+          }}
+        >
+          {powerText}
         </Html>
       ) : null}
     </group>

@@ -664,6 +664,7 @@ h1 {
 .coach-prompt button:focus-visible,
 .wildcard-option:focus-visible,
 .wildcard-player-row button:focus-visible,
+.power-option:focus-visible,
 .primary-action:focus-visible,
 .secondary-action:focus-visible,
 .scanner-cell:focus-visible,
@@ -1092,6 +1093,168 @@ h1 {
 .wildcard-player-row button:disabled {
   cursor: not-allowed;
   opacity: 0.45;
+}
+
+.power-card {
+  display: grid;
+  gap: 11px;
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--hint-both) 30%, var(--app-border));
+  border-radius: var(--radius-l);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--app-panel-strong) 52%, transparent),
+    color-mix(in srgb, var(--app-tile) 88%, transparent)
+  );
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--app-text) 6%, transparent);
+}
+
+.power-header,
+.power-draft-status,
+.power-player-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.power-header div,
+.power-player-row div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.power-header span,
+.power-player-row span {
+  color: var(--app-muted);
+  font-size: 0.68rem;
+  font-weight: 850;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.power-header strong,
+.power-draft-status strong,
+.power-player-row strong {
+  color: var(--app-text);
+  font-size: 0.86rem;
+  font-weight: 900;
+}
+
+.power-score {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 9px;
+  border: 1px solid color-mix(in srgb, var(--hint-both) 34%, var(--app-border));
+  border-radius: 999px;
+  color: color-mix(in srgb, var(--hint-both) 58%, var(--app-text));
+  background: color-mix(in srgb, var(--hint-both) 8%, transparent);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.power-copy {
+  margin: 0;
+  color: var(--app-muted);
+  font-size: 0.8rem;
+  font-weight: 720;
+  line-height: 1.35;
+}
+
+.power-draft-status {
+  min-height: 34px;
+  padding: 8px 10px;
+  border: 1px solid var(--app-border);
+  border-radius: var(--radius-s);
+  background: color-mix(in srgb, var(--app-panel-strong) 52%, transparent);
+}
+
+.power-draft-status span {
+  color: var(--hint-both);
+  font-size: 0.76rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.power-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.power-option {
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 8px;
+  border: 1px solid var(--app-border);
+  border-radius: var(--radius-s);
+  color: var(--app-text);
+  background: color-mix(in srgb, var(--app-panel-strong) 54%, transparent);
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 900;
+  transition:
+    border-color 180ms ease,
+    background-color 180ms ease,
+    transform 120ms ease;
+}
+
+.power-option.active {
+  border-color: color-mix(in srgb, var(--hint-both) 56%, var(--app-border));
+  background: color-mix(in srgb, var(--hint-both) 12%, var(--app-panel-strong));
+}
+
+.power-option:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--app-primary) 46%, var(--app-border));
+  background: color-mix(in srgb, var(--app-primary) 8%, var(--app-panel-strong));
+}
+
+.power-option:active {
+  transform: scale(0.985);
+}
+
+.power-option:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+  transform: none;
+}
+
+.power-player-list {
+  display: grid;
+  gap: 8px;
+}
+
+.power-player-row {
+  min-height: 56px;
+  padding: 9px 10px;
+  border: 1px solid var(--app-border);
+  border-radius: var(--radius-s);
+  background: color-mix(in srgb, var(--app-panel-strong) 50%, transparent);
+}
+
+.power-player-row small {
+  color: var(--app-muted);
+  font-size: 0.74rem;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.power-player-row > span {
+  flex: 0 0 auto;
+  color: var(--app-muted);
+}
+
+.power-player-row > span.ready {
+  color: var(--hint-both);
+}
+
+.power-player-row > span.used {
+  color: var(--hint-score);
 }
 
 .progress-card,

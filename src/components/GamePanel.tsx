@@ -7,6 +7,7 @@ import {
   ListChecks,
   Link2,
   RefreshCw,
+  Shield,
   Sparkles,
   Swords,
   Trophy,
@@ -15,6 +16,7 @@ import {
   VolumeX,
   Wifi,
   X,
+  Zap,
 } from 'lucide-react';
 import type { BoardLayout } from '../game/boardView';
 import {
@@ -40,14 +42,14 @@ import type {
 } from '../game/rules';
 import type { OnlineRoomSettings, OnlineStatus } from '../game/useOnlineGame';
 import {
-  WILDCARDS,
+  FINAL_SIX_POWER_DESCRIPTION,
+  FINAL_SIX_POWER_LABEL,
+  FINAL_SIX_POWER_SHORT_LABEL,
+  type FinalSixPowerId,
+  type FinalSixPowerState,
   type LinesBonusScores,
   type LinesEndgameMode,
-  type WildcardId,
-  type WildcardState,
-  canActivateWildcard,
-  getRemainingDraftOptions,
-} from '../game/wildcards';
+} from '../game/finalSixPowers';
 import { THEME_ORDER, THEMES, ThemeId } from '../theme';
 import { ViewSelector } from './ViewSelector';
 
@@ -67,6 +69,7 @@ type OnlinePanelState = {
 
 type GamePanelProps = {
   baseLineScores: LineScores;
+  canHumanChoosePower: boolean;
   coachEnabled: boolean;
   coachDisabledOnline: boolean;
   coachSetting: CoachSetting;
@@ -106,10 +109,10 @@ type GamePanelProps = {
   status: string;
   themeId: ThemeId;
   themeUnlockProgress: ThemeUnlockProgress[];
-  wildcardPicker: Player | null;
-  wildcards: WildcardState;
+  powerPicker: Player | null;
+  powerSelection: FinalSixPowerId;
+  finalSixPowers: FinalSixPowerState;
   effectiveLinesEndgameMode: LinesEndgameMode;
-  onActivateWildcard: (player: Player) => void;
   onCoachSettingChange: (setting: CoachSetting) => void;
   onCopySignal: () => void;
   onDailyPuzzleMove: (move: number) => void;
@@ -120,7 +123,7 @@ type GamePanelProps = {
   onModeChange: (mode: GameMode) => void;
   onOnlineSignal: () => void;
   onOpenGuide: () => void;
-  onPickWildcard: (player: Player, wildcard: WildcardId) => void;
+  onPowerSelectionChange: (power: FinalSixPowerId) => void;
   onRemoteSignalChange: (signal: string) => void;
   onResetMatch: () => void;
   onResetRound: () => void;
@@ -136,13 +139,31 @@ function markIcon(player: Player) {
   return player === 'X' ? <X size={18} /> : <Circle size={18} />;
 }
 
+function powerIcon(power: FinalSixPowerId) {
+  if (power === 'power-cell') {
+    return <Sparkles size={15} />;
+  }
+
+  if (power === 'surge-line') {
+    return <Zap size={15} />;
+  }
+
+  return <Shield size={15} />;
+}
+
 const DAILY_FLOORS = [0, 1, 2] as const;
-const WILDCARD_PLAYERS = ['X', 'O'] as const;
+const POWER_PLAYERS = ['X', 'O'] as const;
+const POWER_OPTIONS: FinalSixPowerId[] = [
+  'power-cell',
+  'surge-line',
+  'shield-line',
+];
 
 const formatCell = (move: number | null) => (move === null ? '-' : move + 1);
 
 export function GamePanel({
   baseLineScores,
+  canHumanChoosePower,
   coachEnabled,
   coachDisabledOnline,
   coachSetting,
@@ -182,10 +203,10 @@ export function GamePanel({
   status,
   themeId,
   themeUnlockProgress,
-  wildcardPicker,
-  wildcards,
+  powerPicker,
+  powerSelection,
+  finalSixPowers,
   effectiveLinesEndgameMode,
-  onActivateWildcard,
   onCoachSettingChange,
   onCopySignal,
   onDailyPuzzleMove,
@@ -196,7 +217,7 @@ export function GamePanel({
   onModeChange,
   onOnlineSignal,
   onOpenGuide,
-  onPickWildcard,
+  onPowerSelectionChange,
   onRemoteSignalChange,
   onResetMatch,
   onResetRound,
@@ -213,11 +234,11 @@ export function GamePanel({
   ]
     .filter(Boolean)
     .join(' ');
-  const isWildcardScoreMode =
-    ruleset === 'lines' && effectiveLinesEndgameMode === 'wildcards';
+  const isPowerScoreMode =
+    ruleset === 'lines' && effectiveLinesEndgameMode === 'powers-v2';
   const emptyCellsTense =
     ruleset === 'lines' &&
-    !isWildcardScoreMode &&
+    !isPowerScoreMode &&
     remainingCells > 0 &&
     remainingCells <= 6 &&
     !result.isComplete;
@@ -229,13 +250,9 @@ export function GamePanel({
       : `${RULESET_LABEL[online.settings.ruleset]} room`
     : `${RULESET_LABEL[ruleset]} room`;
   const hasLineBonus = linesBonusScores.X > 0 || linesBonusScores.O > 0;
-  const wildcardOptions = getRemainingDraftOptions(wildcards);
-  const canHumanDraftWildcard =
-    Boolean(wildcardPicker) &&
-    (mode !== 'solo' || wildcardPicker === humanSide);
-  const canShowWildcardPanel =
+  const canShowPowerPanel =
     ruleset === 'lines' &&
-    effectiveLinesEndgameMode === 'wildcards' &&
+    effectiveLinesEndgameMode === 'powers-v2' &&
     mode !== 'online';
 
   return (
@@ -331,7 +348,7 @@ export function GamePanel({
                 recentLinePlayer === 'X' ? lineScoreEventClass : ''
             }`}
             >
-              <span>{isWildcardScoreMode ? 'X total' : 'X lines'}</span>
+              <span>{isPowerScoreMode ? 'X total' : 'X lines'}</span>
               <strong>{lineScores.X}</strong>
             </div>
             <div
@@ -339,9 +356,9 @@ export function GamePanel({
                 recentLineCount > 0 ? lineScoreEventClass : ''
             }`}
             >
-              <span>{isWildcardScoreMode ? 'Lines' : 'Round'}</span>
+              <span>{isPowerScoreMode ? 'Lines' : 'Round'}</span>
               <strong>
-                {isWildcardScoreMode
+                {isPowerScoreMode
                   ? `${baseLineScores.X}-${baseLineScores.O}`
                   : `${lineScores.X}-${lineScores.O}`}
               </strong>
@@ -351,23 +368,23 @@ export function GamePanel({
                 recentLinePlayer === 'O' ? lineScoreEventClass : ''
             }`}
             >
-              <span>{isWildcardScoreMode ? 'O total' : 'O lines'}</span>
+              <span>{isPowerScoreMode ? 'O total' : 'O lines'}</span>
               <strong>{lineScores.O}</strong>
             </div>
             <div
               className={`line-score-tile ${
-                isWildcardScoreMode ? 'line-score-bonus' : 'line-score-empty'
+                isPowerScoreMode ? 'line-score-bonus' : 'line-score-empty'
               } ${emptyCellsTense ? 'tension' : ''}`}
             >
               <span>
-                {isWildcardScoreMode
+                {isPowerScoreMode
                   ? 'Bonus'
                   : emptyCellsTense
                     ? 'Final cells'
                     : 'Empty'}
               </span>
               <strong>
-                {isWildcardScoreMode
+                {isPowerScoreMode
                   ? `${linesBonusScores.X}-${linesBonusScores.O}`
                   : remainingCells}
               </strong>
@@ -424,19 +441,21 @@ export function GamePanel({
               <span>Standard</span>
             </button>
             <button
-              className={linesEndgameMode === 'wildcards' ? 'active' : ''}
+              className={linesEndgameMode === 'powers-v2' ? 'active' : ''}
               disabled={mode === 'online'}
               type="button"
-              onClick={() => onEndgameModeChange('wildcards')}
+              onClick={() => onEndgameModeChange('powers-v2')}
             >
               <Sparkles size={16} />
-              <span>Wildcards Experimental</span>
+              <span>Powers v2 Experimental</span>
             </button>
           </div>
           {mode === 'online' ? (
-            <p className="control-note">Wildcards are local prototype only</p>
-          ) : linesEndgameMode === 'wildcards' ? (
-            <p className="control-note">Final Six: draft one Wildcard</p>
+            <p className="control-note">
+              Final Six Powers are local prototype only
+            </p>
+          ) : linesEndgameMode === 'powers-v2' ? (
+            <p className="control-note">Final Six: choose powers on board</p>
           ) : null}
         </div>
       ) : null}
@@ -496,7 +515,7 @@ export function GamePanel({
             <strong>{onlineRulesLocked ? 'Locked' : 'Host decides'}</strong>
           </div>
           <p className="online-hint">
-            Coach disabled online. Wildcards are local prototype only.
+            Coach disabled online. Final Six Powers are local prototype only.
           </p>
           {online.status === 'disconnected' ? (
             <div className="online-banner">
@@ -697,87 +716,78 @@ export function GamePanel({
         ) : null}
       </div>
 
-      {canShowWildcardPanel ? (
-        <div className="wildcard-card" aria-label="Final Six Wildcards">
-          <div className="wildcard-header">
+      {canShowPowerPanel ? (
+        <div className="power-card" aria-label="Final Six Powers">
+          <div className="power-header">
             <div>
               <span>Final Six</span>
-              <strong>Wildcards</strong>
+              <strong>Powers</strong>
             </div>
-            <span className="wildcard-score">
+            <span className="power-score">
               Bonus {linesBonusScores.X}-{linesBonusScores.O}
             </span>
           </div>
 
-          {wildcards.phase === 'inactive' ? (
-            <p className="wildcard-copy">
-              Final Six: draft one Wildcard when six cells remain.
+          {finalSixPowers.phase === 'inactive' ? (
+            <p className="power-copy">
+              Choose powers on the board when six cells remain.
             </p>
           ) : null}
 
-          {wildcards.phase === 'drafting' ? (
+          {finalSixPowers.phase === 'choosing' ? (
             <>
-              <div className="wildcard-draft-status" aria-live="polite">
-                <strong>Final Six: draft one Wildcard</strong>
+              <div className="power-draft-status" aria-live="polite">
+                <strong>Choose on board</strong>
                 <span>
-                  {mode === 'solo' && wildcardPicker !== humanSide
-                    ? 'AI picks'
-                    : `${wildcardPicker ?? '-'} picks`}
+                  {mode === 'solo' && powerPicker !== humanSide
+                    ? 'AI chooses'
+                    : `${powerPicker ?? '-'} chooses`}
                 </span>
               </div>
-              <div className="wildcard-options">
-                {wildcardOptions.map((wildcard) => (
+              <div className="power-options">
+                {POWER_OPTIONS.map((power) => (
                   <button
-                    key={wildcard}
-                    className="wildcard-option"
-                    disabled={!wildcardPicker || !canHumanDraftWildcard}
+                    key={power}
+                    aria-pressed={powerSelection === power}
+                    className={`power-option ${
+                      powerSelection === power ? 'active' : ''
+                    }`}
+                    disabled={!powerPicker || !canHumanChoosePower}
                     type="button"
-                    onClick={() => onPickWildcard(wildcardPicker!, wildcard)}
+                    title={FINAL_SIX_POWER_DESCRIPTION[power]}
+                    onClick={() => onPowerSelectionChange(power)}
                   >
-                    <strong>{WILDCARDS[wildcard].name}</strong>
-                    <span>{WILDCARDS[wildcard].description}</span>
+                    {powerIcon(power)}
+                    <span>{FINAL_SIX_POWER_SHORT_LABEL[power]}</span>
                   </button>
                 ))}
               </div>
             </>
           ) : null}
 
-          {wildcards.phase === 'active' ? (
-            <div className="wildcard-player-list">
-              {WILDCARD_PLAYERS.map((player) => {
-                const picked = wildcards.players[player].picked;
-                const active = wildcards.players[player].active;
-                const used = wildcards.players[player].used;
-                const canUse =
-                  canActivateWildcard(wildcards, player) &&
-                  currentPlayer === player &&
-                  !result.isComplete &&
-                  !result.winner &&
-                  !result.isDraw &&
-                  (mode !== 'solo' || player === humanSide);
+          {finalSixPowers.phase === 'active' ? (
+            <div className="power-player-list">
+              {POWER_PLAYERS.map((player) => {
+                const choice = finalSixPowers.players[player].choice;
+                const target =
+                  choice?.id === 'power-cell'
+                    ? `Cell ${(choice.cell ?? 0) + 1}`
+                    : choice?.line
+                      ? `Cells ${choice.line.map((cell) => cell + 1).join('-')}`
+                      : '-';
 
                 return (
-                  <div key={player} className="wildcard-player-row">
+                  <div key={player} className="power-player-row">
                     <div>
-                      <span>{player} Wildcard</span>
-                      <strong>{picked ? WILDCARDS[picked].name : '-'}</strong>
-                      <small>
-                        {used
-                          ? 'Used'
-                          : active
-                            ? 'Armed for next move'
-                            : 'Ready'}
-                      </small>
+                      <span>{player} Power</span>
+                      <strong>
+                        {choice ? FINAL_SIX_POWER_LABEL[choice.id] : '-'}
+                      </strong>
+                      <small>{choice ? target : 'Not chosen'}</small>
                     </div>
-                    {picked && !used ? (
-                      <button
-                        disabled={!canUse}
-                        type="button"
-                        onClick={() => onActivateWildcard(player)}
-                      >
-                        Use {WILDCARDS[picked].name}
-                      </button>
-                    ) : null}
+                    <span className={choice?.triggered ? 'used' : 'ready'}>
+                      {choice?.triggered ? 'Triggered' : 'Ready'}
+                    </span>
                   </div>
                 );
               })}
