@@ -1,8 +1,10 @@
-import { KeyboardEvent, useRef } from 'react';
+import { type CSSProperties, KeyboardEvent, useRef } from 'react';
 import { Board, Player } from '../game/rules';
 import type { CoachHint, CoachHintKind } from '../game/coach';
 import {
+  type AnimationCellMoment,
   getAnimationCells,
+  getAnimationCellMoments,
   getAnimationLines,
   type GameAnimationEvent,
 } from '../game/animationEvents';
@@ -145,6 +147,30 @@ export function ScannerBoard({
     animationEvents
       .filter((event) => event.type === 'place')
       .flatMap(getAnimationCells),
+  );
+  const animationCellMoments = getAnimationCellMoments(animationEvents);
+  const lineMomentByCell = animationCellMoments.reduce<
+    Map<number, AnimationCellMoment>
+  >((moments, moment) => {
+    const current = moments.get(moment.cell);
+
+    if (
+      !current ||
+      (moment.isCombo && current.isCombo && moment.sequence > current.sequence) ||
+      moment.delayMs < current.delayMs ||
+      (moment.tone === 'power' && current.tone !== 'power')
+    ) {
+      moments.set(moment.cell, moment);
+    }
+
+    return moments;
+  }, new Map());
+  const powerTriggerByCell = new Map(
+    animationEvents.flatMap((event) =>
+      event.type === 'power-triggered' && event.cell !== undefined
+        ? [[event.cell, event] as const]
+        : [],
+    ),
   );
   const hasFinalSixStartEvent = animationEvents.some(
     (event) => event.type === 'final-six-start',
@@ -444,6 +470,8 @@ export function ScannerBoard({
               const isPowerPreviewSurge = previewSurgeLineCells.has(index);
               const isPowerPreviewShield = previewShieldLineCells.has(index);
               const isPowerTrigger = triggerCells.has(index);
+              const lineMoment = lineMomentByCell.get(index);
+              const powerTrigger = powerTriggerByCell.get(index);
               const isScoreEvent = scoreEventCells.has(index);
               const isBlockEvent = blockEventCells.has(index);
               const isPowerEvent = powerEventCells.has(index);
@@ -516,12 +544,22 @@ export function ScannerBoard({
                 isScoreEvent ? 'score-event' : '',
                 isBlockEvent ? 'block-event' : '',
                 isPowerEvent ? 'power-event' : '',
+                lineMoment ? 'line-event-active' : '',
+                lineMoment ? `${lineMoment.tone}-line-step` : '',
+                lineMoment?.isCombo ? 'combo-line-step' : '',
                 isPlaceEvent ? 'place-event' : '',
                 lastMove === index ? 'last' : '',
                 isPlayable ? `preview-${currentPlayer.toLowerCase()}` : '',
               ]
                 .filter(Boolean)
                 .join(' ');
+              const cellStyle = lineMoment
+                ? ({
+                    '--line-step-delay': `${lineMoment.delayMs}ms`,
+                    '--line-step-index': lineMoment.step,
+                    '--line-sequence-index': lineMoment.sequence,
+                  } as CSSProperties)
+                : undefined;
 
               const lineLabel = isClassicWinning
                 ? ', winning line'
@@ -597,8 +635,12 @@ export function ScannerBoard({
                   key={index}
                   aria-label={cellLabel}
                   className={cellClass}
+                  data-line-event={lineMoment?.tone}
+                  data-line-sequence={lineMoment?.sequence}
+                  data-line-step={lineMoment?.step}
                   data-cell-index={index}
                   disabled={!isPlayable}
+                  style={cellStyle}
                   title={coachHint?.explanation}
                   type="button"
                   onKeyDown={(event) => handleCellKeyDown(event, index)}
@@ -641,6 +683,18 @@ export function ScannerBoard({
                       }`}
                     >
                       {powerGlyph}
+                    </span>
+                  ) : null}
+                  {powerTrigger ? (
+                    <span
+                      aria-hidden="true"
+                      className={`scanner-power-float ${
+                        powerTrigger.shieldDenied ? 'denied' : 'bonus'
+                      }`}
+                    >
+                      {powerTrigger.shieldDenied
+                        ? 'Denied'
+                        : `+${powerTrigger.bonus}`}
                     </span>
                   ) : null}
                   {connectorKind ? (

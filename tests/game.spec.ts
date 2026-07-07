@@ -478,6 +478,9 @@ test('lines mode scores completed lines without ending the round', async ({
   await expect(page.getByText('X +1 line')).toBeVisible();
   await expect(page.locator('.scanner-cell.score-event').first()).toBeVisible();
   await expect(
+    page.locator('.scanner-cell.score-line-step[data-line-step="2"]').first(),
+  ).toBeVisible();
+  await expect(
     page.getByRole('button', {
       name: /Cell 12, X, scored line, scoring animation active, floor 2/,
     }),
@@ -500,6 +503,9 @@ test('blocking a threat gets red scanner feedback', async ({ page }) => {
   await place(page, 'X', 12);
 
   await expect(page.locator('.scanner-cell.block-event').first()).toBeVisible();
+  await expect(
+    page.locator('.scanner-cell.block-line-step[data-line-event="block"]').first(),
+  ).toBeVisible();
   await expect(
     page.getByRole('button', {
       name: /Cell 12, X, block animation active, floor 2/,
@@ -538,6 +544,11 @@ test('multi-line scoring gets special scanner feedback', async ({ page }) => {
   );
   await expect(page.locator('.line-score-x.score-bump.multi-line')).toBeVisible();
   await expect(page.locator('.scanner-cell.score-event').first()).toBeVisible();
+  await expect(
+    page
+      .locator('.scanner-cell.combo-line-step:not([data-line-sequence="0"])')
+      .first(),
+  ).toBeVisible();
   await expect(
     page.getByRole('button', {
       name: /Cell 14, X, scored line, scoring animation active, floor 2/,
@@ -733,6 +744,8 @@ test('local Lines Final Six Powers choose board targets and add bonus score', as
 
   await expect(page.getByText(/Charged Cell \+2/)).toBeVisible();
   await expect(page.locator('.scanner-cell.power-event').first()).toBeVisible();
+  await expect(page.locator('.scanner-cell.power-line-step').first()).toBeVisible();
+  await expect(page.locator('.scanner-power-float.bonus')).toContainText('+2');
   await expect(page.locator('.line-score-bonus.power-bonus-bump')).toBeVisible();
   await expect(page.locator('.power-card')).toContainText('Bonus 0-2');
   await expect(page.locator('.line-bonus-note')).toContainText(

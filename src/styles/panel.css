@@ -328,23 +328,33 @@ h1 {
 }
 
 .line-score-tile.score-bump {
-  animation: score-chip-bump 620ms cubic-bezier(0.2, 0.9, 0.3, 1.22) both;
+  animation: score-chip-bump 620ms cubic-bezier(0.2, 0.9, 0.3, 1.22) 360ms
+    both;
 }
 
 .line-score-tile.score-bump::before {
-  animation: score-chip-flash 900ms ease-out both;
+  animation: score-chip-flash 900ms ease-out 360ms both;
 }
 
 .line-score-tile.score-bump.multi-line {
   border-color: color-mix(in srgb, var(--line-scored) 54%, var(--app-border));
+  animation-name: combo-score-chip-bump;
+  animation-duration: 920ms;
+  animation-delay: 660ms;
+}
+
+.line-score-tile.score-bump.multi-line::before {
+  animation-delay: 660ms;
 }
 
 .line-score-tile.power-bonus-bump {
   border-color: color-mix(in srgb, var(--hint-both) 58%, var(--app-border));
+  animation-delay: 620ms;
 }
 
 .line-score-tile.power-bonus-bump::before {
   background: color-mix(in srgb, var(--hint-both) 24%, transparent);
+  animation-delay: 620ms;
 }
 
 .line-score-tile.final-six-bump {
@@ -418,6 +428,28 @@ h1 {
 
   45% {
     transform: scale(1.055);
+  }
+
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes combo-score-chip-bump {
+  0% {
+    transform: scale(1);
+  }
+
+  24% {
+    transform: scale(1.035) translateY(-1px);
+  }
+
+  48% {
+    transform: scale(1.075) translateY(-2px);
+  }
+
+  74% {
+    transform: scale(1.035) translateY(0);
   }
 
   100% {

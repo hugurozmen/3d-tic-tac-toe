@@ -4,17 +4,22 @@ import { useRef } from 'react';
 import * as THREE from 'three';
 import {
   getAnimationCells,
+  getAnimationLineMoments,
   getAnimationLines,
 } from '../../game/animationEvents';
 import { CameraControls, CameraRig } from './Camera';
 import { Cell } from './Cell';
 import {
+  AuthoredLineBeam,
   BoardRails,
   CoachLinePath,
   CoreGlow,
   CubeShell,
+  FinalSixChargePulse,
   FloorPlates,
+  PowerBonusFloat,
   ScanFloor,
+  ShieldImpact,
   WinBeam,
 } from './Environment';
 import type { SceneContentProps } from './types';
@@ -91,6 +96,7 @@ export function SceneContent({
         )
       : [],
   );
+  const animationLineMoments = getAnimationLineMoments(animationEvents);
   const scoreEventLines = animationEvents
     .filter(
       (event) => event.type === 'score-line' || event.type === 'multi-line',
@@ -98,12 +104,6 @@ export function SceneContent({
     .flatMap(getAnimationLines);
   const blockEventLines = animationEvents
     .filter((event) => event.type === 'block')
-    .flatMap(getAnimationLines);
-  const powerEventLines = animationEvents
-    .filter(
-      (event) =>
-        event.type === 'power-selected' || event.type === 'power-triggered',
-    )
     .flatMap(getAnimationLines);
   const placeEventCells = new Set(
     animationEvents
@@ -119,6 +119,25 @@ export function SceneContent({
           event.type === 'power-selected' || event.type === 'power-triggered',
       )
       .flatMap(getAnimationCells),
+  );
+  const hasFinalSixStartEvent = animationEvents.some(
+    (event) => event.type === 'final-six-start',
+  );
+  let latestPlaceCell: number | null = null;
+
+  for (let index = animationEvents.length - 1; index >= 0; index -= 1) {
+    const event = animationEvents[index];
+
+    if (event.type === 'place') {
+      latestPlaceCell = event.cell;
+      break;
+    }
+  }
+  const finalSixPulseCells = board
+    .map((value, index) => (value === null ? index : null))
+    .filter((cell): cell is number => cell !== null);
+  const powerTriggerEvents = animationEvents.flatMap((event) =>
+    event.type === 'power-triggered' ? [event] : [],
   );
   const hintsByCell = new Map(coachHints.map((hint) => [hint.cell, hint]));
   const activeCoachCell = armedCell ?? hoveredCell;
@@ -175,6 +194,9 @@ export function SceneContent({
         {theme.winBeam && beamLine.length === 3 ? (
           <WinBeam color={beamColor} layout={layout} line={beamLine} theme={theme} />
         ) : null}
+        {hasFinalSixStartEvent ? (
+          <FinalSixChargePulse cells={finalSixPulseCells} layout={layout} />
+        ) : null}
         {activeCoachHint && activeCoachColor ? (
           <CoachLinePath
             color={activeCoachColor}
@@ -182,30 +204,42 @@ export function SceneContent({
             line={activeCoachHint.primaryLine}
           />
         ) : null}
-        {scoreEventLines.map((line, index) => (
-          <CoachLinePath
-            key={`score-event-${index}-${line.join('-')}`}
-            color="#74f0a7"
+        {animationLineMoments.map((moment) => (
+          <AuthoredLineBeam
+            key={`authored-${moment.eventId}-${moment.sequence}-${moment.line.join('-')}`}
+            color={
+              moment.tone === 'block'
+                ? '#ff6f76'
+                : moment.tone === 'power'
+                  ? '#f8d65a'
+                  : '#74f0a7'
+            }
+            delayMs={moment.delayMs}
+            impactCell={moment.tone === 'block' ? latestPlaceCell : null}
+            isCombo={moment.isCombo}
             layout={layout}
-            line={line}
+            line={moment.line}
+            tone={moment.tone}
           />
         ))}
-        {blockEventLines.map((line, index) => (
-          <CoachLinePath
-            key={`block-event-${index}-${line.join('-')}`}
-            color="#ff6f76"
+        {powerTriggerEvents.map((event) => (
+          <PowerBonusFloat
+            key={`power-float-${event.id}`}
+            bonus={event.bonus}
+            cell={event.cell}
             layout={layout}
-            line={line}
+            shieldDenied={event.shieldDenied}
           />
         ))}
-        {powerEventLines.map((line, index) => (
-          <CoachLinePath
-            key={`power-event-${index}-${line.join('-')}`}
-            color="#f8d65a"
-            layout={layout}
-            line={line}
-          />
-        ))}
+        {powerTriggerEvents
+          .filter((event) => event.shieldDenied || event.power === 'shield-cell')
+          .map((event) => (
+            <ShieldImpact
+              key={`shield-impact-${event.id}`}
+              cell={event.cell}
+              layout={layout}
+            />
+          ))}
         {powerEffects.previewLines.map((preview) => (
           <CoachLinePath
             key={`preview-${preview.kind}-${preview.player}-${preview.line.join('-')}`}

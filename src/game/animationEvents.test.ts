@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   createAnimationEventFactory,
+  getAnimationCellMoments,
   getAnimationCells,
   getAnimationDuration,
+  getAnimationLineMoments,
   getAnimationLines,
   getAnimationTone,
   shouldReduceMotion,
@@ -97,6 +99,61 @@ describe('animation events', () => {
     expect(shouldReduceMotion({ matches: false })).toBe(false);
     expect(getAnimationDuration(event, true)).toBeLessThan(
       getAnimationDuration(event, false),
+    );
+  });
+
+  it('derives authored line moments without adding event types', () => {
+    const createEvent = createAnimationEventFactory();
+    const events = [
+      createEvent({
+        lines: [
+          [0, 1, 2],
+          [2, 5, 8],
+        ],
+        player: 'X',
+        type: 'multi-line',
+      }),
+      createEvent({
+        bonus: 1,
+        cell: 8,
+        line: [2, 5, 8],
+        player: 'O',
+        power: 'shield-cell',
+        shieldDenied: true,
+        type: 'power-triggered',
+      }),
+    ];
+
+    const lineMoments = getAnimationLineMoments(events);
+    const cellMoments = getAnimationCellMoments(events);
+
+    expect(lineMoments).toMatchObject([
+      {
+        delayMs: 0,
+        eventType: 'multi-line',
+        isCombo: true,
+        sequence: 0,
+        tone: 'score',
+      },
+      {
+        delayMs: 170,
+        eventType: 'multi-line',
+        isCombo: true,
+        sequence: 1,
+        tone: 'score',
+      },
+      {
+        eventType: 'power-triggered',
+        shieldDenied: true,
+        tone: 'block',
+      },
+    ]);
+    expect(cellMoments.filter((moment) => moment.cell === 2)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ step: 2, tone: 'score' }),
+        expect.objectContaining({ step: 0, tone: 'score' }),
+        expect.objectContaining({ step: 0, tone: 'block' }),
+      ]),
     );
   });
 });

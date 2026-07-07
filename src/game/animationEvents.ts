@@ -35,17 +35,39 @@ export type GameAnimationEventInput = GameAnimationEvent extends infer Event
   : never;
 
 export type AnimationTone = 'block' | 'glass' | 'place' | 'power' | 'score';
+export type AnimationLineTone = 'block' | 'power' | 'score';
+
+export type AnimationLineMoment = {
+  delayMs: number;
+  eventId: number;
+  eventType: GameAnimationEvent['type'];
+  isCombo: boolean;
+  line: number[];
+  power?: string;
+  sequence: number;
+  shieldDenied: boolean;
+  tone: AnimationLineTone;
+  total: number;
+};
+
+export type AnimationCellMoment = AnimationLineMoment & {
+  cell: number;
+  step: number;
+};
+
+export const LINE_CASCADE_DELAY_MS = 170;
+export const LINE_CELL_STEP_DELAY_MS = 120;
 
 const EVENT_DURATIONS: Record<GameAnimationEvent['type'], number> = {
-  block: 520,
-  'final-six-start': 1100,
+  block: 900,
+  'final-six-start': 1500,
   'match-end': 1300,
-  'multi-line': 980,
+  'multi-line': 1500,
   place: 240,
   'power-selected': 900,
-  'power-triggered': 980,
+  'power-triggered': 1300,
   'round-end': 900,
-  'score-line': 640,
+  'score-line': 980,
 };
 
 const REDUCED_MOTION_DURATIONS: Record<GameAnimationEvent['type'], number> = {
@@ -129,6 +151,65 @@ export const getAnimationCells = (event: GameAnimationEvent) => {
 
   return Array.from(new Set(getAnimationLines(event).flat()));
 };
+
+export const getAnimationLineMoments = (
+  events: GameAnimationEvent[],
+): AnimationLineMoment[] =>
+  events.flatMap<AnimationLineMoment>((event): AnimationLineMoment[] => {
+    if (
+      event.type === 'score-line' ||
+      event.type === 'multi-line' ||
+      event.type === 'block'
+    ) {
+      const lines = getAnimationLines(event);
+
+      return lines.map((line, sequence) => ({
+        delayMs:
+          (event.type === 'multi-line' || event.type === 'block'
+            ? sequence
+            : 0) * LINE_CASCADE_DELAY_MS,
+        eventId: event.id,
+        eventType: event.type,
+        isCombo: event.type === 'multi-line',
+        line,
+        sequence,
+        shieldDenied: false,
+        tone: event.type === 'block' ? 'block' : 'score',
+        total: lines.length,
+      }));
+    }
+
+    if (event.type === 'power-triggered' && event.line) {
+      return [
+        {
+          delayMs: event.shieldDenied ? LINE_CELL_STEP_DELAY_MS : 0,
+          eventId: event.id,
+          eventType: event.type,
+          isCombo: false,
+          line: event.line,
+          power: event.power,
+          sequence: 0,
+          shieldDenied: Boolean(event.shieldDenied),
+          tone: event.shieldDenied ? 'block' : 'power',
+          total: 1,
+        },
+      ];
+    }
+
+    return [];
+  });
+
+export const getAnimationCellMoments = (
+  events: GameAnimationEvent[],
+): AnimationCellMoment[] =>
+  getAnimationLineMoments(events).flatMap((moment) =>
+    moment.line.map((cell, step) => ({
+      ...moment,
+      cell,
+      delayMs: moment.delayMs + step * LINE_CELL_STEP_DELAY_MS,
+      step,
+    })),
+  );
 
 export const createAnimationEventFactory = (startId = 0) => {
   let nextId = startId;
