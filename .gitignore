@@ -7,3 +7,4 @@ test-results/
 vite.config.d.ts
 vite.config.js
 .DS_Store
+agents.md

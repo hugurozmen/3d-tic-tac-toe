@@ -350,6 +350,16 @@ h1 {
   color: var(--app-primary);
 }
 
+.line-score-bonus {
+  color: color-mix(in srgb, var(--app-win) 52%, var(--app-text));
+  background: color-mix(in srgb, var(--app-win) 8%, transparent);
+}
+
+.line-score-bonus strong,
+.line-score-bonus span {
+  color: color-mix(in srgb, var(--app-win) 52%, var(--app-text));
+}
+
 .line-tension-note {
   margin: -2px 0 0;
   padding: 8px 11px;
@@ -359,6 +369,19 @@ h1 {
   background: color-mix(in srgb, var(--app-primary) 8%, transparent);
   font-size: 0.72rem;
   font-weight: 820;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.line-bonus-note {
+  margin: -2px 0 0;
+  padding: 8px 11px;
+  border: 1px solid color-mix(in srgb, var(--app-win) 30%, var(--app-border));
+  border-radius: 999px;
+  color: color-mix(in srgb, var(--app-win) 48%, var(--app-text));
+  background: color-mix(in srgb, var(--app-win) 8%, transparent);
+  font-size: 0.72rem;
+  font-weight: 840;
   line-height: 1.2;
   text-align: center;
 }
@@ -475,6 +498,15 @@ h1 {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.endgame-control {
+  grid-template-columns: minmax(0, 0.82fr) minmax(0, 1.48fr);
+}
+
+.endgame-control button span {
+  white-space: normal;
+  line-height: 1.08;
+}
+
 .ruleset-control,
 .coach-control {
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -482,6 +514,14 @@ h1 {
 
 .coach-control {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.control-note {
+  margin: -1px 0 0;
+  color: var(--app-muted);
+  font-size: 0.74rem;
+  font-weight: 760;
+  line-height: 1.3;
 }
 
 .coach-legend {
@@ -607,6 +647,12 @@ h1 {
   opacity: 1;
 }
 
+.segmented-control button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+  transform: none;
+}
+
 .segmented-control button:focus-visible,
 .stage-actions button:focus-visible,
 .round-result button:focus-visible,
@@ -616,6 +662,8 @@ h1 {
 .daily-cell:focus-visible,
 .daily-share:focus-visible,
 .coach-prompt button:focus-visible,
+.wildcard-option:focus-visible,
+.wildcard-player-row button:focus-visible,
 .primary-action:focus-visible,
 .secondary-action:focus-visible,
 .scanner-cell:focus-visible,
@@ -877,6 +925,173 @@ h1 {
 .online-error {
   margin: 0;
   color: var(--mark-x);
+}
+
+.wildcard-card {
+  display: grid;
+  gap: 11px;
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--app-primary) 28%, var(--app-border));
+  border-radius: var(--radius-l);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--app-panel-strong) 52%, transparent),
+    color-mix(in srgb, var(--app-tile) 88%, transparent)
+  );
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--app-text) 6%, transparent);
+}
+
+.wildcard-header,
+.wildcard-draft-status,
+.wildcard-player-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.wildcard-header div,
+.wildcard-player-row div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.wildcard-header span,
+.wildcard-player-row span {
+  color: var(--app-muted);
+  font-size: 0.68rem;
+  font-weight: 850;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.wildcard-header strong,
+.wildcard-draft-status strong,
+.wildcard-player-row strong {
+  color: var(--app-text);
+  font-size: 0.86rem;
+  font-weight: 900;
+}
+
+.wildcard-score {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 9px;
+  border: 1px solid color-mix(in srgb, var(--app-win) 28%, var(--app-border));
+  border-radius: 999px;
+  color: color-mix(in srgb, var(--app-win) 48%, var(--app-text));
+  background: color-mix(in srgb, var(--app-win) 8%, transparent);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.wildcard-copy {
+  margin: 0;
+  color: var(--app-muted);
+  font-size: 0.8rem;
+  font-weight: 720;
+  line-height: 1.35;
+}
+
+.wildcard-draft-status {
+  min-height: 34px;
+  padding: 8px 10px;
+  border: 1px solid var(--app-border);
+  border-radius: var(--radius-s);
+  background: color-mix(in srgb, var(--app-panel-strong) 52%, transparent);
+}
+
+.wildcard-draft-status span {
+  color: var(--app-primary);
+  font-size: 0.76rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.wildcard-options {
+  display: grid;
+  gap: 8px;
+}
+
+.wildcard-option {
+  display: grid;
+  gap: 4px;
+  padding: 10px 11px;
+  border: 1px solid var(--app-border);
+  border-radius: var(--radius-s);
+  color: var(--app-text);
+  background: color-mix(in srgb, var(--app-panel-strong) 54%, transparent);
+  cursor: pointer;
+  text-align: left;
+  transition:
+    border-color 180ms ease,
+    background-color 180ms ease,
+    transform 120ms ease;
+}
+
+.wildcard-option:hover {
+  border-color: color-mix(in srgb, var(--app-primary) 46%, var(--app-border));
+  background: color-mix(in srgb, var(--app-primary) 8%, var(--app-panel-strong));
+}
+
+.wildcard-option:active {
+  transform: scale(0.985);
+}
+
+.wildcard-option:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+  transform: none;
+}
+
+.wildcard-option strong {
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.wildcard-option span,
+.wildcard-player-row small {
+  color: var(--app-muted);
+  font-size: 0.74rem;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.wildcard-player-list {
+  display: grid;
+  gap: 8px;
+}
+
+.wildcard-player-row {
+  min-height: 56px;
+  padding: 9px 10px;
+  border: 1px solid var(--app-border);
+  border-radius: var(--radius-s);
+  background: color-mix(in srgb, var(--app-panel-strong) 50%, transparent);
+}
+
+.wildcard-player-row button {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-s);
+  color: var(--app-primary-text);
+  background: var(--app-primary);
+  cursor: pointer;
+  font-size: 0.74rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.wildcard-player-row button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 .progress-card,
