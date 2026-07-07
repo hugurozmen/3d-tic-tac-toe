@@ -350,6 +350,16 @@ h1 {
   color: var(--app-primary);
 }
 
+.line-score-bonus {
+  color: color-mix(in srgb, var(--app-win) 52%, var(--app-text));
+  background: color-mix(in srgb, var(--app-win) 8%, transparent);
+}
+
+.line-score-bonus strong,
+.line-score-bonus span {
+  color: color-mix(in srgb, var(--app-win) 52%, var(--app-text));
+}
+
 .line-tension-note {
   margin: -2px 0 0;
   padding: 8px 11px;

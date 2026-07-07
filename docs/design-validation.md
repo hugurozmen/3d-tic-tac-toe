@@ -2,8 +2,8 @@
 
 Source of truth: [GitHub issue #15](https://github.com/hugurozmen/3d-tic-tac-toe/issues/15)  
 Generated (Europe/Istanbul): 2026-07-07  
-Command: `npm run design:audit -- --games 24 --seed 20260707`
-Variant mode: `both`
+Command: `npm run design:audit -- --variant final-six-wildcards --games 24 --seed 20260707`
+Variant mode: `final-six-wildcards`
 
 ## Scope
 
@@ -23,10 +23,13 @@ cannot fully answer confusion, satisfaction, frustration, or replay desire.
 - `npm run product:final-pass` remains useful release/playability smoke
   coverage, but it does not emit design-fun or design-fairness metrics. It
   should not replace human playtest notes for issue #15.
+- `--variant final-six-wildcards` runs the same deterministic Lines matrix
+  with local-only Wildcard draft/use rules and includes bonus scores in final
+  totals.
 
 ## Recommendation
 
-Recommendation: **prototype center-normalized Lines variant**.
+Recommendation: **tune Lines Mode**.
 
 The automated data should be treated as a design signal, not a final verdict. If
 the next human playtest confirms the same risks, prototype a small Lines Mode
@@ -151,22 +154,37 @@ Coach proxy interpretation:
 
 ## Audit-Only Center-Normalized Variant
 
-| Scenario | Standard opener score | Variant opener score | Standard center owner score | Variant center owner score | Standard avg diff | Variant avg diff | Standard final-6 changed | Variant final-6 changed |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Casual vs Casual | 81.3% | 85.4% | 77.1% | 60.4% | 1.75 | 1.50 | 37.5% | 25.0% |
-| Smart vs Smart | 72.9% | 70.8% | 77.1% | 75.0% | 2.58 | 2.34 | 4.2% | 8.3% |
-| Hard vs Hard | 37.5% | 50.0% | 12.5% | 0.0% | 0.75 | 1.25 | 0.0% | 25.0% |
-| Master vs Master | 87.5% | 100.0% | 62.5% | 50.0% | 1.75 | 1.88 | 25.0% | 0.0% |
-| Smart vs Casual | 75.0% | 81.3% | 79.2% | 68.8% | 1.88 | 1.51 | 29.2% | 25.0% |
-| Casual vs Smart | 66.7% | 66.7% | 79.2% | 70.8% | 2.33 | 1.92 | 20.8% | 16.7% |
-| Hard vs Smart | 27.1% | 31.3% | 64.6% | 60.4% | 1.13 | 1.10 | 12.5% | 12.5% |
-| Smart vs Hard | 56.3% | 64.6% | 31.3% | 22.9% | 0.58 | 0.80 | 20.8% | 16.7% |
-| Master vs Hard | 50.0% | 75.0% | 50.0% | 25.0% | 1.00 | 1.38 | 25.0% | 0.0% |
-| Hard vs Master | 37.5% | 50.0% | 62.5% | 50.0% | 1.25 | 1.31 | 25.0% | 50.0% |
+Variant comparison not run for this audit.
 
 The center-normalized variant is a non-player-facing audit hook. It discounts
 completed lines that pass through cell 14 during report scoring only. Standard
 Lines remains the default game ruleset and UI ruleset.
+
+## Final Six Wildcards Experimental Variant
+
+| Scenario | First-player score | Center-owner score | Avg final margin | Final-6 changed | Final move changed | Comeback after 21 | Wildcard used | Winner/tie changed | Bonus points by type |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| Casual vs Casual | 87.5% | 75.0% | 1.38 | 45.8% | 37.5% | 42.9% | 79.2% used/draft, 100.0% games | 8.3% | Double Line 0.75/g; Block Bonus 0.71/g; Corner Spark 0.13/g; Last Word 0.00/g |
+| Smart vs Smart | 72.9% | 77.1% | 2.33 | 4.2% | 4.2% | 0.0% | 68.8% used/draft, 100.0% games | 0.0% | Double Line 0.58/g; Block Bonus 0.75/g; Corner Spark 0.04/g; Last Word 0.00/g |
+| Hard vs Hard | 25.0% | 25.0% | 0.50 | 25.0% | 0.0% | 33.3% | 62.5% used/draft, 75.0% games | 25.0% | Double Line 0.75/g; Block Bonus 0.50/g; Corner Spark 0.00/g; Last Word 0.00/g |
+| Master vs Master | 75.0% | 75.0% | 1.75 | 25.0% | 0.0% | 25.0% | 75.0% used/draft, 100.0% games | 25.0% | Double Line 0.75/g; Block Bonus 0.75/g; Corner Spark 0.00/g; Last Word 0.00/g |
+| Smart vs Casual | 75.0% | 83.3% | 1.54 | 33.3% | 16.7% | 33.3% | 77.1% used/draft, 100.0% games | 12.5% | Double Line 0.71/g; Block Bonus 0.71/g; Corner Spark 0.13/g; Last Word 0.00/g |
+| Casual vs Smart | 62.5% | 79.2% | 1.96 | 29.2% | 8.3% | 10.5% | 79.2% used/draft, 100.0% games | 12.5% | Double Line 0.67/g; Block Bonus 0.71/g; Corner Spark 0.21/g; Last Word 0.00/g |
+| Hard vs Smart | 14.6% | 56.3% | 1.63 | 37.5% | 0.0% | 0.0% | 62.5% used/draft, 95.8% games | 25.0% | Double Line 0.50/g; Block Bonus 0.75/g; Corner Spark 0.00/g; Last Word 0.00/g |
+| Smart vs Hard | 47.9% | 39.6% | 0.46 | 37.5% | 25.0% | 37.5% | 79.2% used/draft, 100.0% games | 37.5% | Double Line 0.67/g; Block Bonus 0.75/g; Corner Spark 0.17/g; Last Word 0.00/g |
+| Master vs Hard | 50.0% | 50.0% | 1.50 | 50.0% | 25.0% | 33.3% | 62.5% used/draft, 75.0% games | 25.0% | Double Line 0.75/g; Block Bonus 0.50/g; Corner Spark 0.00/g; Last Word 0.00/g |
+| Hard vs Master | 37.5% | 62.5% | 1.25 | 25.0% | 0.0% | 0.0% | 75.0% used/draft, 100.0% games | 0.0% | Double Line 0.75/g; Block Bonus 0.75/g; Corner Spark 0.00/g; Last Word 0.00/g |
+
+Wildcard audit notes:
+
+- The draft is deterministic: at six empty cells, three Wildcards are revealed,
+  the trailing player by Lines score picks first, then the other player picks
+  from the remaining options.
+- The audit uses a Wildcard only when a deterministic bonus-scoring move exists.
+- Final scores include normal Lines plus Wildcard bonus points; standard Lines
+  remains the default player-facing ruleset.
+- Winner/tie changed compares the final board result before Wildcard bonus to
+  the final total after Wildcard bonus.
 
 ## Best-of-5 Match Simulation
 
@@ -256,7 +274,7 @@ Best-of-5 simulations alternate openers by round and end when one side reaches
 
 ## Decision
 
-Decision: **prototype center-normalized Lines variant**.
+Decision: **tune Lines Mode**.
 
 Do not close issue #15 from this report alone. Close it only after adding human
 playtest notes or explicitly accepting automated validation as sufficient for

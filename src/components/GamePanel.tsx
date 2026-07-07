@@ -213,8 +213,11 @@ export function GamePanel({
   ]
     .filter(Boolean)
     .join(' ');
+  const isWildcardScoreMode =
+    ruleset === 'lines' && effectiveLinesEndgameMode === 'wildcards';
   const emptyCellsTense =
     ruleset === 'lines' &&
+    !isWildcardScoreMode &&
     remainingCells > 0 &&
     remainingCells <= 6 &&
     !result.isComplete;
@@ -326,36 +329,48 @@ export function GamePanel({
             <div
               className={`line-score-tile line-score-x ${
                 recentLinePlayer === 'X' ? lineScoreEventClass : ''
-              }`}
+            }`}
             >
-              <span>X lines</span>
+              <span>{isWildcardScoreMode ? 'X total' : 'X lines'}</span>
               <strong>{lineScores.X}</strong>
             </div>
             <div
               className={`line-score-tile line-score-round ${
                 recentLineCount > 0 ? lineScoreEventClass : ''
-              }`}
+            }`}
             >
-              <span>Round</span>
+              <span>{isWildcardScoreMode ? 'Lines' : 'Round'}</span>
               <strong>
-                {lineScores.X}-{lineScores.O}
+                {isWildcardScoreMode
+                  ? `${baseLineScores.X}-${baseLineScores.O}`
+                  : `${lineScores.X}-${lineScores.O}`}
               </strong>
             </div>
             <div
               className={`line-score-tile line-score-o ${
                 recentLinePlayer === 'O' ? lineScoreEventClass : ''
-              }`}
+            }`}
             >
-              <span>O lines</span>
+              <span>{isWildcardScoreMode ? 'O total' : 'O lines'}</span>
               <strong>{lineScores.O}</strong>
             </div>
             <div
-              className={`line-score-tile line-score-empty ${
-                emptyCellsTense ? 'tension' : ''
-              }`}
+              className={`line-score-tile ${
+                isWildcardScoreMode ? 'line-score-bonus' : 'line-score-empty'
+              } ${emptyCellsTense ? 'tension' : ''}`}
             >
-              <span>{emptyCellsTense ? 'Final cells' : 'Empty'}</span>
-              <strong>{remainingCells}</strong>
+              <span>
+                {isWildcardScoreMode
+                  ? 'Bonus'
+                  : emptyCellsTense
+                    ? 'Final cells'
+                    : 'Empty'}
+              </span>
+              <strong>
+                {isWildcardScoreMode
+                  ? `${linesBonusScores.X}-${linesBonusScores.O}`
+                  : remainingCells}
+              </strong>
             </div>
           </div>
           {linesEndgameText ? (
@@ -365,8 +380,9 @@ export function GamePanel({
           ) : null}
           {hasLineBonus ? (
             <p className="line-bonus-note" aria-live="polite">
-              Base {baseLineScores.X}-{baseLineScores.O} + Wildcards{' '}
-              {linesBonusScores.X}-{linesBonusScores.O}
+              Lines {baseLineScores.X}-{baseLineScores.O} + Bonus{' '}
+              {linesBonusScores.X}-{linesBonusScores.O} = Total {lineScores.X}-
+              {lineScores.O}
             </p>
           ) : null}
         </>

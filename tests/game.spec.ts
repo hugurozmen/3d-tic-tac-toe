@@ -628,6 +628,8 @@ test('local Lines Wildcards draft at Final Six and add bonus score', async ({
   await openGame(page, { layout: 'scanner' });
   await chooseTwoPlayer(page);
   await page.getByRole('button', { name: 'Wildcards Experimental' }).click();
+  await expect(page.locator('.line-score-card')).toContainText('X total');
+  await expect(page.locator('.line-score-card')).toContainText('Bonus');
   await expect(page.locator('.wildcard-card')).toContainText(
     'Final Six: draft one Wildcard',
   );
@@ -666,7 +668,13 @@ test('local Lines Wildcards draft at Final Six and add bonus score', async ({
   await expect(page.getByText(/\+1 bonus/)).toBeVisible();
   await expect(page.locator('.wildcard-card')).toContainText('Bonus 0-1');
   await expect(page.locator('.line-bonus-note')).toContainText(
-    'Wildcards 0-1',
+    'Lines',
+  );
+  await expect(page.locator('.line-bonus-note')).toContainText(
+    'Bonus 0-1',
+  );
+  await expect(page.locator('.line-bonus-note')).toContainText(
+    'Total',
   );
 });
 

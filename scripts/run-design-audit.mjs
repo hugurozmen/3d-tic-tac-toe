@@ -36,6 +36,17 @@ const {
   getVariantScoresForBoard,
   getVariantWinner,
 } = require('../src/game/linesVariant.ts');
+const {
+  WILDCARDS,
+  activateWildcard,
+  canActivateWildcard,
+  chooseWildcardDraft,
+  chooseWildcardMove,
+  consumeActiveWildcard,
+  createWildcardDraft,
+  getRemainingDraftOptions,
+  pickWildcard,
+} = require('../src/game/wildcards.ts');
 
 const DIFFICULTY_LABELS = {
   easy: 'Casual',
@@ -53,10 +64,18 @@ const DEFAULT_VARIANT_MODE = 'both';
 const REPORT_TIME_ZONE = process.env.TZ || 'Europe/Istanbul';
 const STANDARD_LINES_VARIANT = 'standard';
 const CENTER_NORMALIZED_VARIANT = 'center-normalized';
+const FINAL_SIX_WILDCARDS_VARIANT = 'final-six-wildcards';
 const VARIANT_MODES = [
   STANDARD_LINES_VARIANT,
   CENTER_NORMALIZED_VARIANT,
+  FINAL_SIX_WILDCARDS_VARIANT,
   'both',
+];
+const WILDCARD_IDS = [
+  'double-line',
+  'block-bonus',
+  'corner-spark',
+  'last-word',
 ];
 
 const linesScenarios = [
@@ -144,18 +163,30 @@ const scoreLeader = (lineScores) => {
   return lineScores.X > lineScores.O ? 'X' : 'O';
 };
 
+const createBonusScores = () => ({ O: 0, X: 0 });
+
+const addScores = (lineScores, bonusScores) => ({
+  O: lineScores.O + bonusScores.O,
+  X: lineScores.X + bonusScores.X,
+});
+
 const evaluateAuditBoard = (
   board,
   ruleset,
   linesVariant = STANDARD_LINES_VARIANT,
+  bonusScores = createBonusScores(),
 ) => {
   const result = evaluateBoard(board, ruleset);
 
-  if (ruleset !== 'lines' || linesVariant === STANDARD_LINES_VARIANT) {
+  if (ruleset !== 'lines') {
     return result;
   }
 
-  const lineScores = getVariantScoresForBoard(board, linesVariant);
+  const baseLineScores =
+    linesVariant === STANDARD_LINES_VARIANT
+      ? result.lineScores
+      : getVariantScoresForBoard(board, linesVariant);
+  const lineScores = addScores(baseLineScores, bonusScores);
   const winner =
     result.remainingCells === 0 ? getVariantWinner(lineScores) : null;
 
@@ -247,8 +278,83 @@ const getReportDate = () =>
     year: 'numeric',
   }).format(new Date());
 
+const createWildcardMetricState = () => ({
+  bonusByType: Object.fromEntries(WILDCARD_IDS.map((wildcard) => [wildcard, 0])),
+  bonusScores: createBonusScores(),
+  changedOutcome: false,
+  enabled: false,
+  picks: { O: null, X: null },
+  used: [],
+});
+
+const draftAuditWildcards = ({
+  board,
+  currentPlayer,
+  lineScores,
+  roundNumber,
+  wildcardState,
+}) => {
+  let nextState = createWildcardDraft({
+    currentPlayer,
+    lineScores,
+    roundNumber,
+  });
+  const picks = { O: null, X: null };
+
+  while (nextState.phase === 'drafting') {
+    const picker = nextState.pickOrder[nextState.pickIndex];
+    const choice = chooseWildcardDraft(
+      board,
+      picker,
+      getRemainingDraftOptions(nextState),
+    );
+
+    if (!choice) {
+      break;
+    }
+
+    picks[picker] = choice;
+    nextState = pickWildcard(nextState, picker, choice);
+  }
+
+  return {
+    ...nextState,
+    bonusScores: wildcardState.bonusScores,
+    metricPicks: picks,
+  };
+};
+
+const maybeChooseWildcardMove = ({ board, currentPlayer, requestedMove, wildcardState }) => {
+  if (
+    !wildcardState ||
+    wildcardState.phase !== 'active' ||
+    !canActivateWildcard(wildcardState, currentPlayer)
+  ) {
+    return { move: requestedMove, wildcardState };
+  }
+
+  const wildcard = wildcardState.players[currentPlayer].picked;
+  const wildcardMove = wildcard
+    ? chooseWildcardMove(board, currentPlayer, wildcard)
+    : null;
+
+  if (wildcardMove === null) {
+    return { move: requestedMove, wildcardState };
+  }
+
+  return {
+    move: wildcardMove,
+    wildcardState: activateWildcard(wildcardState, currentPlayer),
+  };
+};
+
+const outcomeKey = (result) =>
+  result.isDraw || !result.winner ? 'draw' : result.winner;
+
 const simulateGame = ({
+  auditRoundNumber = 1,
   classicPieRule = false,
+  endgameVariant = null,
   forcedOpening = null,
   linesVariant = STANDARD_LINES_VARIANT,
   opener = 'X',
@@ -289,6 +395,10 @@ const simulateGame = ({
     26: null,
     27: null,
   };
+  const wildcardEnabled =
+    ruleset === 'lines' && endgameVariant === FINAL_SIX_WILDCARDS_VARIANT;
+  const wildcardMetric = createWildcardMetricState();
+  let auditWildcardState = null;
   let boardAtMove21 = null;
   let currentPlayerAtMove21 = null;
   const openingPlayer = opener;
@@ -304,11 +414,31 @@ const simulateGame = ({
   let pieSwaps = 0;
   let result = evaluateAuditBoard(board, ruleset, linesVariant);
 
+  wildcardMetric.enabled = wildcardEnabled;
+
   while (!result.isComplete) {
     const availableMoves = getAvailableMoves(board);
 
     if (availableMoves.length === 0) {
       break;
+    }
+
+    if (
+      wildcardEnabled &&
+      auditWildcardState === null &&
+      result.remainingCells === 6
+    ) {
+      const draft = draftAuditWildcards({
+        board,
+        currentPlayer,
+        lineScores: evaluateAuditBoard(board, ruleset, linesVariant).lineScores,
+        roundNumber: auditRoundNumber,
+        wildcardState: wildcardMetric,
+      });
+
+      wildcardMetric.picks = draft.metricPicks;
+      delete draft.metricPicks;
+      auditWildcardState = draft;
     }
 
     const hints =
@@ -347,7 +477,7 @@ const simulateGame = ({
       forcedOpening !== null &&
       board[forcedOpening] === null;
     const startedAt = now();
-    const requestedMove = shouldForceOpening
+    let requestedMove = shouldForceOpening
       ? forcedOpening
       : chooseAiMove(
           board,
@@ -357,6 +487,16 @@ const simulateGame = ({
           { random },
         );
     const durationMs = now() - startedAt;
+    const wildcardChoice = maybeChooseWildcardMove({
+      board,
+      currentPlayer,
+      requestedMove,
+      wildcardState: auditWildcardState,
+    });
+
+    requestedMove = wildcardChoice.move;
+    auditWildcardState = wildcardChoice.wildcardState;
+
     const move =
       requestedMove !== null && board[requestedMove] === null
         ? requestedMove
@@ -383,6 +523,27 @@ const simulateGame = ({
     board[move] = currentPlayer;
     moveCount += 1;
 
+    if (auditWildcardState?.players[currentPlayer]?.active) {
+      const consumed = consumeActiveWildcard(
+        auditWildcardState,
+        currentPlayer,
+        move,
+        previous,
+      );
+
+      auditWildcardState = consumed.nextState;
+      wildcardMetric.bonusScores = consumed.nextState.bonusScores;
+
+      if (consumed.wildcard) {
+        wildcardMetric.used.push({
+          bonus: consumed.bonus.bonus,
+          player: currentPlayer,
+          wildcard: consumed.wildcard,
+        });
+        wildcardMetric.bonusByType[consumed.wildcard] += consumed.bonus.bonus;
+      }
+    }
+
     if (firstMove === null) {
       firstMove = move;
       firstMovePlayer = currentPlayer;
@@ -398,7 +559,12 @@ const simulateGame = ({
       multiLineMoves += 1;
     }
 
-    result = evaluateAuditBoard(board, ruleset, linesVariant);
+    result = evaluateAuditBoard(
+      board,
+      ruleset,
+      linesVariant,
+      wildcardMetric.bonusScores,
+    );
 
     if (scoreSnapshots[moveCount] === null && moveCount in scoreSnapshots) {
       scoreSnapshots[moveCount] = { ...result.lineScores };
@@ -438,7 +604,13 @@ const simulateGame = ({
     currentPlayer = getOtherPlayer(currentPlayer);
   }
 
+  const baseFinalResult = evaluateAuditBoard(board, ruleset, linesVariant);
   const finalScores = { ...result.lineScores };
+
+  if (wildcardEnabled) {
+    wildcardMetric.changedOutcome =
+      outcomeKey(baseFinalResult) !== outcomeKey(result);
+  }
 
   if (scoreSnapshots[27] === null && moveCount >= 27) {
     scoreSnapshots[27] = finalScores;
@@ -472,6 +644,12 @@ const simulateGame = ({
     ruleset === 'lines' &&
     finalMoveStart !== null &&
     leaderBeforeFinalMove !== finalLeader;
+  const comebackAfterMove21 =
+    ruleset === 'lines' &&
+    finalSixStart !== null &&
+    leaderAtFinalSix !== null
+      ? finalLeader !== leaderAtFinalSix
+      : null;
   const comebackAvailableAtMove21 =
     ruleset === 'lines' &&
     boardAtMove21 !== null &&
@@ -492,8 +670,10 @@ const simulateGame = ({
     centerOpeningOwner: firstMove === AI_CENTER_INDEX ? firstMovePlayer : null,
     coach,
     coachByDifficulty,
+    comebackAfterMove21,
     comebackAvailableAtMove21,
     decisionTimeMs,
+    endgameVariant,
     finalLeader,
     finalMoveChangedOutcome,
     finalScores,
@@ -512,11 +692,13 @@ const simulateGame = ({
     scoreSnapshots,
     leaderAtFinalSix,
     leaderBeforeFinalMove,
+    wildcard: wildcardMetric,
   };
 };
 
 const runScenario = ({
   classicPieRule = false,
+  endgameVariant = null,
   games,
   label,
   linesVariant = STANDARD_LINES_VARIANT,
@@ -535,7 +717,9 @@ const runScenario = ({
 
     gameResults.push(
       simulateGame({
+        auditRoundNumber: gameIndex + 1,
         classicPieRule,
+        endgameVariant,
         forcedOpening,
         linesVariant,
         opener,
@@ -549,6 +733,7 @@ const runScenario = ({
 
   return summarizeScenario({
     games: gameResults,
+    endgameVariant,
     label,
     linesVariant,
     oDifficulty,
@@ -558,6 +743,7 @@ const runScenario = ({
 };
 
 const summarizeScenario = ({
+  endgameVariant = null,
   games,
   label,
   linesVariant = STANDARD_LINES_VARIANT,
@@ -643,6 +829,25 @@ const summarizeScenario = ({
   const finalSixSwings = games
     .map((game) => game.finalSixDiffSwing)
     .filter((value) => value !== null);
+  const wildcardDraftedCount = games.reduce(
+    (sum, game) =>
+      sum +
+      (game.wildcard.enabled
+        ? Number(game.wildcard.picks.X !== null) +
+          Number(game.wildcard.picks.O !== null)
+        : 0),
+    0,
+  );
+  const wildcardUses = games.flatMap((game) => game.wildcard.used);
+  const wildcardBonusByType = Object.fromEntries(
+    WILDCARD_IDS.map((wildcard) => [
+      wildcard,
+      games.reduce(
+        (sum, game) => sum + (game.wildcard.bonusByType[wildcard] ?? 0),
+        0,
+      ),
+    ]),
+  );
 
   return {
     averageDecisionTimeMs:
@@ -757,7 +962,20 @@ const summarizeScenario = ({
             ),
           )
         : null,
+    comebackAfterMove21Rate:
+      ruleset === 'lines'
+        ? averageNullable(
+            games.map((game) =>
+              game.comebackAfterMove21 === null
+                ? null
+                : game.comebackAfterMove21
+                  ? 1
+                  : 0,
+            ),
+          )
+        : null,
     drawRate: draws / games.length,
+    endgameVariant,
     finalMoveChangedOutcomeRate:
       ruleset === 'lines'
         ? games.filter((game) => game.finalMoveChangedOutcome).length /
@@ -815,6 +1033,24 @@ const summarizeScenario = ({
     ruleset,
     xDifficulty,
     xWinRate: xWins / games.length,
+    wildcard:
+      endgameVariant === FINAL_SIX_WILDCARDS_VARIANT
+        ? {
+            bonusByType: wildcardBonusByType,
+            changedOutcomeRate:
+              games.filter((game) => game.wildcard.changedOutcome).length /
+              games.length,
+            draftedCount: wildcardDraftedCount,
+            gameUsedRate:
+              games.filter((game) => game.wildcard.used.length > 0).length /
+              games.length,
+            useRate:
+              wildcardDraftedCount > 0
+                ? wildcardUses.length / wildcardDraftedCount
+                : null,
+            uses: wildcardUses.length,
+          }
+        : null,
   };
 };
 
@@ -1153,6 +1389,46 @@ const makeVariantComparisonTable = (standardReports, variantReports) => [
   }),
 ].join('\n');
 
+const formatWildcardBonus = (scenario) =>
+  WILDCARD_IDS.map((wildcard) => {
+    const total = scenario.wildcard?.bonusByType[wildcard] ?? 0;
+
+    return `${WILDCARDS[wildcard].name} ${fixed(total / scenario.games, 2)}/g`;
+  }).join('; ');
+
+const makeWildcardTable = (scenarios) => [
+  '| Scenario | First-player score | Center-owner score | Avg final margin | Final-6 changed | Final move changed | Comeback after 21 | Wildcard used | Winner/tie changed | Bonus points by type |',
+  '| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |',
+  ...scenarios.map((scenario) =>
+    `| ${[
+      scenario.label,
+      pct(scenario.openerScoreRate),
+      scenario.centerOwnerScoreRate === null
+        ? 'n/a'
+        : pct(scenario.centerOwnerScoreRate),
+      fixed(scenario.averageLineDifferential),
+      scenario.finalSixChangedOutcomeRate === null
+        ? 'n/a'
+        : pct(scenario.finalSixChangedOutcomeRate),
+      scenario.finalMoveChangedOutcomeRate === null
+        ? 'n/a'
+        : pct(scenario.finalMoveChangedOutcomeRate),
+      scenario.comebackAfterMove21Rate === null
+        ? 'n/a'
+        : pct(scenario.comebackAfterMove21Rate),
+      scenario.wildcard?.useRate === null || !scenario.wildcard
+        ? 'n/a'
+        : `${pct(scenario.wildcard.useRate)} used/draft, ${pct(
+            scenario.wildcard.gameUsedRate,
+          )} games`,
+      scenario.wildcard
+        ? pct(scenario.wildcard.changedOutcomeRate)
+        : 'n/a',
+      scenario.wildcard ? formatWildcardBonus(scenario) : 'n/a',
+    ].join(' | ')} |`,
+  ),
+].join('\n');
+
 const makeMatchTable = (matches) => [
   '| Matchup | Matches | Avg rounds | Went to 5 | First-round loser won | X match score rate |',
   '| --- | ---: | ---: | ---: | ---: | ---: |',
@@ -1263,6 +1539,7 @@ const makeReport = ({
   seed,
   variantMode,
   variantReports,
+  wildcardReports,
 }) => {
   const assessment = buildAssessment({
     classicReports,
@@ -1277,7 +1554,7 @@ const makeReport = ({
 
 Source of truth: [GitHub issue #15](https://github.com/hugurozmen/3d-tic-tac-toe/issues/15)  
 Generated (${REPORT_TIME_ZONE}): ${generatedAt}  
-Command: \`npm run design:audit -- --games ${games} --seed ${seed}\`
+Command: \`npm run design:audit -- --variant ${variantMode} --games ${games} --seed ${seed}\`
 Variant mode: \`${variantMode}\`
 
 ## Scope
@@ -1298,6 +1575,9 @@ cannot fully answer confusion, satisfaction, frustration, or replay desire.
 - \`npm run product:final-pass\` remains useful release/playability smoke
   coverage, but it does not emit design-fun or design-fairness metrics. It
   should not replace human playtest notes for issue #15.
+- \`--variant final-six-wildcards\` runs the same deterministic Lines matrix
+  with local-only Wildcard draft/use rules and includes bonus scores in final
+  totals.
 
 ## Recommendation
 
@@ -1385,6 +1665,23 @@ ${variantReports.length > 0
 The center-normalized variant is a non-player-facing audit hook. It discounts
 completed lines that pass through cell 14 during report scoring only. Standard
 Lines remains the default game ruleset and UI ruleset.
+
+## Final Six Wildcards Experimental Variant
+
+${wildcardReports.length > 0
+  ? makeWildcardTable(wildcardReports)
+  : 'Final Six Wildcards audit not run for this report.'}
+
+Wildcard audit notes:
+
+- The draft is deterministic: at six empty cells, three Wildcards are revealed,
+  the trailing player by Lines score picks first, then the other player picks
+  from the remaining options.
+- The audit uses a Wildcard only when a deterministic bonus-scoring move exists.
+- Final scores include normal Lines plus Wildcard bonus points; standard Lines
+  remains the default player-facing ruleset.
+- Winner/tie changed compares the final board result before Wildcard bonus to
+  the final total after Wildcard bonus.
 
 ## Best-of-5 Match Simulation
 
@@ -1487,6 +1784,7 @@ const main = () => {
   const variantMode = readVariantMode();
   const shouldRunCenterNormalized =
     variantMode === 'both' || variantMode === CENTER_NORMALIZED_VARIANT;
+  const shouldRunWildcards = variantMode === FINAL_SIX_WILDCARDS_VARIANT;
 
   const lineReports = linesScenarios.map(([label, xDifficulty, oDifficulty], index) =>
     runScenario({
@@ -1526,6 +1824,20 @@ const main = () => {
         }),
       )
     : [];
+  const wildcardReports = shouldRunWildcards
+    ? linesScenarios.map(([label, xDifficulty, oDifficulty], index) =>
+        runScenario({
+          endgameVariant: FINAL_SIX_WILDCARDS_VARIANT,
+          games,
+          label,
+          oDifficulty,
+          ruleset: 'lines',
+          scenarioIndex: index,
+          seed,
+          xDifficulty,
+        }),
+      )
+    : [];
   const difficultyRecords = aggregateDifficultyRecords(lineReports);
   const coachDifficultyRecords = aggregateCoachDifficultyRecords(lineReports);
   const matchReports = runMatchAudit({ games, seed });
@@ -1539,6 +1851,7 @@ const main = () => {
     seed,
     variantMode,
     variantReports,
+    wildcardReports,
   });
 
   fs.mkdirSync(path.dirname(outputPath), { recursive: true });
@@ -1549,6 +1862,9 @@ const main = () => {
   console.log(`Variant mode: ${variantMode}`);
   console.log(
     `Center-normalized audit scenarios: ${variantReports.length} x ${games} games`,
+  );
+  console.log(
+    `Final Six Wildcards audit scenarios: ${wildcardReports.length} x ${games} games`,
   );
   console.log(`Classic scenarios: ${classicReports.length} x ${games} games`);
   console.log(`Best-of-5 focus scenarios: ${matchReports.length}`);
