@@ -55,6 +55,16 @@ import {
 } from './game/retention';
 import { useMatchState } from './game/useMatchState';
 import { type OnlineRoomSettings, useOnlineGame } from './game/useOnlineGame';
+import {
+  WILDCARDS,
+  type LinesEndgameMode,
+  type WildcardId,
+  canActivateWildcard,
+  chooseWildcardDraft,
+  chooseWildcardMove,
+  getCurrentWildcardPicker,
+  getRemainingDraftOptions,
+} from './game/wildcards';
 import { THEME_ORDER, THEMES, ThemeId, themeToCssVariables } from './theme';
 import { useLocalStorageState } from './useLocalStorageState';
 
@@ -67,6 +77,7 @@ const getInitialLayout = (): BoardLayout => {
 };
 
 const COACH_OPTIONS = ['auto', 'on', 'off'] as const;
+const ENDGAME_OPTIONS = ['standard', 'wildcards'] as const;
 type CoachSetting = (typeof COACH_OPTIONS)[number];
 const ONLINE_CLASSIC_PIE_RULE = false;
 const NARROW_3D_RETRY_DELAY_MS = 140;
@@ -92,24 +103,37 @@ export function App() {
     'lines',
     RULESET_OPTIONS,
   );
+  const [mode, setMode] = useState<GameMode>('solo');
+  const [linesEndgameMode, setLinesEndgameMode] =
+    useLocalStorageState<LinesEndgameMode>(
+      '3dxox-lines-endgame',
+      'standard',
+      ENDGAME_OPTIONS,
+    );
+  const effectiveLinesEndgameMode =
+    ruleset === 'lines' && mode !== 'online' ? linesEndgameMode : 'standard';
   const {
     applyMove,
+    activateWildcard,
+    baseLineScores,
     board,
     currentPlayer,
     currentPlayerRef,
     lastMove,
     lifetimeScore,
+    linesBonusScores,
     match,
     oMoves,
+    pickWildcard,
     resetMatch,
     resetRound,
     result,
+    wildcards,
     xMoves,
     opener,
     recentLines,
     recentImpact,
-  } = useMatchState(ruleset);
-  const [mode, setMode] = useState<GameMode>('solo');
+  } = useMatchState(ruleset, effectiveLinesEndgameMode);
   const [difficulty, setDifficulty] = useLocalStorageState<Difficulty>(
     '3dxox-difficulty',
     'balanced',
@@ -188,6 +212,8 @@ export function App() {
     [difficultyStreaks, themeUnlockHooks],
   );
   const aiPlayer = getOtherPlayer(humanSide);
+  const wildcardPicker = getCurrentWildcardPicker(wildcards);
+  const isWildcardDrafting = wildcards.phase === 'drafting';
   const moveCount = xMoves + oMoves;
   const pieRuleEnabled = ruleset === 'classic' && mode !== 'online';
   const pieDecisionPending =
@@ -202,15 +228,19 @@ export function App() {
     currentPlayer === aiPlayer &&
     !result.winner &&
     !result.isDraw &&
+    !isWildcardDrafting &&
     !pieDecisionPending;
   const completedLocalRounds =
     lifetimeScore.X + lifetimeScore.O + lifetimeScore.draws;
   const rawCoachHints = useMemo(
     () =>
-      coachSetting !== 'off' && !result.winner && !result.isDraw
+      mode !== 'online' &&
+      coachSetting !== 'off' &&
+      !result.winner &&
+      !result.isDraw
         ? getCoachHints(board, currentPlayer)
         : [],
-    [board, coachSetting, currentPlayer, result.isDraw, result.winner],
+    [board, coachSetting, currentPlayer, mode, result.isDraw, result.winner],
   );
   const coachLadder = useMemo(
     () =>
@@ -222,7 +252,7 @@ export function App() {
       }),
     [coachSetting, completedLocalRounds, mode, rawCoachHints],
   );
-  const coachEnabled = coachLadder.enabled;
+  const coachEnabled = mode !== 'online' && coachLadder.enabled;
   const hostOnlineSettings = useMemo<OnlineRoomSettings>(
     () => ({
       classicPieRule: ONLINE_CLASSIC_PIE_RULE,
@@ -353,6 +383,7 @@ export function App() {
 
     const lineCount = recentImpact.linesCompleted.length;
     const blockCount = recentImpact.blockedLines.length;
+    const bonusPoints = recentImpact.bonusPoints;
     const parts: string[] = [];
 
     if (lineCount > 0) {
@@ -365,9 +396,13 @@ export function App() {
       parts.push(`${blockCount} ${blockText}`);
     }
 
+    if (bonusPoints > 0) {
+      parts.push(`+${bonusPoints} bonus`);
+    }
+
     flashNotice(
       `${parts.join(' + ')} (${result.lineScores.X}-${result.lineScores.O})`,
-      lineCount > 0 ? 'score' : 'block',
+      lineCount > 0 || bonusPoints > 0 ? 'score' : 'block',
       lineCount || blockCount,
     );
   }, [
@@ -514,6 +549,7 @@ export function App() {
     online.localPlayer === currentPlayer;
   const isBoardDisabled =
     isAiTurn ||
+    isWildcardDrafting ||
     pieDecisionPending ||
     Boolean(result.winner) ||
     result.isDraw ||
@@ -534,6 +570,82 @@ export function App() {
   }, [mode, online.close]);
 
   useEffect(() => () => aiWorkerRef.current?.terminate(), []);
+
+  useEffect(() => {
+    if (
+      mode !== 'solo' ||
+      wildcardPicker !== aiPlayer ||
+      result.winner ||
+      result.isDraw
+    ) {
+      return;
+    }
+
+    const choice = chooseWildcardDraft(
+      board,
+      aiPlayer,
+      getRemainingDraftOptions(wildcards),
+    );
+
+    if (!choice) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      if (pickWildcard(aiPlayer, choice)) {
+        flashNotice(`AI drafted ${WILDCARDS[choice].name}`);
+      }
+    }, 520);
+
+    return () => window.clearTimeout(timer);
+  }, [
+    aiPlayer,
+    board,
+    flashNotice,
+    mode,
+    pickWildcard,
+    result.isDraw,
+    result.winner,
+    wildcardPicker,
+    wildcards,
+  ]);
+
+  const chooseAiWildcardMove = useCallback(
+    (suggestedMove: number | null) => {
+      if (
+        suggestedMove === null ||
+        effectiveLinesEndgameMode !== 'wildcards' ||
+        wildcards.phase !== 'active' ||
+        !canActivateWildcard(wildcards, aiPlayer)
+      ) {
+        return suggestedMove;
+      }
+
+      const wildcard = wildcards.players[aiPlayer].picked;
+      const wildcardMove = wildcard
+        ? chooseWildcardMove(board, aiPlayer, wildcard)
+        : null;
+
+      if (wildcardMove === null || !wildcard) {
+        return suggestedMove;
+      }
+
+      if (activateWildcard(aiPlayer)) {
+        flashNotice(`AI armed ${WILDCARDS[wildcard].name}`);
+        return wildcardMove;
+      }
+
+      return suggestedMove;
+    },
+    [
+      activateWildcard,
+      aiPlayer,
+      board,
+      effectiveLinesEndgameMode,
+      flashNotice,
+      wildcards,
+    ],
+  );
 
   useEffect(() => {
     if (!isAiTurn) {
@@ -563,8 +675,15 @@ export function App() {
 
       pendingTimeout = window.setTimeout(() => {
         if (aiRequestIdRef.current === id) {
+          const finalMove = chooseAiWildcardMove(move);
+
+          if (finalMove === null) {
+            setIsAiThinking(false);
+            return;
+          }
+
           setIsAiThinking(false);
-          applyMove(move, aiPlayer);
+          applyMove(finalMove, aiPlayer);
         }
       }, remaining);
     };
@@ -611,7 +730,15 @@ export function App() {
         window.clearTimeout(pendingTimeout);
       }
     };
-  }, [aiPlayer, applyMove, board, difficulty, isAiTurn, ruleset]);
+  }, [
+    aiPlayer,
+    applyMove,
+    board,
+    chooseAiWildcardMove,
+    difficulty,
+    isAiTurn,
+    ruleset,
+  ]);
 
   const status = useMemo(() => {
     if (match.winner) {
@@ -642,6 +769,14 @@ export function App() {
       return 'Swap choice';
     }
 
+    if (wildcardPicker) {
+      if (mode === 'solo') {
+        return wildcardPicker === aiPlayer ? 'AI drafting' : 'Draft Wildcard';
+      }
+
+      return `${wildcardPicker} draft`;
+    }
+
     if (isAiTurn) {
       return `${aiPlayer} thinking`;
     }
@@ -666,6 +801,7 @@ export function App() {
     currentPlayer,
     humanSide,
     isAiTurn,
+    wildcardPicker,
     match.winner,
     mode,
     online.isConnected,
@@ -681,7 +817,7 @@ export function App() {
 
   const handleSelect = useCallback(
     (index: number) => {
-      if (isAiTurn) {
+      if (isAiTurn || isWildcardDrafting) {
         return;
       }
 
@@ -716,6 +852,7 @@ export function App() {
       currentPlayer,
       flashNotice,
       isAiTurn,
+      isWildcardDrafting,
       mode,
       online,
       result.isDraw,
@@ -770,6 +907,25 @@ export function App() {
     );
   };
 
+  const handleEndgameModeChange = (nextEndgameMode: LinesEndgameMode) => {
+    if (nextEndgameMode === linesEndgameMode) {
+      return;
+    }
+
+    if (ruleset !== 'lines' || mode === 'online') {
+      flashNotice('Wildcards are local prototype only');
+      return;
+    }
+
+    requestRoundReset(
+      'Switching the Lines endgame resets the active best of 5.',
+      () => {
+        setLinesEndgameMode(nextEndgameMode);
+        resetMatch();
+      },
+    );
+  };
+
   const handleSideChange = (side: Player) => {
     if (side === humanSide) {
       return;
@@ -810,8 +966,49 @@ export function App() {
   };
 
   const handleTryCoach = () => {
+    if (mode === 'online') {
+      flashNotice('Coach disabled online');
+      return;
+    }
+
     setCoachSetting('on');
     flashNotice('Coach on: green scores, red blocks');
+  };
+
+  const handlePickWildcard = (player: Player, wildcard: WildcardId) => {
+    if (
+      mode === 'online' ||
+      ruleset !== 'lines' ||
+      effectiveLinesEndgameMode !== 'wildcards'
+    ) {
+      flashNotice('Wildcards are local prototype only');
+      return;
+    }
+
+    if (pickWildcard(player, wildcard)) {
+      flashNotice(`${player} drafted ${WILDCARDS[wildcard].name}`);
+    }
+  };
+
+  const handleActivateWildcard = (player: Player) => {
+    if (
+      mode === 'online' ||
+      ruleset !== 'lines' ||
+      effectiveLinesEndgameMode !== 'wildcards'
+    ) {
+      flashNotice('Wildcards are local prototype only');
+      return;
+    }
+
+    if (player !== currentPlayer) {
+      return;
+    }
+
+    const wildcard = wildcards.players[player].picked;
+
+    if (wildcard && activateWildcard(player)) {
+      flashNotice(`${WILDCARDS[wildcard].name} armed`);
+    }
   };
 
   const restoreStageForMobile = useCallback(() => {
@@ -1131,7 +1328,9 @@ export function App() {
       />
 
       <GamePanel
+        baseLineScores={baseLineScores}
         coachEnabled={coachEnabled}
+        coachDisabledOnline={mode === 'online'}
         coachSetting={coachSetting}
         copiedSignal={copiedSignal}
         currentPlayer={currentPlayer}
@@ -1145,6 +1344,8 @@ export function App() {
         lastMove={lastMove}
         layout={layout}
         lineScores={result.lineScores}
+        linesBonusScores={linesBonusScores}
+        linesEndgameMode={linesEndgameMode}
         linesEndgameText={linesEndgame?.text ?? null}
         lifetimeScore={lifetimeScore}
         match={match}
@@ -1167,15 +1368,21 @@ export function App() {
         status={status}
         themeId={themeId}
         themeUnlockProgress={themeUnlockProgress}
+        wildcardPicker={wildcardPicker}
+        wildcards={wildcards}
+        effectiveLinesEndgameMode={effectiveLinesEndgameMode}
+        onActivateWildcard={handleActivateWildcard}
         onCoachSettingChange={setCoachSetting}
         onCopySignal={handleCopySignal}
         onDailyPuzzleMove={handleDailyPuzzleMove}
         onDifficultyChange={handleDifficultyChange}
+        onEndgameModeChange={handleEndgameModeChange}
         onHostOnline={handleHostOnline}
         onLayoutChange={handleLayoutChange}
         onModeChange={handleModeChange}
         onOnlineSignal={handleOnlineSignal}
         onOpenGuide={() => setGuideOpen(true)}
+        onPickWildcard={handlePickWildcard}
         onRemoteSignalChange={setRemoteSignal}
         onResetMatch={handleResetMatch}
         onResetRound={handleResetRound}

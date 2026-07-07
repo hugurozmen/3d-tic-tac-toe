@@ -622,6 +622,54 @@ test('lines final result explains the score and filled board', async ({ page }) 
   ).toBeVisible();
 });
 
+test('local Lines Wildcards draft at Final Six and add bonus score', async ({
+  page,
+}) => {
+  await openGame(page, { layout: 'scanner' });
+  await chooseTwoPlayer(page);
+  await page.getByRole('button', { name: 'Wildcards Experimental' }).click();
+  await expect(page.locator('.wildcard-card')).toContainText(
+    'Final Six: draft one Wildcard',
+  );
+
+  for (const floor of [1, 2, 3] as const) {
+    await showFloor(page, floor);
+
+    const start = (floor - 1) * 9 + 1;
+    const end = floor === 3 ? 22 : start + 9;
+
+    for (let cell = start; cell < end; cell += 1) {
+      await place(page, cell % 2 === 1 ? 'X' : 'O', cell);
+    }
+  }
+
+  await expect(page.locator('.wildcard-card')).toContainText(
+    'Final Six: draft one Wildcard',
+  );
+  await page.getByRole('button', { name: /Double Line/ }).click();
+  await page.getByRole('button', { name: /Block Bonus/ }).click();
+  await expect(page.locator('.wildcard-card')).toContainText('Bonus 0-0');
+
+  const oWildcardRow = page
+    .locator('.wildcard-player-row')
+    .filter({ hasText: 'O Wildcard' });
+  const oWildcardText = await oWildcardRow.textContent();
+
+  await oWildcardRow.getByRole('button', { name: /Use/ }).click();
+
+  if (oWildcardText?.includes('Block Bonus')) {
+    await place(page, 'O', 25);
+  } else {
+    await place(page, 'O', 22);
+  }
+
+  await expect(page.getByText(/\+1 bonus/)).toBeVisible();
+  await expect(page.locator('.wildcard-card')).toContainText('Bonus 0-1');
+  await expect(page.locator('.line-bonus-note')).toContainText(
+    'Wildcards 0-1',
+  );
+});
+
 test('mobile view selector can enter and leave the 3D board', async ({ page }) => {
   await openGame(page, {
     layout: 'scanner',
@@ -646,6 +694,22 @@ test('online host and guest can join and relay a scanner move', async ({
 }) => {
   await openGame(host, { layout: 'scanner' });
   await host.getByRole('button', { name: 'Online' }).click();
+
+  await expect(host.locator('.online-card')).toContainText(
+    'Coach disabled online',
+  );
+  await expect(host.locator('.online-card')).toContainText(
+    'Wildcards are local prototype only',
+  );
+  await expect(
+    host.locator('.coach-control').getByRole('button', { name: /Auto/ }),
+  ).toBeDisabled();
+  await expect(
+    host
+      .locator('.endgame-control')
+      .getByRole('button', { name: 'Wildcards Experimental' }),
+  ).toBeDisabled();
+
   await host.getByRole('button', { name: 'Host' }).click();
 
   const hostOnlineCard = host.locator('.online-card');

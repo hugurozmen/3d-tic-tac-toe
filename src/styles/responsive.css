@@ -24,7 +24,9 @@
   .stage-actions button,
   .primary-action,
   .secondary-action,
-  .segmented-control button {
+  .segmented-control button,
+  .wildcard-option,
+  .wildcard-player-row button {
     transition-duration: 0.01ms;
   }
 }
@@ -53,6 +55,11 @@
 
   .online-connect:hover:not(:disabled) {
     filter: brightness(1.08);
+  }
+
+  .wildcard-option:hover:not(:disabled) {
+    border-color: color-mix(in srgb, var(--app-primary) 46%, var(--app-border));
+    background: color-mix(in srgb, var(--app-primary) 8%, var(--app-panel-strong));
   }
 
   .primary-action:hover {
@@ -292,11 +299,27 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .endgame-control {
+    grid-template-columns: 1fr;
+  }
+
   .coach-prompt {
     grid-template-columns: 1fr;
   }
 
   .coach-prompt button {
+    justify-content: center;
+  }
+
+  .wildcard-header,
+  .wildcard-draft-status,
+  .wildcard-player-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .wildcard-player-row button {
+    width: 100%;
     justify-content: center;
   }
 

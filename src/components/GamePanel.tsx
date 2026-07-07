@@ -39,6 +39,15 @@ import type {
   Player,
 } from '../game/rules';
 import type { OnlineRoomSettings, OnlineStatus } from '../game/useOnlineGame';
+import {
+  WILDCARDS,
+  type LinesBonusScores,
+  type LinesEndgameMode,
+  type WildcardId,
+  type WildcardState,
+  canActivateWildcard,
+  getRemainingDraftOptions,
+} from '../game/wildcards';
 import { THEME_ORDER, THEMES, ThemeId } from '../theme';
 import { ViewSelector } from './ViewSelector';
 
@@ -57,7 +66,9 @@ type OnlinePanelState = {
 };
 
 type GamePanelProps = {
+  baseLineScores: LineScores;
   coachEnabled: boolean;
+  coachDisabledOnline: boolean;
   coachSetting: CoachSetting;
   copiedSignal: boolean;
   currentPlayer: Player;
@@ -71,6 +82,8 @@ type GamePanelProps = {
   lastMove: number | null;
   layout: BoardLayout;
   lineScores: LineScores;
+  linesBonusScores: LinesBonusScores;
+  linesEndgameMode: LinesEndgameMode;
   linesEndgameText: string | null;
   lifetimeScore: Score;
   match: MatchState;
@@ -93,15 +106,21 @@ type GamePanelProps = {
   status: string;
   themeId: ThemeId;
   themeUnlockProgress: ThemeUnlockProgress[];
+  wildcardPicker: Player | null;
+  wildcards: WildcardState;
+  effectiveLinesEndgameMode: LinesEndgameMode;
+  onActivateWildcard: (player: Player) => void;
   onCoachSettingChange: (setting: CoachSetting) => void;
   onCopySignal: () => void;
   onDailyPuzzleMove: (move: number) => void;
   onDifficultyChange: (difficulty: Difficulty) => void;
+  onEndgameModeChange: (mode: LinesEndgameMode) => void;
   onHostOnline: () => void;
   onLayoutChange: (layout: BoardLayout) => void;
   onModeChange: (mode: GameMode) => void;
   onOnlineSignal: () => void;
   onOpenGuide: () => void;
+  onPickWildcard: (player: Player, wildcard: WildcardId) => void;
   onRemoteSignalChange: (signal: string) => void;
   onResetMatch: () => void;
   onResetRound: () => void;
@@ -118,11 +137,14 @@ function markIcon(player: Player) {
 }
 
 const DAILY_FLOORS = [0, 1, 2] as const;
+const WILDCARD_PLAYERS = ['X', 'O'] as const;
 
 const formatCell = (move: number | null) => (move === null ? '-' : move + 1);
 
 export function GamePanel({
+  baseLineScores,
   coachEnabled,
+  coachDisabledOnline,
   coachSetting,
   copiedSignal,
   currentPlayer,
@@ -136,6 +158,8 @@ export function GamePanel({
   lastMove,
   layout,
   lineScores,
+  linesBonusScores,
+  linesEndgameMode,
   linesEndgameText,
   lifetimeScore,
   match,
@@ -158,15 +182,21 @@ export function GamePanel({
   status,
   themeId,
   themeUnlockProgress,
+  wildcardPicker,
+  wildcards,
+  effectiveLinesEndgameMode,
+  onActivateWildcard,
   onCoachSettingChange,
   onCopySignal,
   onDailyPuzzleMove,
   onDifficultyChange,
+  onEndgameModeChange,
   onHostOnline,
   onLayoutChange,
   onModeChange,
   onOnlineSignal,
   onOpenGuide,
+  onPickWildcard,
   onRemoteSignalChange,
   onResetMatch,
   onResetRound,
@@ -195,6 +225,15 @@ export function GamePanel({
         }`
       : `${RULESET_LABEL[online.settings.ruleset]} room`
     : `${RULESET_LABEL[ruleset]} room`;
+  const hasLineBonus = linesBonusScores.X > 0 || linesBonusScores.O > 0;
+  const wildcardOptions = getRemainingDraftOptions(wildcards);
+  const canHumanDraftWildcard =
+    Boolean(wildcardPicker) &&
+    (mode !== 'solo' || wildcardPicker === humanSide);
+  const canShowWildcardPanel =
+    ruleset === 'lines' &&
+    effectiveLinesEndgameMode === 'wildcards' &&
+    mode !== 'online';
 
   return (
     <aside className="game-panel" aria-label="Game controls">
@@ -324,6 +363,12 @@ export function GamePanel({
               {linesEndgameText}
             </p>
           ) : null}
+          {hasLineBonus ? (
+            <p className="line-bonus-note" aria-live="polite">
+              Base {baseLineScores.X}-{baseLineScores.O} + Wildcards{' '}
+              {linesBonusScores.X}-{linesBonusScores.O}
+            </p>
+          ) : null}
         </>
       ) : null}
 
@@ -348,6 +393,37 @@ export function GamePanel({
           ))}
         </div>
       </div>
+
+      {ruleset === 'lines' ? (
+        <div className="control-group">
+          <span className="control-label">Endgame</span>
+          <div className="segmented-control endgame-control">
+            <button
+              className={linesEndgameMode === 'standard' ? 'active' : ''}
+              disabled={mode === 'online'}
+              type="button"
+              onClick={() => onEndgameModeChange('standard')}
+            >
+              <ListChecks size={16} />
+              <span>Standard</span>
+            </button>
+            <button
+              className={linesEndgameMode === 'wildcards' ? 'active' : ''}
+              disabled={mode === 'online'}
+              type="button"
+              onClick={() => onEndgameModeChange('wildcards')}
+            >
+              <Sparkles size={16} />
+              <span>Wildcards Experimental</span>
+            </button>
+          </div>
+          {mode === 'online' ? (
+            <p className="control-note">Wildcards are local prototype only</p>
+          ) : linesEndgameMode === 'wildcards' ? (
+            <p className="control-note">Final Six: draft one Wildcard</p>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="control-group">
         <span className="control-label">Mode</span>
@@ -403,6 +479,9 @@ export function GamePanel({
             <span>{onlineSettingsText}</span>
             <strong>{onlineRulesLocked ? 'Locked' : 'Host decides'}</strong>
           </div>
+          <p className="online-hint">
+            Coach disabled online. Wildcards are local prototype only.
+          </p>
           {online.status === 'disconnected' ? (
             <div className="online-banner">
               <Unplug size={15} />
@@ -552,6 +631,7 @@ export function GamePanel({
             <button
               key={setting}
               className={coachSetting === setting ? 'active' : ''}
+              disabled={coachDisabledOnline}
               type="button"
               onClick={() => onCoachSettingChange(setting)}
             >
@@ -568,6 +648,9 @@ export function GamePanel({
             </button>
           ))}
         </div>
+        {coachDisabledOnline ? (
+          <p className="control-note">Coach disabled online</p>
+        ) : null}
         {coachEnabled ? (
           <div className="coach-legend" aria-label="Coach legend">
             <span>
@@ -597,6 +680,95 @@ export function GamePanel({
           </div>
         ) : null}
       </div>
+
+      {canShowWildcardPanel ? (
+        <div className="wildcard-card" aria-label="Final Six Wildcards">
+          <div className="wildcard-header">
+            <div>
+              <span>Final Six</span>
+              <strong>Wildcards</strong>
+            </div>
+            <span className="wildcard-score">
+              Bonus {linesBonusScores.X}-{linesBonusScores.O}
+            </span>
+          </div>
+
+          {wildcards.phase === 'inactive' ? (
+            <p className="wildcard-copy">
+              Final Six: draft one Wildcard when six cells remain.
+            </p>
+          ) : null}
+
+          {wildcards.phase === 'drafting' ? (
+            <>
+              <div className="wildcard-draft-status" aria-live="polite">
+                <strong>Final Six: draft one Wildcard</strong>
+                <span>
+                  {mode === 'solo' && wildcardPicker !== humanSide
+                    ? 'AI picks'
+                    : `${wildcardPicker ?? '-'} picks`}
+                </span>
+              </div>
+              <div className="wildcard-options">
+                {wildcardOptions.map((wildcard) => (
+                  <button
+                    key={wildcard}
+                    className="wildcard-option"
+                    disabled={!wildcardPicker || !canHumanDraftWildcard}
+                    type="button"
+                    onClick={() => onPickWildcard(wildcardPicker!, wildcard)}
+                  >
+                    <strong>{WILDCARDS[wildcard].name}</strong>
+                    <span>{WILDCARDS[wildcard].description}</span>
+                  </button>
+                ))}
+              </div>
+            </>
+          ) : null}
+
+          {wildcards.phase === 'active' ? (
+            <div className="wildcard-player-list">
+              {WILDCARD_PLAYERS.map((player) => {
+                const picked = wildcards.players[player].picked;
+                const active = wildcards.players[player].active;
+                const used = wildcards.players[player].used;
+                const canUse =
+                  canActivateWildcard(wildcards, player) &&
+                  currentPlayer === player &&
+                  !result.isComplete &&
+                  !result.winner &&
+                  !result.isDraw &&
+                  (mode !== 'solo' || player === humanSide);
+
+                return (
+                  <div key={player} className="wildcard-player-row">
+                    <div>
+                      <span>{player} Wildcard</span>
+                      <strong>{picked ? WILDCARDS[picked].name : '-'}</strong>
+                      <small>
+                        {used
+                          ? 'Used'
+                          : active
+                            ? 'Armed for next move'
+                            : 'Ready'}
+                      </small>
+                    </div>
+                    {picked && !used ? (
+                      <button
+                        disabled={!canUse}
+                        type="button"
+                        onClick={() => onActivateWildcard(player)}
+                      >
+                        Use {WILDCARDS[picked].name}
+                      </button>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="progress-card" aria-label="Local progress">
         <div className="progress-card-header">
