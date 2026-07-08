@@ -65,7 +65,9 @@ export function PanelSetup({
           <span className="control-label">Mode</span>
           <div className="segmented-control mode-control">
             <button
+              aria-label="AI"
               className={mode === 'solo' ? 'active' : ''}
+              title="AI"
               type="button"
               onClick={() => onModeChange('solo')}
             >
@@ -73,7 +75,9 @@ export function PanelSetup({
               <span>AI</span>
             </button>
             <button
+              aria-label="2P"
               className={mode === 'duo' ? 'active' : ''}
+              title="2P"
               type="button"
               onClick={() => onModeChange('duo')}
             >
@@ -81,7 +85,9 @@ export function PanelSetup({
               <span>2P</span>
             </button>
             <button
+              aria-label="Online"
               className={mode === 'online' ? 'active' : ''}
+              title="Online"
               type="button"
               onClick={() => onModeChange('online')}
             >
@@ -97,8 +103,10 @@ export function PanelSetup({
             {RULESET_OPTIONS.map((option) => (
               <button
                 key={option}
+                aria-label={RULESET_LABEL[option]}
                 className={ruleset === option ? 'active' : ''}
                 disabled={onlineRulesLocked}
+                title={RULESET_LABEL[option]}
                 type="button"
                 onClick={() => onRulesetChange(option)}
               >
@@ -118,8 +126,10 @@ export function PanelSetup({
             <span className="control-label">Endgame</span>
             <div className="segmented-control endgame-control">
               <button
+                aria-label="Standard"
                 className={linesEndgameMode === 'standard' ? 'active' : ''}
                 disabled={mode === 'online'}
+                title="Standard"
                 type="button"
                 onClick={() => onEndgameModeChange('standard')}
               >
@@ -127,8 +137,10 @@ export function PanelSetup({
                 <span>Standard</span>
               </button>
               <button
+                aria-label="Final Six Powers (beta)"
                 className={linesEndgameMode === 'powers-v3' ? 'active' : ''}
                 disabled={mode === 'online'}
+                title="Final Six Powers (beta)"
                 type="button"
                 onClick={() => onEndgameModeChange('powers-v3')}
               >
@@ -151,7 +163,9 @@ export function PanelSetup({
             <span className="control-label">You play</span>
             <div className="segmented-control">
               <button
+                aria-label="X"
                 className={humanSide === 'X' ? 'active' : ''}
+                title="X"
                 type="button"
                 onClick={() => onSideChange('X')}
               >
@@ -159,7 +173,9 @@ export function PanelSetup({
                 <span>X</span>
               </button>
               <button
+                aria-label="O"
                 className={humanSide === 'O' ? 'active' : ''}
+                title="O"
                 type="button"
                 onClick={() => onSideChange('O')}
               >
@@ -177,7 +193,9 @@ export function PanelSetup({
               {DIFFICULTY_OPTIONS.map((level) => (
                 <button
                   key={level}
+                  aria-label={DIFFICULTY_LABEL[level]}
                   className={difficulty === level ? 'active' : ''}
+                  title={DIFFICULTY_LABEL[level]}
                   type="button"
                   onClick={() => onDifficultyChange(level)}
                 >

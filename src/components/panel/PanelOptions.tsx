@@ -69,7 +69,9 @@ export function PanelOptions({
           <span className="control-label">Sound</span>
           <div className="segmented-control">
             <button
+              aria-label="On"
               className={soundSetting === 'on' ? 'active' : ''}
+              title="On"
               type="button"
               onClick={() => {
                 if (soundSetting !== 'on') {
@@ -81,7 +83,9 @@ export function PanelOptions({
               <span>On</span>
             </button>
             <button
+              aria-label="Off"
               className={soundSetting === 'off' ? 'active' : ''}
+              title="Off"
               type="button"
               onClick={() => {
                 if (soundSetting !== 'off') {
@@ -101,8 +105,22 @@ export function PanelOptions({
             {(['auto', 'on', 'off'] as const).map((setting) => (
               <button
                 key={setting}
+                aria-label={
+                  setting === 'auto'
+                    ? 'Auto'
+                    : setting === 'on'
+                      ? 'On'
+                      : 'Off'
+                }
                 className={coachSetting === setting ? 'active' : ''}
                 disabled={coachDisabledOnline}
+                title={
+                  setting === 'auto'
+                    ? 'Auto'
+                    : setting === 'on'
+                      ? 'On'
+                      : 'Off'
+                }
                 type="button"
                 onClick={() => onCoachSettingChange(setting)}
               >

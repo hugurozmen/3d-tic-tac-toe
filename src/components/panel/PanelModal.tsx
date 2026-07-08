@@ -4,6 +4,7 @@ import {
   useEffect,
   useRef,
 } from 'react';
+import { createPortal } from 'react-dom';
 
 type PanelModalProps = {
   ariaLabel: string;
@@ -77,7 +78,7 @@ export function PanelModal({
     }
   };
 
-  return (
+  const overlay = (
     <div
       className="confirm-overlay"
       role="dialog"
@@ -101,4 +102,6 @@ export function PanelModal({
       </div>
     </div>
   );
+
+  return createPortal(overlay, document.body);
 }

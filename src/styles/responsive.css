@@ -153,7 +153,7 @@
   }
 
   .scoreboard-meta {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
   }
 
   h1 {
@@ -174,8 +174,7 @@
 }
 
 @media (min-width: 901px) and (max-width: 1120px) {
-  .app-shell[data-layout="cube"],
-  .app-shell[data-layout="floors"] {
+  .app-shell {
     height: auto;
     min-height: 100svh;
     grid-template-columns: 1fr;
@@ -183,14 +182,12 @@
     overflow: visible;
   }
 
-  .app-shell[data-layout="cube"] .game-stage,
-  .app-shell[data-layout="floors"] .game-stage {
+  .game-stage {
     height: auto;
     min-height: 560px;
   }
 
-  .app-shell[data-layout="cube"] .mobile-view-selector,
-  .app-shell[data-layout="floors"] .mobile-view-selector {
+  .mobile-view-selector {
     position: relative;
     z-index: 2;
     display: grid;
@@ -202,18 +199,15 @@
     backdrop-filter: blur(18px);
   }
 
-  .app-shell[data-layout="cube"] .mobile-view-selector .control-label,
-  .app-shell[data-layout="floors"] .mobile-view-selector .control-label {
+  .mobile-view-selector .control-label {
     display: none;
   }
 
-  .app-shell[data-layout="cube"] .panel-view-selector,
-  .app-shell[data-layout="floors"] .panel-view-selector {
+  .panel-view-selector {
     display: none;
   }
 
-  .app-shell[data-layout="cube"] .game-panel,
-  .app-shell[data-layout="floors"] .game-panel {
+  .game-panel {
     height: min(520px, 58svh);
     min-height: 360px;
     border-top: 1px solid var(--app-border);
@@ -223,8 +217,7 @@
     overflow: hidden;
   }
 
-  .app-shell[data-layout="cube"] .stage-actions,
-  .app-shell[data-layout="floors"] .stage-actions {
+  .stage-actions {
     top: 50%;
     right: 14px;
     bottom: auto;

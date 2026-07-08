@@ -157,6 +157,67 @@ async function expectCanvasHasPixels(page: Page) {
   expect(foregroundSamples).toBeGreaterThan(10);
 }
 
+async function expectPanelModalCoversViewport(page: Page) {
+  await expect(page.locator('.confirm-overlay')).toBeVisible();
+  await expect(page.locator('.panel-modal-card')).toBeVisible();
+  await page.waitForFunction(() => {
+    const card = document.querySelector('.panel-modal-card');
+    const transform = card ? window.getComputedStyle(card).transform : '';
+
+    return transform === 'none' || transform === 'matrix(1, 0, 0, 1, 0, 0)';
+  });
+
+  const metrics = await page.evaluate(() => {
+    const overlay = document
+      .querySelector('.confirm-overlay')
+      ?.getBoundingClientRect();
+    const card = document
+      .querySelector('.panel-modal-card')
+      ?.getBoundingClientRect();
+    const panel = document.querySelector('.game-panel');
+    const panelBounds = panel?.getBoundingClientRect();
+    const cardElement = document.querySelector('.panel-modal-card');
+
+    if (!overlay || !card || !panelBounds || !panel || !cardElement) {
+      throw new Error('Panel modal geometry could not be measured');
+    }
+
+    return {
+      cardCenterX: card.left + card.width / 2,
+      cardCenterY: card.top + card.height / 2,
+      cardHeight: card.height,
+      cardWidth: card.width,
+      innerHeight: window.innerHeight,
+      innerWidth: window.innerWidth,
+      modalInPanel: panel.contains(cardElement),
+      overlayHeight: overlay.height,
+      overlayLeft: overlay.left,
+      overlayTop: overlay.top,
+      overlayWidth: overlay.width,
+      panelWidth: panelBounds.width,
+    };
+  });
+  const expectedCardWidth = Math.min(760, metrics.innerWidth - 32);
+
+  expect(metrics.modalInPanel).toBe(false);
+  expect(metrics.overlayLeft).toBeLessThanOrEqual(1);
+  expect(metrics.overlayTop).toBeLessThanOrEqual(1);
+  expect(metrics.overlayWidth).toBeGreaterThanOrEqual(metrics.innerWidth - 1);
+  expect(metrics.overlayHeight).toBeGreaterThanOrEqual(metrics.innerHeight - 1);
+  expect(metrics.cardWidth).toBeGreaterThanOrEqual(expectedCardWidth - 2);
+  expect(metrics.cardWidth).toBeLessThanOrEqual(expectedCardWidth + 2);
+  expect(Math.abs(metrics.cardCenterX - metrics.innerWidth / 2)).toBeLessThanOrEqual(
+    8,
+  );
+  expect(Math.abs(metrics.cardCenterY - metrics.innerHeight / 2)).toBeLessThanOrEqual(
+    8,
+  );
+
+  if (metrics.innerWidth >= 900) {
+    expect(metrics.cardWidth).toBeGreaterThan(metrics.panelWidth);
+  }
+}
+
 test('mobile first run starts on the playable scanner board', async ({ page }) => {
   await openGame(page, {
     viewport: { height: 844, width: 390 },
@@ -375,24 +436,34 @@ test('narrow persisted 3D views refresh safely through Scanner', async ({
 });
 
 test('solo panel shows local progress and the daily puzzle', async ({ page }) => {
-  await openGame(page, { layout: 'scanner' });
+  for (const viewport of [
+    { height: 900, width: 1440 },
+    { height: 812, width: 375 },
+  ]) {
+    await openGame(page, { layout: 'scanner', viewport });
 
-  const dailyEntry = page.getByRole('button', { name: /Daily #\d+/ });
-  const progressEntry = page.getByRole('button', { name: /Progress/ });
+    const dailyEntry = page.getByRole('button', { name: /Daily #\d+/ });
+    const progressEntry = page.getByRole('button', { name: /Progress/ });
 
-  await expect(dailyEntry).toBeVisible();
-  await expect(progressEntry).toBeVisible();
+    await expect(dailyEntry).toBeVisible();
+    await expect(progressEntry).toBeVisible();
 
-  await progressEntry.click();
-  await expect(page.locator('.progress-card')).toContainText('Total lines');
-  await expect(page.locator('.progress-card')).toContainText('Master wins');
-  await expect(page.locator('.progress-card')).toContainText('Theme accents');
-  await expect(page.locator('.progress-card')).toContainText('Lifetime');
-  await page.getByRole('button', { name: 'Close' }).click();
+    await progressEntry.click();
+    await expectPanelModalCoversViewport(page);
+    await expect(page.locator('.progress-card')).toContainText('Total lines');
+    await expect(page.locator('.progress-card')).toContainText('Master wins');
+    await expect(page.locator('.progress-card')).toContainText('Theme accents');
+    await expect(page.locator('.progress-card')).toContainText('Lifetime');
+    await page.getByRole('button', { name: 'Close' }).click();
 
-  await dailyEntry.click();
-  await expect(page.locator('.daily-puzzle-card')).toContainText(/Find the|Score the/);
-  await expect(page.locator('.daily-cell')).toHaveCount(27);
+    await dailyEntry.click();
+    await expectPanelModalCoversViewport(page);
+    await expect(page.locator('.daily-puzzle-card')).toContainText(
+      /Find the|Score the/,
+    );
+    await expect(page.locator('.daily-cell')).toHaveCount(27);
+    await page.getByRole('button', { name: 'Close' }).click();
+  }
 });
 
 async function createCoachScoreAndBlockPosition(page: Page) {
