@@ -561,6 +561,22 @@
   user-select: none;
 }
 
+.cell-layer-badge.cell-badge-armed {
+  width: max-content;
+  height: auto;
+  padding: 4px 9px;
+  border-radius: 999px;
+  border-color: rgba(122, 162, 255, 0.55);
+  white-space: nowrap;
+}
+
+/* Taps and drags on the 3D board must never turn into page scrolls:
+   a hijacked gesture fires pointercancel and the tap is silently lost.
+   !important because drei/r3f injects an inline touch-action on the canvas. */
+.game-stage canvas {
+  touch-action: none !important;
+}
+
 .cell-coach-badge {
   width: max-content;
   max-width: 150px;
