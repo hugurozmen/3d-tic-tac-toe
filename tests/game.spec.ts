@@ -40,6 +40,15 @@ async function chooseTwoPlayer(page: Page) {
   await page.getByRole('button', { name: '2P' }).click();
 }
 
+async function openOptions(page: Page) {
+  const section = page.locator('.panel-section-options');
+  const options = page.locator('.panel-section-options summary');
+
+  if ((await section.getAttribute('open')) === null) {
+    await options.click();
+  }
+}
+
 async function showFloor(page: Page, floor: 1 | 2 | 3) {
   await page.locator('.scanner-stop').filter({ hasText: `${floor}` }).click();
 }
@@ -90,12 +99,27 @@ async function winClassicRoundForX(page: Page, opener: 'X' | 'O') {
 }
 
 async function expectCanvasHasPixels(page: Page) {
-  const canvas = page.locator('canvas');
+  let screenshot: Buffer | null = null;
 
-  await expect(canvas).toBeVisible();
-  await page.waitForTimeout(250);
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      await expect(page.locator('canvas')).toBeVisible();
+      await page.waitForTimeout(350);
+      screenshot = await page.locator('canvas').screenshot();
+      break;
+    } catch (error) {
+      if (attempt === 2) {
+        throw error;
+      }
 
-  const screenshot = await canvas.screenshot();
+      await page.waitForTimeout(300);
+    }
+  }
+
+  if (!screenshot) {
+    throw new Error('Canvas screenshot was not captured');
+  }
+
   const png = PNG.sync.read(screenshot);
   const background = [png.data[0], png.data[1], png.data[2]];
   const colorBuckets = new Set<string>();
@@ -156,6 +180,34 @@ test('mobile first run starts on the playable scanner board', async ({ page }) =
   expect(metrics.bodyScrollWidth).toBeLessThanOrEqual(metrics.innerWidth);
   expect(metrics.stageHeight).toBeGreaterThanOrEqual(430);
   expect(metrics.gridWidth).toBeGreaterThanOrEqual(280);
+
+  await page.evaluate(() => {
+    document.querySelector('.game-panel')?.scrollIntoView();
+  });
+
+  const panelMetrics = await page.evaluate(() => {
+    const actions = document
+      .querySelector('.panel-sticky-actions')
+      ?.getBoundingClientRect();
+    const panel = document.querySelector('.game-panel')?.getBoundingClientRect();
+    const scoreboard = document
+      .querySelector('.panel-scoreboard')
+      ?.getBoundingClientRect();
+
+    return {
+      actionsBottom: actions?.bottom ?? 0,
+      panelBottom: panel?.bottom ?? 0,
+      panelTop: panel?.top ?? 0,
+      scoreboardTop: scoreboard?.top ?? 0,
+    };
+  });
+
+  expect(panelMetrics.scoreboardTop).toBeGreaterThanOrEqual(
+    panelMetrics.panelTop,
+  );
+  expect(panelMetrics.actionsBottom).toBeLessThanOrEqual(
+    panelMetrics.panelBottom,
+  );
 });
 
 test('first-time guide teaches Lines scoring and 3D diagonals', async ({
@@ -256,6 +308,7 @@ test('compact desktop gives Cube and Floors the full stage width', async ({
     layout: 'scanner',
     viewport: { height: 720, width: 1000 },
   });
+  await openOptions(page);
 
   for (const view of ['Cube', 'Floors']) {
     await page.getByRole('button', { name: view }).click();
@@ -591,7 +644,11 @@ test('coach mode marks blocking and combined cells on the scanner board', async 
 }) => {
   await openGame(page, { layout: 'scanner' });
   await chooseTwoPlayer(page);
-  await page.getByRole('button', { name: 'On', exact: true }).click();
+  await openOptions(page);
+  await page
+    .locator('.coach-control')
+    .getByRole('button', { name: 'On', exact: true })
+    .click();
 
   await expect(page.locator('.coach-legend')).toContainText('Score');
   await expect(page.locator('.coach-legend')).toContainText('Block');
@@ -632,7 +689,11 @@ test('scanner coach explains cross-floor threats with rail and connector cues', 
 }) => {
   await openGame(page, { layout: 'scanner' });
   await chooseTwoPlayer(page);
-  await page.getByRole('button', { name: 'On', exact: true }).click();
+  await openOptions(page);
+  await page
+    .locator('.coach-control')
+    .getByRole('button', { name: 'On', exact: true })
+    .click();
 
   await showFloor(page, 1);
   await place(page, 'X', 1);

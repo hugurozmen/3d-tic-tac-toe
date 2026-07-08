@@ -138,8 +138,8 @@
   }
 
   .game-panel {
-    height: 38svh;
-    min-height: 360px;
+    height: min(560px, calc(100svh - 80px));
+    min-height: 500px;
     gap: 16px;
     border-top: 1px solid var(--app-border);
     border-left: 0;
@@ -153,7 +153,7 @@
   }
 
   .scoreboard-meta {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 
   h1 {
@@ -330,6 +330,15 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .panel-scoreboard .line-score-card {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .panel-scoreboard .line-score-card div {
+    min-height: 46px;
+    padding: 7px 4px;
+  }
+
   .endgame-control {
     grid-template-columns: 1fr;
   }
@@ -372,6 +381,15 @@
 
   .line-score-card div:nth-child(4) {
     border-top: 1px solid var(--app-border);
+  }
+
+  .panel-scoreboard .line-score-card div:nth-child(3) {
+    border-left: 1px solid var(--app-border);
+    border-top: 0;
+  }
+
+  .panel-scoreboard .line-score-card div:nth-child(4) {
+    border-top: 0;
   }
 
   .match-card {

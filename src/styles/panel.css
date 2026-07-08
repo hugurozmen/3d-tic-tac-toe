@@ -22,7 +22,7 @@
 .panel-scroll {
   min-height: 0;
   display: flex;
-  flex: 1 1 auto;
+  flex: 1 1 0;
   flex-direction: column;
   gap: 14px;
   padding-right: 2px;
