@@ -218,6 +218,99 @@ async function expectPanelModalCoversViewport(page: Page) {
   }
 }
 
+async function expectStackedPanelUsesPageScroll(page: Page) {
+  await openOptions(page);
+
+  const scrollMetrics = await page.evaluate(() => {
+    const panel = document.querySelector<HTMLElement>('.game-panel');
+    const panelScroll = document.querySelector<HTMLElement>('.panel-scroll');
+    const stickyActions = document.querySelector<HTMLElement>(
+      '.panel-sticky-actions',
+    );
+    const stickyTop = document.querySelector<HTMLElement>('.panel-sticky-top');
+    const pageScroller = document.scrollingElement;
+
+    if (!panel || !panelScroll || !stickyActions || !stickyTop || !pageScroller) {
+      throw new Error('Stacked panel metrics could not be measured');
+    }
+
+    panelScroll.scrollTop = 120;
+
+    return {
+      actionsPosition: window.getComputedStyle(stickyActions).position,
+      pageClientHeight: pageScroller.clientHeight,
+      pageScrollHeight: pageScroller.scrollHeight,
+      panelHeight: panel.getBoundingClientRect().height,
+      panelOverflow: window.getComputedStyle(panel).overflowY,
+      panelScrollClientHeight: panelScroll.clientHeight,
+      panelScrollHeight: panelScroll.scrollHeight,
+      panelScrollOverflow: window.getComputedStyle(panelScroll).overflowY,
+      panelScrollTop: panelScroll.scrollTop,
+      stickyTopPosition: window.getComputedStyle(stickyTop).position,
+    };
+  });
+
+  expect(scrollMetrics.panelOverflow).toBe('visible');
+  expect(scrollMetrics.panelScrollOverflow).toBe('visible');
+  expect(scrollMetrics.panelScrollTop).toBe(0);
+  expect(scrollMetrics.panelScrollHeight).toBeLessThanOrEqual(
+    scrollMetrics.panelScrollClientHeight + 1,
+  );
+  expect(scrollMetrics.pageScrollHeight).toBeGreaterThan(
+    scrollMetrics.pageClientHeight,
+  );
+  expect(scrollMetrics.panelHeight).toBeGreaterThan(
+    scrollMetrics.panelScrollClientHeight,
+  );
+  expect(scrollMetrics.stickyTopPosition).toBe('sticky');
+  expect(scrollMetrics.actionsPosition).toBe('sticky');
+
+  await page.evaluate(() => {
+    const panel = document.querySelector<HTMLElement>('.game-panel');
+
+    if (!panel) {
+      throw new Error('Panel was not found');
+    }
+
+    window.scrollTo(0, window.scrollY + panel.getBoundingClientRect().top + 220);
+  });
+
+  const stickyMetrics = await page.evaluate(() => {
+    const actions = document
+      .querySelector<HTMLElement>('.panel-sticky-actions')
+      ?.getBoundingClientRect();
+    const panel = document
+      .querySelector<HTMLElement>('.game-panel')
+      ?.getBoundingClientRect();
+    const stickyTop = document
+      .querySelector<HTMLElement>('.panel-sticky-top')
+      ?.getBoundingClientRect();
+
+    if (!actions || !panel || !stickyTop) {
+      throw new Error('Sticky panel metrics could not be measured');
+    }
+
+    return {
+      actionsBottom: actions.bottom,
+      innerHeight: window.innerHeight,
+      panelBottom: panel.bottom,
+      panelTop: panel.top,
+      stickyTopTop: stickyTop.top,
+    };
+  });
+
+  expect(stickyMetrics.panelTop).toBeLessThan(0);
+  expect(stickyMetrics.panelBottom).toBeGreaterThan(stickyMetrics.innerHeight);
+  expect(stickyMetrics.stickyTopTop).toBeGreaterThanOrEqual(-1);
+  expect(stickyMetrics.stickyTopTop).toBeLessThanOrEqual(1);
+  expect(stickyMetrics.actionsBottom).toBeGreaterThanOrEqual(
+    stickyMetrics.innerHeight - 1,
+  );
+  expect(stickyMetrics.actionsBottom).toBeLessThanOrEqual(
+    stickyMetrics.innerHeight + 1,
+  );
+}
+
 test('mobile first run starts on the playable scanner board', async ({ page }) => {
   await openGame(page, {
     viewport: { height: 844, width: 390 },
@@ -269,6 +362,69 @@ test('mobile first run starts on the playable scanner board', async ({ page }) =
   expect(panelMetrics.actionsBottom).toBeLessThanOrEqual(
     panelMetrics.panelBottom,
   );
+});
+
+test('stacked panel uses the page scroll instead of a nested panel scroller', async ({
+  page,
+}) => {
+  await openGame(page, {
+    layout: 'scanner',
+    viewport: { height: 667, width: 375 },
+  });
+  await expectStackedPanelUsesPageScroll(page);
+
+  await openGame(page, {
+    layout: 'cube',
+    viewport: { height: 820, width: 1024 },
+  });
+  await expectCanvasHasPixels(page);
+  await expectStackedPanelUsesPageScroll(page);
+});
+
+test('desktop panel keeps its internal scroll model', async ({ page }) => {
+  await openGame(page, {
+    layout: 'scanner',
+    viewport: { height: 800, width: 1280 },
+  });
+  await openOptions(page);
+
+  const metrics = await page.evaluate(() => {
+    const panel = document.querySelector<HTMLElement>('.game-panel');
+    const panelScroll = document.querySelector<HTMLElement>('.panel-scroll');
+    const stickyActions = document.querySelector<HTMLElement>(
+      '.panel-sticky-actions',
+    );
+    const stickyTop = document.querySelector<HTMLElement>('.panel-sticky-top');
+
+    if (!panel || !panelScroll || !stickyActions || !stickyTop) {
+      throw new Error('Desktop panel metrics could not be measured');
+    }
+
+    panelScroll.scrollTop = 120;
+
+    return {
+      actionsPosition: window.getComputedStyle(stickyActions).position,
+      innerHeight: window.innerHeight,
+      panelHeight: panel.getBoundingClientRect().height,
+      panelOverflow: window.getComputedStyle(panel).overflowY,
+      panelScrollClientHeight: panelScroll.clientHeight,
+      panelScrollHeight: panelScroll.scrollHeight,
+      panelScrollOverflow: window.getComputedStyle(panelScroll).overflowY,
+      panelScrollTop: panelScroll.scrollTop,
+      stickyTopPosition: window.getComputedStyle(stickyTop).position,
+    };
+  });
+
+  expect(metrics.panelHeight).toBeGreaterThanOrEqual(metrics.innerHeight - 1);
+  expect(metrics.panelHeight).toBeLessThanOrEqual(metrics.innerHeight + 1);
+  expect(metrics.panelOverflow).toBe('hidden');
+  expect(metrics.panelScrollOverflow).toBe('auto');
+  expect(metrics.panelScrollHeight).toBeGreaterThan(
+    metrics.panelScrollClientHeight,
+  );
+  expect(metrics.panelScrollTop).toBeGreaterThan(0);
+  expect(metrics.stickyTopPosition).toBe('relative');
+  expect(metrics.actionsPosition).toBe('relative');
 });
 
 test('first-time guide teaches Lines scoring and 3D diagonals', async ({

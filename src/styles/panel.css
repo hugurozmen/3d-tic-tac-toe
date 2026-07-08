@@ -1,11 +1,12 @@
 .game-panel {
+  --panel-padding: clamp(18px, 3vw, 32px);
   height: 100vh;
   min-height: 100vh;
   container-type: inline-size;
   display: flex;
   flex-direction: column;
   gap: 14px;
-  padding: clamp(18px, 3vw, 32px);
+  padding: var(--panel-padding);
   border-left: 1px solid var(--app-border);
   background: linear-gradient(
     180deg,
