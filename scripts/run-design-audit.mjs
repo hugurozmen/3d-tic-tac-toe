@@ -74,12 +74,14 @@ const REPORT_TIME_ZONE = process.env.TZ || 'Europe/Istanbul';
 const STANDARD_LINES_VARIANT = 'standard';
 const CENTER_NORMALIZED_VARIANT = 'center-normalized';
 const FINAL_SIX_WILDCARDS_VARIANT = 'final-six-wildcards';
-const FINAL_SIX_POWERS_VARIANT = 'final-six-powers-v2';
+const FINAL_SIX_POWERS_V2_VARIANT = 'final-six-powers-v2';
+const FINAL_SIX_POWERS_V3_VARIANT = 'final-six-powers-v3';
 const VARIANT_MODES = [
   STANDARD_LINES_VARIANT,
   CENTER_NORMALIZED_VARIANT,
   FINAL_SIX_WILDCARDS_VARIANT,
-  FINAL_SIX_POWERS_VARIANT,
+  FINAL_SIX_POWERS_V2_VARIANT,
+  FINAL_SIX_POWERS_V3_VARIANT,
   'both',
 ];
 const WILDCARD_IDS = [
@@ -88,7 +90,13 @@ const WILDCARD_IDS = [
   'corner-spark',
   'last-word',
 ];
-const POWER_IDS = ['power-cell', 'surge-line', 'shield-line'];
+const POWER_IDS = [
+  'power-cell',
+  'surge-line',
+  'shield-line',
+  'charged-cell',
+  'shield-cell',
+];
 
 const linesScenarios = [
   ['Casual vs Casual', 'easy', 'easy'],
@@ -364,22 +372,35 @@ const createPowerMetricState = () => ({
   bonusByType: Object.fromEntries(POWER_IDS.map((power) => [power, 0])),
   bonusScores: createBonusScores(),
   changedOutcome: false,
+  chargedCellUsed: 0,
   enabled: false,
   picks: { O: null, X: null },
   shieldDenied: 0,
+  shieldValue: 0,
   triggered: [],
 });
 
-const draftAuditPowers = ({ board, currentPlayer, lineScores, powerState }) => {
+const draftAuditPowers = ({
+  board,
+  currentPlayer,
+  endgameVariant,
+  lineScores,
+  powerState,
+}) => {
+  const mode =
+    endgameVariant === FINAL_SIX_POWERS_V2_VARIANT
+      ? 'powers-v2'
+      : 'powers-v3';
   let nextState = createFinalSixPowerDraft({
     currentPlayer,
     lineScores,
+    mode,
   });
   const picks = { O: null, X: null };
 
   while (nextState.phase === 'choosing') {
     const picker = nextState.pickOrder[nextState.pickIndex];
-    const choice = chooseFinalSixPower(board, picker);
+    const choice = chooseFinalSixPower(board, picker, mode);
 
     if (!choice) {
       break;
@@ -461,7 +482,9 @@ const simulateGame = ({
   const wildcardEnabled =
     ruleset === 'lines' && endgameVariant === FINAL_SIX_WILDCARDS_VARIANT;
   const powerEnabled =
-    ruleset === 'lines' && endgameVariant === FINAL_SIX_POWERS_VARIANT;
+    ruleset === 'lines' &&
+    (endgameVariant === FINAL_SIX_POWERS_V2_VARIANT ||
+      endgameVariant === FINAL_SIX_POWERS_V3_VARIANT);
   const wildcardMetric = createWildcardMetricState();
   const powerMetric = createPowerMetricState();
   let auditWildcardState = null;
@@ -517,6 +540,7 @@ const simulateGame = ({
       const draft = draftAuditPowers({
         board,
         currentPlayer,
+        endgameVariant,
         lineScores: evaluateAuditBoard(board, ruleset, linesVariant).lineScores,
         powerState: powerMetric,
       });
@@ -652,24 +676,31 @@ const simulateGame = ({
       auditPowerState = appliedPower.nextState;
       powerMetric.bonusScores = appliedPower.nextState.bonusScores;
 
-      if (appliedPower.impact.powerMessage) {
+      if (appliedPower.impact.powerMessages.length > 0) {
         powerMetric.triggered.push({
           bonus: appliedPower.impact.bonusPoints,
           player: currentPlayer,
-          power: appliedPower.impact.shieldDenied
-            ? 'shield-line'
-            : appliedPower.impact.power,
+          power: appliedPower.impact.power,
           shieldDenied: appliedPower.impact.shieldDenied,
         });
 
-        if (appliedPower.impact.power) {
-          powerMetric.bonusByType[appliedPower.impact.power] +=
-            appliedPower.impact.bonusPoints;
+        for (const [power, bonus] of Object.entries(
+          appliedPower.impact.bonusByType,
+        )) {
+          powerMetric.bonusByType[power] += bonus;
         }
 
         if (appliedPower.impact.shieldDenied) {
           powerMetric.shieldDenied += 1;
         }
+      }
+
+      if (appliedPower.impact.chargedCellUsed) {
+        powerMetric.chargedCellUsed += 1;
+      }
+
+      if (appliedPower.impact.shieldValue) {
+        powerMetric.shieldValue += 1;
       }
     }
 
@@ -988,6 +1019,24 @@ const summarizeScenario = ({
         : 0),
     0,
   );
+  const chargedCellPickedCount = games.reduce(
+    (sum, game) =>
+      sum +
+      (game.power.enabled
+        ? Number(game.power.picks.X === 'charged-cell') +
+          Number(game.power.picks.O === 'charged-cell')
+        : 0),
+    0,
+  );
+  const shieldCellPickedCount = games.reduce(
+    (sum, game) =>
+      sum +
+      (game.power.enabled
+        ? Number(game.power.picks.X === 'shield-cell') +
+          Number(game.power.picks.O === 'shield-cell')
+        : 0),
+    0,
+  );
   const powerTriggers = games.flatMap((game) => game.power.triggered);
   const powerBonusByType = Object.fromEntries(
     POWER_IDS.map((power) => [
@@ -1000,6 +1049,14 @@ const summarizeScenario = ({
   );
   const powerShieldDenials = games.reduce(
     (sum, game) => sum + game.power.shieldDenied,
+    0,
+  );
+  const chargedCellUses = games.reduce(
+    (sum, game) => sum + game.power.chargedCellUsed,
+    0,
+  );
+  const shieldValues = games.reduce(
+    (sum, game) => sum + game.power.shieldValue,
     0,
   );
 
@@ -1185,17 +1242,27 @@ const summarizeScenario = ({
     oWinRate: oWins / games.length,
     pieSwaps: games.reduce((sum, game) => sum + game.pieSwaps, 0),
     power:
-      endgameVariant === FINAL_SIX_POWERS_VARIANT
+      endgameVariant === FINAL_SIX_POWERS_V2_VARIANT ||
+      endgameVariant === FINAL_SIX_POWERS_V3_VARIANT
         ? {
             bonusByType: powerBonusByType,
             changedOutcomeRate:
               games.filter((game) => game.power.changedOutcome).length /
               games.length,
+            chargedCellUsedRate:
+              chargedCellPickedCount > 0
+                ? chargedCellUses / chargedCellPickedCount
+                : null,
             gameTriggeredRate:
               games.filter((game) => game.power.triggered.length > 0).length /
               games.length,
             pickedCount: powerPickedCount,
+            shieldCellPickedCount,
             shieldDenied: powerShieldDenials,
+            shieldValueRate:
+              shieldCellPickedCount > 0
+                ? shieldValues / shieldCellPickedCount
+                : null,
             triggerRate:
               powerPickedCount > 0 ? powerTriggers.length / powerPickedCount : null,
             triggers: powerTriggers.length,
@@ -1601,18 +1668,23 @@ const makeWildcardTable = (scenarios) => [
 ].join('\n');
 
 const formatPowerBonus = (scenario) =>
-  [
-    ...POWER_IDS.filter((power) => power !== 'shield-line').map((power) => {
+  (scenario.endgameVariant === FINAL_SIX_POWERS_V3_VARIANT
+    ? ['charged-cell', 'shield-cell']
+    : ['power-cell', 'surge-line']
+  )
+    .map((power) => {
       const total = scenario.power?.bonusByType[power] ?? 0;
 
       return `${FINAL_SIX_POWER_LABEL[power]} ${fixed(total / scenario.games, 2)}/g`;
-    }),
-    `Shield denied ${fixed((scenario.power?.shieldDenied ?? 0) / scenario.games, 2)}/g`,
-  ].join('; ');
+    })
+    .concat(
+      `Bonus denied ${fixed((scenario.power?.shieldDenied ?? 0) / scenario.games, 2)}/g`,
+    )
+    .join('; ');
 
 const makePowerTable = (scenarios) => [
-  '| Scenario | First-player score | Center-owner score | Avg final margin | Final-6 changed | Final move changed | Comeback after 21 | Power triggered | Winner/tie changed | Bonus by power type |',
-  '| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |',
+  '| Scenario | First-player score | Center-owner score | Avg final margin | Final-6 changed | Final move changed | Comeback after 21 | Power triggered | Charged cell used | Shield value | Winner/tie changed | Bonus by power type |',
+  '| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |',
   ...scenarios.map((scenario) =>
     `| ${[
       scenario.label,
@@ -1635,6 +1707,12 @@ const makePowerTable = (scenarios) => [
         : `${pct(scenario.power.triggerRate)} trigger/pick, ${pct(
             scenario.power.gameTriggeredRate,
           )} games`,
+      scenario.power?.chargedCellUsedRate === null || !scenario.power
+        ? 'n/a'
+        : pct(scenario.power.chargedCellUsedRate),
+      scenario.power?.shieldValueRate === null || !scenario.power
+        ? 'n/a'
+        : pct(scenario.power.shieldValueRate),
       scenario.power ? pct(scenario.power.changedOutcomeRate) : 'n/a',
       scenario.power ? formatPowerBonus(scenario) : 'n/a',
     ].join(' | ')} |`,
@@ -1749,6 +1827,7 @@ const makeReport = ({
   lineReports,
   matchReports,
   powerReports,
+  powerV3Reports,
   seed,
   variantMode,
   variantReports,
@@ -1793,6 +1872,8 @@ cannot fully answer confusion, satisfaction, frustration, or replay desire.
   totals.
 - \`--variant final-six-powers-v2\` runs Standard Lines, the current Wildcards
   experiment, and Final Six Powers v2 for direct comparison.
+- \`--variant final-six-powers-v3\` adds Final Six Powers v3 to the same
+  comparison, with charged-cell and shield-value metrics.
 
 ## Recommendation
 
@@ -1915,6 +1996,25 @@ Power audit notes:
 - Winner/tie changed compares the final board result before power bonus to the
   final total after power bonus.
 
+## Final Six Powers v3 Experimental Variant
+
+${powerV3Reports.length > 0
+  ? makePowerTable(powerV3Reports)
+  : 'Final Six Powers v3 audit not run for this report.'}
+
+Power v3 audit notes:
+
+- Powers v3 removes Surge from the playable prototype and tests a simpler
+  charged-cell core plus Shield Cell counterplay.
+- Charged Cell is a chosen empty cell that pays +2 only when the owner later
+  scores or blocks from that cell.
+- Shield Cell targets an opponent threat cell; if the opponent plays it, their
+  power bonus is denied and the shielder gains +1.
+- Final scores include normal Lines plus power bonus points; standard Lines
+  remains the default player-facing ruleset.
+- Winner/tie changed compares the final board result before power bonus to the
+  final total after power bonus.
+
 ## Best-of-5 Match Simulation
 
 ${makeMatchTable(matchReports)}
@@ -2018,8 +2118,12 @@ const main = () => {
     variantMode === 'both' || variantMode === CENTER_NORMALIZED_VARIANT;
   const shouldRunWildcards =
     variantMode === FINAL_SIX_WILDCARDS_VARIANT ||
-    variantMode === FINAL_SIX_POWERS_VARIANT;
-  const shouldRunPowers = variantMode === FINAL_SIX_POWERS_VARIANT;
+    variantMode === FINAL_SIX_POWERS_V2_VARIANT ||
+    variantMode === FINAL_SIX_POWERS_V3_VARIANT;
+  const shouldRunPowersV2 =
+    variantMode === FINAL_SIX_POWERS_V2_VARIANT ||
+    variantMode === FINAL_SIX_POWERS_V3_VARIANT;
+  const shouldRunPowersV3 = variantMode === FINAL_SIX_POWERS_V3_VARIANT;
 
   const lineReports = linesScenarios.map(([label, xDifficulty, oDifficulty], index) =>
     runScenario({
@@ -2073,10 +2177,24 @@ const main = () => {
         }),
       )
     : [];
-  const powerReports = shouldRunPowers
+  const powerReports = shouldRunPowersV2
     ? linesScenarios.map(([label, xDifficulty, oDifficulty], index) =>
         runScenario({
-          endgameVariant: FINAL_SIX_POWERS_VARIANT,
+          endgameVariant: FINAL_SIX_POWERS_V2_VARIANT,
+          games,
+          label,
+          oDifficulty,
+          ruleset: 'lines',
+          scenarioIndex: index,
+          seed,
+          xDifficulty,
+        }),
+      )
+    : [];
+  const powerV3Reports = shouldRunPowersV3
+    ? linesScenarios.map(([label, xDifficulty, oDifficulty], index) =>
+        runScenario({
+          endgameVariant: FINAL_SIX_POWERS_V3_VARIANT,
           games,
           label,
           oDifficulty,
@@ -2098,6 +2216,7 @@ const main = () => {
     lineReports,
     matchReports,
     powerReports,
+    powerV3Reports,
     seed,
     variantMode,
     variantReports,
@@ -2118,6 +2237,9 @@ const main = () => {
   );
   console.log(
     `Final Six Powers v2 audit scenarios: ${powerReports.length} x ${games} games`,
+  );
+  console.log(
+    `Final Six Powers v3 audit scenarios: ${powerV3Reports.length} x ${games} games`,
   );
   console.log(`Classic scenarios: ${classicReports.length} x ${games} games`);
   console.log(`Best-of-5 focus scenarios: ${matchReports.length}`);

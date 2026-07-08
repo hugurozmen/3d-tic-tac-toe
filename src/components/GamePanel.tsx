@@ -18,6 +18,7 @@ import {
   X,
   Zap,
 } from 'lucide-react';
+import type { GameAnimationEvent } from '../game/animationEvents';
 import type { BoardLayout } from '../game/boardView';
 import {
   DIFFICULTY_LABEL,
@@ -44,6 +45,7 @@ import type { OnlineRoomSettings, OnlineStatus } from '../game/useOnlineGame';
 import {
   FINAL_SIX_POWER_DESCRIPTION,
   FINAL_SIX_POWER_LABEL,
+  FINAL_SIX_POWER_OPTIONS,
   FINAL_SIX_POWER_SHORT_LABEL,
   type FinalSixPowerId,
   type FinalSixPowerState,
@@ -68,6 +70,7 @@ type OnlinePanelState = {
 };
 
 type GamePanelProps = {
+  animationEvents: GameAnimationEvent[];
   baseLineScores: LineScores;
   canHumanChoosePower: boolean;
   coachEnabled: boolean;
@@ -140,7 +143,7 @@ function markIcon(player: Player) {
 }
 
 function powerIcon(power: FinalSixPowerId) {
-  if (power === 'power-cell') {
+  if (power === 'power-cell' || power === 'charged-cell') {
     return <Sparkles size={15} />;
   }
 
@@ -153,15 +156,10 @@ function powerIcon(power: FinalSixPowerId) {
 
 const DAILY_FLOORS = [0, 1, 2] as const;
 const POWER_PLAYERS = ['X', 'O'] as const;
-const POWER_OPTIONS: FinalSixPowerId[] = [
-  'power-cell',
-  'surge-line',
-  'shield-line',
-];
-
 const formatCell = (move: number | null) => (move === null ? '-' : move + 1);
 
 export function GamePanel({
+  animationEvents,
   baseLineScores,
   canHumanChoosePower,
   coachEnabled,
@@ -235,7 +233,9 @@ export function GamePanel({
     .filter(Boolean)
     .join(' ');
   const isPowerScoreMode =
-    ruleset === 'lines' && effectiveLinesEndgameMode === 'powers-v2';
+    ruleset === 'lines' &&
+    (effectiveLinesEndgameMode === 'powers-v2' ||
+      effectiveLinesEndgameMode === 'powers-v3');
   const emptyCellsTense =
     ruleset === 'lines' &&
     !isPowerScoreMode &&
@@ -250,10 +250,23 @@ export function GamePanel({
       : `${RULESET_LABEL[online.settings.ruleset]} room`
     : `${RULESET_LABEL[ruleset]} room`;
   const hasLineBonus = linesBonusScores.X > 0 || linesBonusScores.O > 0;
+  const hasPowerBonusEvent = animationEvents.some(
+    (event) => event.type === 'power-triggered' && event.bonus > 0,
+  );
+  const hasFinalSixEvent = animationEvents.some(
+    (event) => event.type === 'final-six-start',
+  );
+  const hasMatchEndEvent = animationEvents.some(
+    (event) => event.type === 'match-end',
+  );
   const canShowPowerPanel =
     ruleset === 'lines' &&
-    effectiveLinesEndgameMode === 'powers-v2' &&
+    isPowerScoreMode &&
     mode !== 'online';
+  const powerOptions =
+    effectiveLinesEndgameMode === 'powers-v2'
+      ? FINAL_SIX_POWER_OPTIONS['powers-v2']
+      : FINAL_SIX_POWER_OPTIONS['powers-v3'];
 
   return (
     <aside className="game-panel" aria-label="Game controls">
@@ -307,7 +320,10 @@ export function GamePanel({
         </div>
       </header>
 
-      <div className="score-row" aria-label="Best-of-5 match score">
+      <div
+        className={`score-row ${hasMatchEndEvent ? 'match-finished' : ''}`}
+        aria-label="Best-of-5 match score"
+      >
         <div
           className={`score-tile score-x ${
             !result.winner && !match.isComplete && currentPlayer === 'X'
@@ -374,7 +390,9 @@ export function GamePanel({
             <div
               className={`line-score-tile ${
                 isPowerScoreMode ? 'line-score-bonus' : 'line-score-empty'
-              } ${emptyCellsTense ? 'tension' : ''}`}
+              } ${emptyCellsTense ? 'tension' : ''} ${
+                hasPowerBonusEvent ? 'score-bump power-bonus-bump' : ''
+              } ${hasFinalSixEvent ? 'final-six-bump' : ''}`}
             >
               <span>
                 {isPowerScoreMode
@@ -390,9 +408,14 @@ export function GamePanel({
               </strong>
             </div>
           </div>
-          {linesEndgameText ? (
-            <p className="line-tension-note" aria-live="polite">
-              {linesEndgameText}
+          {linesEndgameText || hasFinalSixEvent ? (
+            <p
+              className={`line-tension-note ${
+                hasFinalSixEvent ? 'final-six-live' : ''
+              }`}
+              aria-live="polite"
+            >
+              {hasFinalSixEvent ? 'Final Six: cube charged' : linesEndgameText}
             </p>
           ) : null}
           {hasLineBonus ? (
@@ -441,21 +464,21 @@ export function GamePanel({
               <span>Standard</span>
             </button>
             <button
-              className={linesEndgameMode === 'powers-v2' ? 'active' : ''}
+              className={linesEndgameMode === 'powers-v3' ? 'active' : ''}
               disabled={mode === 'online'}
               type="button"
-              onClick={() => onEndgameModeChange('powers-v2')}
+              onClick={() => onEndgameModeChange('powers-v3')}
             >
               <Sparkles size={16} />
-              <span>Powers v2 Experimental</span>
+              <span>Powers v3 Experimental</span>
             </button>
           </div>
           {mode === 'online' ? (
             <p className="control-note">
               Final Six Powers are local prototype only
             </p>
-          ) : linesEndgameMode === 'powers-v2' ? (
-            <p className="control-note">Final Six: choose powers on board</p>
+          ) : linesEndgameMode === 'powers-v3' ? (
+            <p className="control-note">Final Six charges the cube</p>
           ) : null}
         </div>
       ) : null}
@@ -721,7 +744,7 @@ export function GamePanel({
           <div className="power-header">
             <div>
               <span>Final Six</span>
-              <strong>Powers</strong>
+              <strong>Powers v3</strong>
             </div>
             <span className="power-score">
               Bonus {linesBonusScores.X}-{linesBonusScores.O}
@@ -730,7 +753,7 @@ export function GamePanel({
 
           {finalSixPowers.phase === 'inactive' ? (
             <p className="power-copy">
-              Choose powers on the board when six cells remain.
+              At Final Six, choose on the board.
             </p>
           ) : null}
 
@@ -745,7 +768,7 @@ export function GamePanel({
                 </span>
               </div>
               <div className="power-options">
-                {POWER_OPTIONS.map((power) => (
+                {powerOptions.map((power) => (
                   <button
                     key={power}
                     aria-pressed={powerSelection === power}
@@ -770,7 +793,7 @@ export function GamePanel({
               {POWER_PLAYERS.map((player) => {
                 const choice = finalSixPowers.players[player].choice;
                 const target =
-                  choice?.id === 'power-cell'
+                  choice?.id === 'power-cell' || choice?.id === 'charged-cell'
                     ? `Cell ${(choice.cell ?? 0) + 1}`
                     : choice?.line
                       ? `Cells ${choice.line.map((cell) => cell + 1).join('-')}`
@@ -786,7 +809,7 @@ export function GamePanel({
                       <small>{choice ? target : 'Not chosen'}</small>
                     </div>
                     <span className={choice?.triggered ? 'used' : 'ready'}>
-                      {choice?.triggered ? 'Triggered' : 'Ready'}
+                      {choice?.triggered ? 'Used' : 'Ready'}
                     </span>
                   </div>
                 );

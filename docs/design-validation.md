@@ -2,8 +2,8 @@
 
 Source of truth: [GitHub issue #15](https://github.com/hugurozmen/3d-tic-tac-toe/issues/15)  
 Generated (Europe/Istanbul): 2026-07-07  
-Command: `npm run design:audit -- --variant final-six-powers-v2 --games 24 --seed 20260707`
-Variant mode: `final-six-powers-v2`
+Command: `npm run design:audit -- --variant final-six-powers-v3 --games 24 --seed 20260707`
+Variant mode: `final-six-powers-v3`
 
 ## Scope
 
@@ -28,6 +28,8 @@ cannot fully answer confusion, satisfaction, frustration, or replay desire.
   totals.
 - `--variant final-six-powers-v2` runs Standard Lines, the current Wildcards
   experiment, and Final Six Powers v2 for direct comparison.
+- `--variant final-six-powers-v3` adds Final Six Powers v3 to the same
+  comparison, with charged-cell and shield-value metrics.
 
 ## Recommendation
 
@@ -190,18 +192,18 @@ Wildcard audit notes:
 
 ## Final Six Powers v2 Experimental Variant
 
-| Scenario | First-player score | Center-owner score | Avg final margin | Final-6 changed | Final move changed | Comeback after 21 | Power triggered | Winner/tie changed | Bonus by power type |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| Casual vs Casual | 47.9% | 64.6% | 1.46 | 37.5% | 33.3% | 28.6% | 62.5% trigger/pick, 100.0% games | 45.8% | Power Cell 2.50/g; Surge Line 0.00/g; Shield denied 0.00/g |
-| Smart vs Smart | 60.4% | 64.6% | 1.42 | 25.0% | 33.3% | 18.2% | 43.8% trigger/pick, 83.3% games | 20.8% | Power Cell 1.75/g; Surge Line 0.00/g; Shield denied 0.00/g |
-| Hard vs Hard | 0.0% | 50.0% | 1.25 | 50.0% | 0.0% | 33.3% | 75.0% trigger/pick, 100.0% games | 50.0% | Power Cell 3.00/g; Surge Line 0.00/g; Shield denied 0.00/g |
-| Master vs Master | 75.0% | 75.0% | 1.25 | 25.0% | 50.0% | 25.0% | 62.5% trigger/pick, 100.0% games | 25.0% | Power Cell 2.50/g; Surge Line 0.00/g; Shield denied 0.00/g |
-| Smart vs Casual | 54.2% | 79.2% | 1.79 | 37.5% | 8.3% | 38.1% | 64.6% trigger/pick, 100.0% games | 33.3% | Power Cell 2.42/g; Surge Line 0.17/g; Shield denied 0.00/g |
-| Casual vs Smart | 35.4% | 68.8% | 2.46 | 54.2% | 4.2% | 42.1% | 64.6% trigger/pick, 100.0% games | 45.8% | Power Cell 2.58/g; Surge Line 0.00/g; Shield denied 0.00/g |
-| Hard vs Smart | 12.5% | 58.3% | 1.79 | 41.7% | 8.3% | 0.0% | 54.2% trigger/pick, 79.2% games | 29.2% | Power Cell 2.17/g; Surge Line 0.00/g; Shield denied 0.00/g |
-| Smart vs Hard | 27.1% | 27.1% | 1.08 | 62.5% | 0.0% | 50.0% | 79.2% trigger/pick, 100.0% games | 41.7% | Power Cell 3.17/g; Surge Line 0.00/g; Shield denied 0.00/g |
-| Master vs Hard | 37.5% | 62.5% | 1.00 | 25.0% | 50.0% | 33.3% | 75.0% trigger/pick, 100.0% games | 25.0% | Power Cell 3.00/g; Surge Line 0.00/g; Shield denied 0.00/g |
-| Hard vs Master | 25.0% | 75.0% | 1.75 | 50.0% | 25.0% | 0.0% | 62.5% trigger/pick, 100.0% games | 25.0% | Power Cell 2.50/g; Surge Line 0.00/g; Shield denied 0.00/g |
+| Scenario | First-player score | Center-owner score | Avg final margin | Final-6 changed | Final move changed | Comeback after 21 | Power triggered | Charged cell used | Shield value | Winner/tie changed | Bonus by power type |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| Casual vs Casual | 47.9% | 64.6% | 1.46 | 37.5% | 33.3% | 28.6% | 62.5% trigger/pick, 100.0% games | n/a | n/a | 45.8% | Power Cell 2.50/g; Surge Line 0.00/g; Bonus denied 0.00/g |
+| Smart vs Smart | 60.4% | 64.6% | 1.42 | 25.0% | 33.3% | 18.2% | 43.8% trigger/pick, 83.3% games | n/a | n/a | 20.8% | Power Cell 1.75/g; Surge Line 0.00/g; Bonus denied 0.00/g |
+| Hard vs Hard | 0.0% | 50.0% | 1.25 | 50.0% | 0.0% | 33.3% | 75.0% trigger/pick, 100.0% games | n/a | n/a | 50.0% | Power Cell 3.00/g; Surge Line 0.00/g; Bonus denied 0.00/g |
+| Master vs Master | 75.0% | 75.0% | 1.25 | 25.0% | 50.0% | 25.0% | 62.5% trigger/pick, 100.0% games | n/a | n/a | 25.0% | Power Cell 2.50/g; Surge Line 0.00/g; Bonus denied 0.00/g |
+| Smart vs Casual | 54.2% | 79.2% | 1.79 | 37.5% | 8.3% | 38.1% | 64.6% trigger/pick, 100.0% games | n/a | n/a | 33.3% | Power Cell 2.42/g; Surge Line 0.17/g; Bonus denied 0.00/g |
+| Casual vs Smart | 35.4% | 68.8% | 2.46 | 54.2% | 4.2% | 42.1% | 64.6% trigger/pick, 100.0% games | n/a | n/a | 45.8% | Power Cell 2.58/g; Surge Line 0.00/g; Bonus denied 0.00/g |
+| Hard vs Smart | 12.5% | 58.3% | 1.79 | 41.7% | 8.3% | 0.0% | 54.2% trigger/pick, 79.2% games | n/a | n/a | 29.2% | Power Cell 2.17/g; Surge Line 0.00/g; Bonus denied 0.00/g |
+| Smart vs Hard | 27.1% | 27.1% | 1.08 | 62.5% | 0.0% | 50.0% | 79.2% trigger/pick, 100.0% games | n/a | n/a | 41.7% | Power Cell 3.17/g; Surge Line 0.00/g; Bonus denied 0.00/g |
+| Master vs Hard | 37.5% | 62.5% | 1.00 | 25.0% | 50.0% | 33.3% | 75.0% trigger/pick, 100.0% games | n/a | n/a | 25.0% | Power Cell 3.00/g; Surge Line 0.00/g; Bonus denied 0.00/g |
+| Hard vs Master | 25.0% | 75.0% | 1.75 | 50.0% | 25.0% | 0.0% | 62.5% trigger/pick, 100.0% games | n/a | n/a | 25.0% | Power Cell 2.50/g; Surge Line 0.00/g; Bonus denied 0.00/g |
 
 Power audit notes:
 
@@ -209,6 +211,34 @@ Power audit notes:
   player by Lines score chooses first, then the other player chooses.
 - Power Cell, Surge Line, and Shield Line are represented as cell/line targets
   in the simulation, not hidden text effects.
+- Final scores include normal Lines plus power bonus points; standard Lines
+  remains the default player-facing ruleset.
+- Winner/tie changed compares the final board result before power bonus to the
+  final total after power bonus.
+
+## Final Six Powers v3 Experimental Variant
+
+| Scenario | First-player score | Center-owner score | Avg final margin | Final-6 changed | Final move changed | Comeback after 21 | Power triggered | Charged cell used | Shield value | Winner/tie changed | Bonus by power type |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| Casual vs Casual | 68.8% | 77.1% | 1.88 | 45.8% | 29.2% | 38.1% | 70.8% trigger/pick, 95.8% games | 78.0% | 57.1% | 29.2% | Charged Cell 2.50/g; Shield Cell 0.17/g; Bonus denied 0.08/g |
+| Smart vs Smart | 70.8% | 70.8% | 2.67 | 8.3% | 0.0% | 4.5% | 45.8% trigger/pick, 70.8% games | 58.3% | 50.0% | 12.5% | Charged Cell 1.33/g; Shield Cell 0.25/g; Bonus denied 0.04/g |
+| Hard vs Hard | 12.5% | 37.5% | 0.75 | 25.0% | 0.0% | 33.3% | 62.5% trigger/pick, 75.0% games | 83.3% | 0.0% | 25.0% | Charged Cell 2.50/g; Shield Cell 0.00/g; Bonus denied 0.00/g |
+| Master vs Master | 100.0% | 50.0% | 2.00 | 0.0% | 0.0% | 0.0% | 37.5% trigger/pick, 50.0% games | 60.0% | 33.3% | 25.0% | Charged Cell 1.00/g; Shield Cell 0.25/g; Bonus denied 0.25/g |
+| Smart vs Casual | 68.8% | 81.3% | 1.88 | 37.5% | 8.3% | 33.3% | 66.7% trigger/pick, 87.5% games | 84.2% | 50.0% | 16.7% | Charged Cell 2.25/g; Shield Cell 0.21/g; Bonus denied 0.17/g |
+| Casual vs Smart | 54.2% | 79.2% | 2.46 | 29.2% | 8.3% | 15.8% | 75.0% trigger/pick, 95.8% games | 80.0% | 75.0% | 20.8% | Charged Cell 2.50/g; Shield Cell 0.25/g; Bonus denied 0.08/g |
+| Hard vs Smart | 29.2% | 41.7% | 1.42 | 29.2% | 0.0% | 7.1% | 52.1% trigger/pick, 75.0% games | 68.3% | 71.4% | 41.7% | Charged Cell 1.67/g; Shield Cell 0.21/g; Bonus denied 0.17/g |
+| Smart vs Hard | 39.6% | 22.9% | 1.08 | 50.0% | 0.0% | 12.5% | 72.9% trigger/pick, 87.5% games | 79.5% | 0.0% | 29.2% | Charged Cell 2.92/g; Shield Cell 0.00/g; Bonus denied 0.00/g |
+| Master vs Hard | 62.5% | 37.5% | 1.25 | 0.0% | 25.0% | 0.0% | 62.5% trigger/pick, 75.0% games | 83.3% | 50.0% | 25.0% | Charged Cell 2.00/g; Shield Cell 0.25/g; Bonus denied 0.25/g |
+| Hard vs Master | 50.0% | 50.0% | 1.00 | 0.0% | 0.0% | 0.0% | 37.5% trigger/pick, 50.0% games | 60.0% | 33.3% | 25.0% | Charged Cell 1.00/g; Shield Cell 0.25/g; Bonus denied 0.25/g |
+
+Power v3 audit notes:
+
+- Powers v3 removes Surge from the playable prototype and tests a simpler
+  charged-cell core plus Shield Cell counterplay.
+- Charged Cell is a chosen empty cell that pays +2 only when the owner later
+  scores or blocks from that cell.
+- Shield Cell targets an opponent threat cell; if the opponent plays it, their
+  power bonus is denied and the shielder gains +1.
 - Final scores include normal Lines plus power bonus points; standard Lines
   remains the default player-facing ruleset.
 - Winner/tie changed compares the final board result before power bonus to the

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useGameAnimationEvents } from './animationEvents';
 import { feedback } from './feedback';
 import {
   MatchState,
@@ -24,6 +25,7 @@ import {
   LinesEndgameMode,
   LinesBonusScores,
   FinalSixPowerId,
+  FinalSixPowerMode,
   FinalSixPowerPickRequest,
   FinalSixPowerState,
   applyFinalSixPowerMove,
@@ -35,13 +37,20 @@ import {
 export type MoveImpact = {
   bonusPoints: number;
   blockedLines: number[][];
+  chargedCellUsed: boolean;
   id: number;
   linesCompleted: number[][];
   player: Player;
   power: FinalSixPowerId | null;
   powerMessage: string | null;
+  powerMessages: string[];
+  shieldValue: boolean;
   shieldDenied: boolean;
 };
+
+const isFinalSixPowerMode = (
+  mode: LinesEndgameMode,
+): mode is FinalSixPowerMode => mode === 'powers-v2' || mode === 'powers-v3';
 
 const addBonusScores = (
   lineScores: LineScores,
@@ -56,7 +65,7 @@ const applyLinesBonusToResult = (
   bonusScores: LinesBonusScores,
   endgameMode: LinesEndgameMode,
 ): GameResult => {
-  if (result.ruleset !== 'lines' || endgameMode !== 'powers-v2') {
+  if (result.ruleset !== 'lines' || !isFinalSixPowerMode(endgameMode)) {
     return result;
   }
 
@@ -113,7 +122,9 @@ export function useMatchState(
   const [recentLines, setRecentLines] = useState<number[][]>([]);
   const [recentImpact, setRecentImpact] = useState<MoveImpact | null>(null);
   const [finalSixPowers, setFinalSixPowers] = useState<FinalSixPowerState>(() =>
-    createFinalSixPowerState(),
+    createFinalSixPowerState(
+      isFinalSixPowerMode(linesEndgameMode) ? linesEndgameMode : 'powers-v3',
+    ),
   );
   const boardRef = useRef(board);
   const currentPlayerRef = useRef(currentPlayer);
@@ -121,8 +132,14 @@ export function useMatchState(
   const rulesetRef = useRef(ruleset);
   const linesEndgameModeRef = useRef(linesEndgameMode);
   const finalSixPowersRef = useRef(finalSixPowers);
+  const finalSixAnnouncedRef = useRef(false);
   const recentLinesTimeoutRef = useRef<number | null>(null);
   const moveImpactIdRef = useRef(0);
+  const {
+    animationEvents,
+    clearAnimationEvents,
+    pushAnimationEvent,
+  } = useGameAnimationEvents();
   const baseResult = useMemo(() => evaluateBoard(board, ruleset), [board, ruleset]);
   const result = useMemo(
     () =>
@@ -186,20 +203,40 @@ export function useMatchState(
   }, [finalSixPowers]);
 
   useEffect(() => {
-    if (ruleset === 'lines' && linesEndgameMode === 'powers-v2') {
+    if (ruleset === 'lines' && isFinalSixPowerMode(linesEndgameMode)) {
       return;
     }
 
-    const nextFinalSixPowers = createFinalSixPowerState();
+    const nextFinalSixPowers = createFinalSixPowerState('powers-v3');
 
     finalSixPowersRef.current = nextFinalSixPowers;
     setFinalSixPowers(nextFinalSixPowers);
+    finalSixAnnouncedRef.current = false;
   }, [linesEndgameMode, ruleset]);
 
   useEffect(() => {
     if (
       ruleset !== 'lines' ||
-      linesEndgameMode !== 'powers-v2' ||
+      baseResult.isComplete ||
+      baseResult.remainingCells !== 6 ||
+      finalSixAnnouncedRef.current
+    ) {
+      return;
+    }
+
+    finalSixAnnouncedRef.current = true;
+    pushAnimationEvent({ type: 'final-six-start' });
+  }, [
+    baseResult.isComplete,
+    baseResult.remainingCells,
+    pushAnimationEvent,
+    ruleset,
+  ]);
+
+  useEffect(() => {
+    if (
+      ruleset !== 'lines' ||
+      !isFinalSixPowerMode(linesEndgameMode) ||
       baseResult.isComplete ||
       baseResult.remainingCells !== 6 ||
       finalSixPowers.phase !== 'inactive'
@@ -210,6 +247,7 @@ export function useMatchState(
     const nextFinalSixPowers = createFinalSixPowerDraft({
       currentPlayer,
       lineScores: baseResult.lineScores,
+      mode: linesEndgameMode,
     });
 
     finalSixPowersRef.current = nextFinalSixPowers;
@@ -246,12 +284,17 @@ export function useMatchState(
           opener: nextStarter,
         };
     const nextBoard = createBoard();
-    const nextFinalSixPowers = createFinalSixPowerState();
+    const nextFinalSixPowers = createFinalSixPowerState(
+      isFinalSixPowerMode(linesEndgameModeRef.current)
+        ? linesEndgameModeRef.current
+        : 'powers-v3',
+    );
 
     matchRef.current = nextMatch;
     boardRef.current = nextBoard;
     currentPlayerRef.current = nextStarter;
     finalSixPowersRef.current = nextFinalSixPowers;
+    finalSixAnnouncedRef.current = false;
     setMatch(nextMatch);
     setBoard(nextBoard);
     setCurrentPlayer(nextStarter);
@@ -259,18 +302,24 @@ export function useMatchState(
     setLastMove(null);
     setScoredRound(null);
     setRecentImpact(null);
+    clearAnimationEvents();
     clearRecentLines();
-  }, [clearRecentLines]);
+  }, [clearAnimationEvents, clearRecentLines]);
 
   const resetMatch = useCallback(() => {
     const nextMatch = createMatchState('X');
     const nextBoard = createBoard();
-    const nextFinalSixPowers = createFinalSixPowerState();
+    const nextFinalSixPowers = createFinalSixPowerState(
+      isFinalSixPowerMode(linesEndgameModeRef.current)
+        ? linesEndgameModeRef.current
+        : 'powers-v3',
+    );
 
     matchRef.current = nextMatch;
     boardRef.current = nextBoard;
     currentPlayerRef.current = nextMatch.opener;
     finalSixPowersRef.current = nextFinalSixPowers;
+    finalSixAnnouncedRef.current = false;
     setMatch(nextMatch);
     setBoard(nextBoard);
     setCurrentPlayer(nextMatch.opener);
@@ -278,8 +327,9 @@ export function useMatchState(
     setLastMove(null);
     setScoredRound(null);
     setRecentImpact(null);
+    clearAnimationEvents();
     clearRecentLines();
-  }, [clearRecentLines]);
+  }, [clearAnimationEvents, clearRecentLines]);
 
   const applyMove = useCallback((index: number, player?: Player) => {
     const activeBoard = boardRef.current;
@@ -298,7 +348,7 @@ export function useMatchState(
       activeResult.winner ||
       activeResult.isDraw ||
       (activeRuleset === 'lines' &&
-        activeEndgameMode === 'powers-v2' &&
+        isFinalSixPowerMode(activeEndgameMode) &&
         activeFinalSixPowers.phase === 'choosing')
     ) {
       return false;
@@ -322,7 +372,7 @@ export function useMatchState(
           )
         : [];
     const powerImpact =
-      activeRuleset === 'lines' && activeEndgameMode === 'powers-v2'
+      activeRuleset === 'lines' && isFinalSixPowerMode(activeEndgameMode)
         ? applyFinalSixPowerMove({
             blockedLines,
             completedLines: newCompletedLines,
@@ -332,10 +382,14 @@ export function useMatchState(
           })
         : {
             impact: {
+              bonusByType: {},
               bonusPoints: 0,
+              chargedCellUsed: false,
               power: null,
               powerMessage: null,
+              powerMessages: [],
               shieldDenied: false,
+              shieldValue: false,
             },
             nextState: activeFinalSixPowers,
           };
@@ -353,6 +407,47 @@ export function useMatchState(
     setCurrentPlayer(nextPlayer);
     setFinalSixPowers(powerImpact.nextState);
     setLastMove(index);
+    pushAnimationEvent({
+      cell: index,
+      player: movePlayer,
+      type: 'place',
+    });
+
+    if (newCompletedLines.length > 1) {
+      pushAnimationEvent({
+        lines: newCompletedLines,
+        player: movePlayer,
+        type: 'multi-line',
+      });
+    } else if (newCompletedLines.length === 1) {
+      pushAnimationEvent({
+        lines: newCompletedLines,
+        player: movePlayer,
+        type: 'score-line',
+      });
+    }
+
+    if (blockedLines.length > 0) {
+      pushAnimationEvent({
+        lines: blockedLines,
+        player: movePlayer,
+        type: 'block',
+      });
+    }
+
+    if (powerImpact.impact.powerMessages.length > 0) {
+      const lastEvent = powerImpact.nextState.lastEvent;
+
+      pushAnimationEvent({
+        bonus: powerImpact.impact.bonusPoints,
+        cell: lastEvent?.cell ?? index,
+        line: lastEvent?.line ?? newCompletedLines[0] ?? blockedLines[0],
+        player: lastEvent?.player ?? movePlayer,
+        power: powerImpact.impact.power ?? 'power',
+        shieldDenied: powerImpact.impact.shieldDenied,
+        type: 'power-triggered',
+      });
+    }
 
     if (hasNotableImpact && newCompletedLines.length > 0) {
       setRecentLines(newCompletedLines);
@@ -362,9 +457,12 @@ export function useMatchState(
         id: moveImpactIdRef.current + 1,
         linesCompleted: newCompletedLines,
         player: movePlayer,
+        chargedCellUsed: powerImpact.impact.chargedCellUsed,
         power: powerImpact.impact.power,
         powerMessage: powerImpact.impact.powerMessage,
+        powerMessages: powerImpact.impact.powerMessages,
         shieldDenied: powerImpact.impact.shieldDenied,
+        shieldValue: powerImpact.impact.shieldValue,
       });
       moveImpactIdRef.current += 1;
       feedback.scoreLine(newCompletedLines.length);
@@ -386,9 +484,12 @@ export function useMatchState(
         id: moveImpactIdRef.current + 1,
         linesCompleted: [],
         player: movePlayer,
+        chargedCellUsed: powerImpact.impact.chargedCellUsed,
         power: powerImpact.impact.power,
         powerMessage: powerImpact.impact.powerMessage,
+        powerMessages: powerImpact.impact.powerMessages,
         shieldDenied: powerImpact.impact.shieldDenied,
+        shieldValue: powerImpact.impact.shieldValue,
       });
       moveImpactIdRef.current += 1;
       if (bonusPoints > 0) {
@@ -415,13 +516,16 @@ export function useMatchState(
       linesCompleted: newCompletedLines,
       blockedLines,
       bonusPoints,
+      chargedCellUsed: powerImpact.impact.chargedCellUsed,
       moved: true,
       player: movePlayer,
       power: powerImpact.impact.power,
       powerMessage: powerImpact.impact.powerMessage,
+      powerMessages: powerImpact.impact.powerMessages,
       shieldDenied: powerImpact.impact.shieldDenied,
+      shieldValue: powerImpact.impact.shieldValue,
     };
-  }, []);
+  }, [pushAnimationEvent]);
 
   const pickFinalSixPower = useCallback((player: Player, request: FinalSixPowerPickRequest) => {
     const nextFinalSixPowers = pickFinalSixPowerState(
@@ -437,8 +541,17 @@ export function useMatchState(
 
     finalSixPowersRef.current = nextFinalSixPowers;
     setFinalSixPowers(nextFinalSixPowers);
+    const choice = nextFinalSixPowers.players[player].choice;
+
+    pushAnimationEvent({
+      cell: choice?.cell ?? undefined,
+      line: choice?.line ?? undefined,
+      player,
+      power: request.id,
+      type: 'power-selected',
+    });
     return true;
-  }, []);
+  }, [pushAnimationEvent]);
 
   useEffect(() => {
     if (!result.winner && !result.isDraw) {
@@ -459,6 +572,12 @@ export function useMatchState(
       feedback.draw();
     }
 
+    pushAnimationEvent({
+      isDraw: result.isDraw,
+      type: 'round-end',
+      winner: result.winner,
+    });
+
     setLifetimeScore((previous) => {
       if (result.winner) {
         return {
@@ -475,14 +594,28 @@ export function useMatchState(
     setMatch((previous) => {
       const next = recordMatchRound(previous, result.winner, result.isDraw);
 
+      if (next.winner) {
+        pushAnimationEvent({
+          type: 'match-end',
+          winner: next.winner,
+        });
+      }
+
       matchRef.current = next;
       return next;
     });
     setScoredRound(boardSignature);
-  }, [boardSignature, result.isDraw, result.winner, scoredRound]);
+  }, [
+    boardSignature,
+    pushAnimationEvent,
+    result.isDraw,
+    result.winner,
+    scoredRound,
+  ]);
 
   return {
     applyMove,
+    animationEvents,
     baseLineScores,
     board,
     currentPlayer,

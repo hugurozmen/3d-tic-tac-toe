@@ -1,6 +1,13 @@
-import { KeyboardEvent, useRef } from 'react';
+import { type CSSProperties, KeyboardEvent, useRef } from 'react';
 import { Board, Player } from '../game/rules';
 import type { CoachHint, CoachHintKind } from '../game/coach';
+import {
+  type AnimationCellMoment,
+  getAnimationCells,
+  getAnimationCellMoments,
+  getAnimationLines,
+  type GameAnimationEvent,
+} from '../game/animationEvents';
 import {
   FINAL_SIX_POWER_LABEL,
   type FinalSixPowerBoardEffects,
@@ -9,6 +16,7 @@ import type { LinesEndgameAnalysis } from '../game/linesTension';
 import { SceneTheme, ThemeStyle } from '../theme';
 
 type ScannerBoardProps = {
+  animationEvents: GameAnimationEvent[];
   board: Board;
   coachBlockCells: number[];
   coachHints: CoachHint[];
@@ -35,6 +43,7 @@ const floorOf = (index: number) => Math.floor(index / 9);
 
 export function ScannerBoard({
   board,
+  animationEvents,
   coachBlockCells,
   coachHints,
   coachScoreCells,
@@ -85,8 +94,16 @@ export function ScannerBoard({
   );
   const previewShieldLineCells = new Set(
     powerEffects.previewLines
-      .filter((preview) => preview.kind === 'shield-line')
+      .filter(
+        (preview) =>
+          preview.kind === 'shield-line' || preview.kind === 'shield-cell',
+      )
       .flatMap((preview) => preview.line),
+  );
+  const shieldChoiceByCell = new Map(
+    powerEffects.shieldLines
+      .filter((choice) => choice.cell !== null)
+      .map((choice) => [choice.cell!, choice]),
   );
   const surgeCells = new Set(
     powerEffects.surgeLines.flatMap((choice) => choice.line ?? []),
@@ -94,12 +111,69 @@ export function ScannerBoard({
   const shieldCells = new Set(
     powerEffects.shieldLines.flatMap((choice) => choice.line ?? []),
   );
+  const chargedEmptyCells = new Set(powerEffects.chargedEmptyCells);
   const triggerCells = new Set(
     powerEffects.trigger
       ? powerEffects.trigger.line ?? [powerEffects.trigger.cell].filter(
           (cell): cell is number => cell !== null,
         )
       : [],
+  );
+  const scoreEventLines = animationEvents
+    .filter(
+      (event) => event.type === 'score-line' || event.type === 'multi-line',
+    )
+    .flatMap(getAnimationLines);
+  const blockEventLines = animationEvents
+    .filter((event) => event.type === 'block')
+    .flatMap(getAnimationLines);
+  const powerEventLines = animationEvents
+    .filter(
+      (event) =>
+        event.type === 'power-selected' || event.type === 'power-triggered',
+    )
+    .flatMap(getAnimationLines);
+  const scoreEventCells = new Set(scoreEventLines.flatMap((line) => line));
+  const blockEventCells = new Set(blockEventLines.flatMap((line) => line));
+  const powerEventCells = new Set(
+    animationEvents
+      .filter(
+        (event) =>
+          event.type === 'power-selected' || event.type === 'power-triggered',
+      )
+      .flatMap(getAnimationCells),
+  );
+  const placeEventCells = new Set(
+    animationEvents
+      .filter((event) => event.type === 'place')
+      .flatMap(getAnimationCells),
+  );
+  const animationCellMoments = getAnimationCellMoments(animationEvents);
+  const lineMomentByCell = animationCellMoments.reduce<
+    Map<number, AnimationCellMoment>
+  >((moments, moment) => {
+    const current = moments.get(moment.cell);
+
+    if (
+      !current ||
+      (moment.isCombo && current.isCombo && moment.sequence > current.sequence) ||
+      moment.delayMs < current.delayMs ||
+      (moment.tone === 'power' && current.tone !== 'power')
+    ) {
+      moments.set(moment.cell, moment);
+    }
+
+    return moments;
+  }, new Map());
+  const powerTriggerByCell = new Map(
+    animationEvents.flatMap((event) =>
+      event.type === 'power-triggered' && event.cell !== undefined
+        ? [[event.cell, event] as const]
+        : [],
+    ),
+  );
+  const hasFinalSixStartEvent = animationEvents.some(
+    (event) => event.type === 'final-six-start',
   );
   const hintsByCell = new Map(coachHints.map((hint) => [hint.cell, hint]));
   const winningFloors = new Set(Array.from(highlightedCells).map(floorOf));
@@ -192,6 +266,10 @@ export function ScannerBoard({
       return 'dot-power-trigger';
     }
 
+    if (powerEventCells.has(index)) {
+      return 'dot-power-trigger';
+    }
+
     if (powerCellByCell.has(index)) {
       return 'dot-power-cell';
     }
@@ -204,8 +282,20 @@ export function ScannerBoard({
       return 'dot-power-shield';
     }
 
+    if (scoreEventCells.has(index)) {
+      return 'dot-hint-score';
+    }
+
+    if (blockEventCells.has(index)) {
+      return 'dot-hint-block';
+    }
+
     if (previewByCell.has(index)) {
       return 'dot-power-preview';
+    }
+
+    if (!board[index] && chargedEmptyCells.has(index)) {
+      return 'dot-power-charged';
     }
 
     const hint = hintsByCell.get(index);
@@ -310,7 +400,16 @@ export function ScannerBoard({
       .join(' ');
 
   return (
-    <div className="scanner-board" style={style}>
+    <div
+      className={[
+        'scanner-board',
+        powerEffects.chargedState ? 'power-charged' : '',
+        hasFinalSixStartEvent ? 'final-six-animating' : '',
+      ]
+        .filter(Boolean)
+        .join(' ')}
+      style={style}
+    >
       <div className="scanner-ghost">
         <div className="scanner-ghost-inner">
           {FLOOR_LAYERS.map((layer) => (
@@ -362,13 +461,27 @@ export function ScannerBoard({
               const connectorKind = connectorKindForCell(index);
               const finalPhaseCell = finalPhaseCells.get(index);
               const powerCell = powerCellByCell.get(index);
+              const shieldChoice = shieldChoiceByCell.get(index);
               const powerPreview = previewByCell.get(index);
               const isPowerCell = Boolean(powerCell);
               const isPowerSurge = surgeCells.has(index);
               const isPowerShield = shieldCells.has(index);
+              const isPowerShieldCell = Boolean(shieldChoice);
               const isPowerPreviewSurge = previewSurgeLineCells.has(index);
               const isPowerPreviewShield = previewShieldLineCells.has(index);
               const isPowerTrigger = triggerCells.has(index);
+              const lineMoment = lineMomentByCell.get(index);
+              const powerTrigger = powerTriggerByCell.get(index);
+              const isScoreEvent = scoreEventCells.has(index);
+              const isBlockEvent = blockEventCells.has(index);
+              const isPowerEvent = powerEventCells.has(index);
+              const isPlaceEvent = placeEventCells.has(index);
+              const isPowerChargedEmpty =
+                !value &&
+                chargedEmptyCells.has(index) &&
+                !isPowerCell &&
+                !powerPreview &&
+                !isPowerShieldCell;
               const isFinalPhaseScore =
                 !value && finalPhaseScoreCells.has(index);
               const isFinalPhaseBlock =
@@ -396,7 +509,15 @@ export function ScannerBoard({
                     : null;
               const powerGlyph =
                 powerPreview?.label ??
-                (isPowerCell || isPowerSurge ? '+2' : isPowerShield ? 'SH' : null);
+                (isPowerCell
+                  ? '+2'
+                  : isPowerShieldCell
+                    ? shieldChoice?.id === 'shield-cell'
+                      ? '+1'
+                      : 'SH'
+                    : isPowerSurge
+                      ? '+2'
+                      : null);
               const isPlayable = !value && !disabled;
               const cellClass = [
                 'scanner-cell',
@@ -415,15 +536,30 @@ export function ScannerBoard({
                 isPowerCell ? 'power-cell' : '',
                 isPowerSurge ? 'power-surge' : '',
                 isPowerShield ? 'power-shield' : '',
+                isPowerChargedEmpty ? 'power-charged-empty' : '',
                 isPowerPreviewSurge ? 'power-preview-line power-preview-line-surge-line' : '',
                 isPowerPreviewShield ? 'power-preview-line power-preview-line-shield-line' : '',
                 powerPreview ? `power-preview power-preview-${powerPreview.kind}` : '',
                 isPowerTrigger ? 'power-trigger' : '',
+                isScoreEvent ? 'score-event' : '',
+                isBlockEvent ? 'block-event' : '',
+                isPowerEvent ? 'power-event' : '',
+                lineMoment ? 'line-event-active' : '',
+                lineMoment ? `${lineMoment.tone}-line-step` : '',
+                lineMoment?.isCombo ? 'combo-line-step' : '',
+                isPlaceEvent ? 'place-event' : '',
                 lastMove === index ? 'last' : '',
                 isPlayable ? `preview-${currentPlayer.toLowerCase()}` : '',
               ]
                 .filter(Boolean)
                 .join(' ');
+              const cellStyle = lineMoment
+                ? ({
+                    '--line-step-delay': `${lineMoment.delayMs}ms`,
+                    '--line-step-index': lineMoment.step,
+                    '--line-sequence-index': lineMoment.sequence,
+                  } as CSSProperties)
+                : undefined;
 
               const lineLabel = isClassicWinning
                 ? ', winning line'
@@ -465,29 +601,46 @@ export function ScannerBoard({
                     FINAL_SIX_POWER_LABEL[powerPreview.kind]
                   }`
                 : isPowerCell && powerCell
-                  ? `, ${powerCell.player} Power Cell`
+                  ? `, ${powerCell.player} ${FINAL_SIX_POWER_LABEL[powerCell.id]}`
+                  : isPowerShieldCell && shieldChoice
+                    ? `, ${shieldChoice.player} ${FINAL_SIX_POWER_LABEL[shieldChoice.id]}`
                   : isPowerSurge || isPowerPreviewSurge
                     ? ', Surge Line path'
-                    : isPowerShield || isPowerPreviewShield
-                      ? ', Shield Line path'
+                  : isPowerShield || isPowerPreviewShield
+                      ? ', Shield Cell path'
+                    : isPowerChargedEmpty
+                      ? ', charged final-six cell'
+                      : '';
+              const animationLabel = isPowerEvent
+                ? ', power animation active'
+                : isScoreEvent
+                  ? ', scoring animation active'
+                  : isBlockEvent
+                    ? ', block animation active'
+                    : isPlaceEvent
+                      ? ', placement animation active'
                       : '';
               const cellLabel = value
-                ? `Cell ${index + 1}, ${value}${lineLabel}${powerLabel}, floor ${floor + 1}`
+                ? `Cell ${index + 1}, ${value}${lineLabel}${powerLabel}${animationLabel}, floor ${floor + 1}`
                 : isPlayable
                   ? `Place ${currentPlayer} at cell ${index + 1}, floor ${
                       floor + 1
-                    }${coachLabel}${connectorLabel}${finalPhaseLabel}${powerLabel}`
+                    }${coachLabel}${connectorLabel}${finalPhaseLabel}${powerLabel}${animationLabel}`
                   : `Cell ${index + 1}, empty, floor ${
                       floor + 1
-                    }${lineLabel}${coachLabel}${connectorLabel}${finalPhaseLabel}${powerLabel}`;
+                    }${lineLabel}${coachLabel}${connectorLabel}${finalPhaseLabel}${powerLabel}${animationLabel}`;
 
               return (
                 <button
                   key={index}
                   aria-label={cellLabel}
                   className={cellClass}
+                  data-line-event={lineMoment?.tone}
+                  data-line-sequence={lineMoment?.sequence}
+                  data-line-step={lineMoment?.step}
                   data-cell-index={index}
                   disabled={!isPlayable}
+                  style={cellStyle}
                   title={coachHint?.explanation}
                   type="button"
                   onKeyDown={(event) => handleCellKeyDown(event, index)}
@@ -523,13 +676,25 @@ export function ScannerBoard({
                         powerPreview
                           ? `power-glyph-${powerPreview.kind}`
                           : isPowerCell
-                            ? 'power-glyph-power-cell'
+                            ? `power-glyph-${powerCell?.id ?? 'power-cell'}`
                             : isPowerSurge
                               ? 'power-glyph-surge-line'
-                              : 'power-glyph-shield-line'
+                              : `power-glyph-${shieldChoice?.id ?? 'shield-line'}`
                       }`}
                     >
                       {powerGlyph}
+                    </span>
+                  ) : null}
+                  {powerTrigger ? (
+                    <span
+                      aria-hidden="true"
+                      className={`scanner-power-float ${
+                        powerTrigger.shieldDenied ? 'denied' : 'bonus'
+                      }`}
+                    >
+                      {powerTrigger.shieldDenied
+                        ? 'Denied'
+                        : `+${powerTrigger.bonus}`}
                     </span>
                   ) : null}
                   {connectorKind ? (

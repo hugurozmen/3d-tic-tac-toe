@@ -18,6 +18,7 @@ export function Cell({
   coachExplanation,
   currentPlayer,
   disabled,
+  eventMark,
   index,
   lineMark,
   layout,
@@ -56,11 +57,14 @@ export function Cell({
           ? '#f8d65a'
           : null;
   const powerColor =
-    powerMark === 'power-cell' || powerMark === 'power-preview'
+    powerMark === 'power-cell' ||
+    powerMark === 'charged-cell' ||
+    powerMark === 'power-preview' ||
+    powerMark === 'power-charged-empty'
       ? '#f8d65a'
       : powerMark === 'surge-line'
         ? '#74f0a7'
-        : powerMark === 'shield-line'
+        : powerMark === 'shield-line' || powerMark === 'shield-cell'
           ? '#ff6f76'
           : powerMark === 'power-trigger'
             ? '#f8d65a'
@@ -81,6 +85,12 @@ export function Cell({
         ? 1 + Math.sin(clock.elapsedTime * 5.2) * 0.055
         : lineMark === 'scored'
           ? 1 + Math.sin(clock.elapsedTime * 6.6) * 0.045
+          : eventMark === 'place'
+            ? 1 + Math.sin(clock.elapsedTime * 9.2) * 0.035
+          : eventMark === 'score' || eventMark === 'power'
+            ? 1 + Math.sin(clock.elapsedTime * 7.4) * 0.055
+          : eventMark === 'block'
+            ? 1 + Math.sin(clock.elapsedTime * 6.8) * 0.045
           : powerMark === 'power-trigger'
             ? 1 + Math.sin(clock.elapsedTime * 7.4) * 0.06
           : powerColor && isPlayable
@@ -147,6 +157,12 @@ export function Cell({
               ? theme.win
               : lineMark === 'scored'
                 ? '#74f0a7'
+              : eventMark === 'score'
+                ? '#74f0a7'
+              : eventMark === 'block'
+                ? '#ff6f76'
+              : eventMark === 'power'
+                ? '#f8d65a'
               : coachColor
                 ? coachMark === 'soft-score' && !isActive
                   ? theme.edge
@@ -170,6 +186,8 @@ export function Cell({
                 ? coachMark === 'soft-score' && !isActive
                   ? 0.54
                   : 0.98
+              : eventMark
+                ? 0.98
               : powerColor
                 ? powerMark === 'power-preview'
                   ? 0.72
@@ -229,6 +247,10 @@ export function Cell({
                 ? isActive
                   ? 0.42
                   : 0.2
+                : powerMark === 'power-charged-empty'
+                  ? isActive
+                    ? 0.22
+                    : 0.1
                 : 0.36
             }
             transparent

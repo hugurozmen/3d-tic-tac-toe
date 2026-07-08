@@ -2,21 +2,31 @@ import { Text } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
 import { useRef } from 'react';
 import * as THREE from 'three';
+import {
+  getAnimationCells,
+  getAnimationLineMoments,
+  getAnimationLines,
+} from '../../game/animationEvents';
 import { CameraControls, CameraRig } from './Camera';
 import { Cell } from './Cell';
 import {
+  AuthoredLineBeam,
   BoardRails,
   CoachLinePath,
   CoreGlow,
   CubeShell,
+  FinalSixChargePulse,
   FloorPlates,
+  PowerBonusFloat,
   ScanFloor,
+  ShieldImpact,
   WinBeam,
 } from './Environment';
 import type { SceneContentProps } from './types';
 
 export function SceneContent({
   armedCell,
+  animationEvents,
   board,
   coachBlockCells,
   coachHints,
@@ -61,8 +71,16 @@ export function SceneContent({
   );
   const previewShieldCells = new Set(
     powerEffects.previewLines
-      .filter((preview) => preview.kind === 'shield-line')
+      .filter(
+        (preview) =>
+          preview.kind === 'shield-line' || preview.kind === 'shield-cell',
+      )
       .flatMap((preview) => preview.line),
+  );
+  const shieldChoiceByCell = new Map(
+    powerEffects.shieldLines
+      .filter((choice) => choice.cell !== null)
+      .map((choice) => [choice.cell!, choice]),
   );
   const surgeCells = new Set(
     powerEffects.surgeLines.flatMap((choice) => choice.line ?? []),
@@ -70,12 +88,56 @@ export function SceneContent({
   const shieldCells = new Set(
     powerEffects.shieldLines.flatMap((choice) => choice.line ?? []),
   );
+  const chargedEmptyCells = new Set(powerEffects.chargedEmptyCells);
   const triggerCells = new Set(
     powerEffects.trigger
       ? powerEffects.trigger.line ?? [powerEffects.trigger.cell].filter(
           (cell): cell is number => cell !== null,
         )
       : [],
+  );
+  const animationLineMoments = getAnimationLineMoments(animationEvents);
+  const scoreEventLines = animationEvents
+    .filter(
+      (event) => event.type === 'score-line' || event.type === 'multi-line',
+    )
+    .flatMap(getAnimationLines);
+  const blockEventLines = animationEvents
+    .filter((event) => event.type === 'block')
+    .flatMap(getAnimationLines);
+  const placeEventCells = new Set(
+    animationEvents
+      .filter((event) => event.type === 'place')
+      .flatMap(getAnimationCells),
+  );
+  const scoreEventCells = new Set(scoreEventLines.flatMap((line) => line));
+  const blockEventCells = new Set(blockEventLines.flatMap((line) => line));
+  const powerEventCells = new Set(
+    animationEvents
+      .filter(
+        (event) =>
+          event.type === 'power-selected' || event.type === 'power-triggered',
+      )
+      .flatMap(getAnimationCells),
+  );
+  const hasFinalSixStartEvent = animationEvents.some(
+    (event) => event.type === 'final-six-start',
+  );
+  let latestPlaceCell: number | null = null;
+
+  for (let index = animationEvents.length - 1; index >= 0; index -= 1) {
+    const event = animationEvents[index];
+
+    if (event.type === 'place') {
+      latestPlaceCell = event.cell;
+      break;
+    }
+  }
+  const finalSixPulseCells = board
+    .map((value, index) => (value === null ? index : null))
+    .filter((cell): cell is number => cell !== null);
+  const powerTriggerEvents = animationEvents.flatMap((event) =>
+    event.type === 'power-triggered' ? [event] : [],
   );
   const hintsByCell = new Map(coachHints.map((hint) => [hint.cell, hint]));
   const activeCoachCell = armedCell ?? hoveredCell;
@@ -114,8 +176,26 @@ export function SceneContent({
         ) : null}
         {layout === 'floors' ? <FloorPlates theme={theme} /> : null}
         {theme.coreGlow ? <CoreGlow theme={theme} /> : null}
+        {powerEffects.chargedState ? (
+          <group>
+            <pointLight color="#f8d65a" distance={6.8} intensity={1.05} />
+            <mesh>
+              <sphereGeometry args={[1.72, 28, 18]} />
+              <meshBasicMaterial
+                blending={THREE.AdditiveBlending}
+                color="#f8d65a"
+                depthWrite={false}
+                opacity={0.055}
+                transparent
+              />
+            </mesh>
+          </group>
+        ) : null}
         {theme.winBeam && beamLine.length === 3 ? (
           <WinBeam color={beamColor} layout={layout} line={beamLine} theme={theme} />
+        ) : null}
+        {hasFinalSixStartEvent ? (
+          <FinalSixChargePulse cells={finalSixPulseCells} layout={layout} />
         ) : null}
         {activeCoachHint && activeCoachColor ? (
           <CoachLinePath
@@ -124,6 +204,42 @@ export function SceneContent({
             line={activeCoachHint.primaryLine}
           />
         ) : null}
+        {animationLineMoments.map((moment) => (
+          <AuthoredLineBeam
+            key={`authored-${moment.eventId}-${moment.sequence}-${moment.line.join('-')}`}
+            color={
+              moment.tone === 'block'
+                ? '#ff6f76'
+                : moment.tone === 'power'
+                  ? '#f8d65a'
+                  : '#74f0a7'
+            }
+            delayMs={moment.delayMs}
+            impactCell={moment.tone === 'block' ? latestPlaceCell : null}
+            isCombo={moment.isCombo}
+            layout={layout}
+            line={moment.line}
+            tone={moment.tone}
+          />
+        ))}
+        {powerTriggerEvents.map((event) => (
+          <PowerBonusFloat
+            key={`power-float-${event.id}`}
+            bonus={event.bonus}
+            cell={event.cell}
+            layout={layout}
+            shieldDenied={event.shieldDenied}
+          />
+        ))}
+        {powerTriggerEvents
+          .filter((event) => event.shieldDenied || event.power === 'shield-cell')
+          .map((event) => (
+            <ShieldImpact
+              key={`shield-impact-${event.id}`}
+              cell={event.cell}
+              layout={layout}
+            />
+          ))}
         {powerEffects.previewLines.map((preview) => (
           <CoachLinePath
             key={`preview-${preview.kind}-${preview.player}-${preview.line.join('-')}`}
@@ -161,11 +277,19 @@ export function SceneContent({
           const coachHint = hintsByCell.get(index);
           const powerCell = powerCellByCell.get(index);
           const powerPreview = powerPreviewByCell.get(index);
+          const shieldChoice = shieldChoiceByCell.get(index);
           const isPowerSurge = surgeCells.has(index);
           const isPowerShield = shieldCells.has(index);
+          const isPowerShieldCell = Boolean(shieldChoice);
           const isPowerPreviewSurge = previewSurgeCells.has(index);
           const isPowerPreviewShield = previewShieldCells.has(index);
           const isPowerTrigger = triggerCells.has(index);
+          const isPowerChargedEmpty =
+            !value &&
+            chargedEmptyCells.has(index) &&
+            !powerCell &&
+            !powerPreview &&
+            !isPowerShieldCell;
           const coachMark =
             isScore && isBlock
               ? 'both'
@@ -184,6 +308,41 @@ export function SceneContent({
                 : isFinalPhaseBlock
                   ? 'block'
                   : null;
+          const cellPowerMark = isPowerTrigger
+            ? 'power-trigger'
+            : powerCell
+              ? powerCell.id
+              : powerPreview
+                ? 'power-preview'
+                : isPowerSurge || isPowerPreviewSurge
+                  ? 'surge-line'
+                  : isPowerShieldCell && shieldChoice
+                    ? shieldChoice.id
+                    : isPowerShield || isPowerPreviewShield
+                      ? 'shield-line'
+                      : isPowerChargedEmpty
+                        ? 'power-charged-empty'
+                        : null;
+          const cellPowerText =
+            powerPreview?.label ??
+            (powerCell
+              ? '+2'
+              : isPowerSurge
+                ? '+2'
+                : isPowerShieldCell
+                  ? shieldChoice?.id === 'shield-cell'
+                    ? '+1'
+                    : 'SH'
+                  : null);
+          const eventMark = powerEventCells.has(index)
+            ? 'power'
+            : scoreEventCells.has(index)
+              ? 'score'
+              : blockEventCells.has(index)
+                ? 'block'
+                : placeEventCells.has(index)
+                  ? 'place'
+                  : null;
 
           return (
             <Cell
@@ -192,6 +351,7 @@ export function SceneContent({
               coachMark={coachMark}
               currentPlayer={currentPlayer}
               disabled={disabled}
+              eventMark={eventMark}
               index={index}
               coachExplanation={coachHint?.shortLabel ?? null}
               lineMark={
@@ -203,28 +363,9 @@ export function SceneContent({
                       ? 'scored'
                       : null
               }
-                layout={layout}
-              powerMark={
-                isPowerTrigger
-                  ? 'power-trigger'
-                  : powerCell
-                    ? 'power-cell'
-                    : powerPreview
-                      ? 'power-preview'
-                      : isPowerSurge
-                        ? 'surge-line'
-                        : isPowerShield
-                          ? 'shield-line'
-                          : isPowerPreviewSurge
-                            ? 'surge-line'
-                            : isPowerPreviewShield
-                              ? 'shield-line'
-                          : null
-              }
-              powerText={
-                powerPreview?.label ??
-                (powerCell || isPowerSurge ? '+2' : isPowerShield ? 'SH' : null)
-              }
+              layout={layout}
+              powerMark={cellPowerMark}
+              powerText={cellPowerText}
               tensionMark={tensionMark}
               theme={theme}
               value={value}
