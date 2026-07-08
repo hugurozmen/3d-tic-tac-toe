@@ -23,6 +23,7 @@ import type {
   BoardViewCommand,
 } from '../game/boardView';
 import type { CoachHint } from '../game/coach';
+import type { FinalSixPowerBoardEffects } from '../game/finalSixPowers';
 import type { LinesEndgameAnalysis } from '../game/linesTension';
 import type { Board, GameResult, Player } from '../game/rules';
 import type { SceneTheme } from '../theme';
@@ -53,6 +54,7 @@ type GameStageProps = {
   layout: BoardLayout;
   matchResultLabel: string | null;
   openedText: string;
+  powerEffects: FinalSixPowerBoardEffects;
   result: GameResult;
   resultLabel: string | null;
   scannerFloor: number;
@@ -118,6 +120,7 @@ export const GameStage = forwardRef<HTMLElement, GameStageProps>(
       layout,
       matchResultLabel,
       openedText,
+      powerEffects,
       result,
       resultLabel,
       scannerFloor,
@@ -161,6 +164,7 @@ export const GameStage = forwardRef<HTMLElement, GameStageProps>(
             finalLines={finalLines}
             finalPhase={finalPhase}
             lastMove={lastMove}
+            powerEffects={powerEffects}
             scoredLines={scoredLines}
             theme={theme}
             winningLine={result.winningLine}
@@ -192,6 +196,7 @@ export const GameStage = forwardRef<HTMLElement, GameStageProps>(
                 finalPhase={finalPhase}
                 finalLines={finalLines}
                 layout={layout}
+                powerEffects={powerEffects}
                 scoredLines={scoredLines}
                 theme={theme}
                 viewCommand={viewCommand}

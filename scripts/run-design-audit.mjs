@@ -29,6 +29,7 @@ const {
   createBoard,
   evaluateBoard,
   getAvailableMoves,
+  getLineThreats,
   getNewCompletedLines,
   getOtherPlayer,
 } = require('../src/game/rules.ts');
@@ -47,6 +48,14 @@ const {
   getRemainingDraftOptions,
   pickWildcard,
 } = require('../src/game/wildcards.ts');
+const {
+  FINAL_SIX_POWER_LABEL,
+  applyFinalSixPowerMove,
+  chooseFinalSixPower,
+  chooseFinalSixPowerMove,
+  createFinalSixPowerDraft,
+  pickFinalSixPower,
+} = require('../src/game/finalSixPowers.ts');
 
 const DIFFICULTY_LABELS = {
   easy: 'Casual',
@@ -65,10 +74,12 @@ const REPORT_TIME_ZONE = process.env.TZ || 'Europe/Istanbul';
 const STANDARD_LINES_VARIANT = 'standard';
 const CENTER_NORMALIZED_VARIANT = 'center-normalized';
 const FINAL_SIX_WILDCARDS_VARIANT = 'final-six-wildcards';
+const FINAL_SIX_POWERS_VARIANT = 'final-six-powers-v2';
 const VARIANT_MODES = [
   STANDARD_LINES_VARIANT,
   CENTER_NORMALIZED_VARIANT,
   FINAL_SIX_WILDCARDS_VARIANT,
+  FINAL_SIX_POWERS_VARIANT,
   'both',
 ];
 const WILDCARD_IDS = [
@@ -77,6 +88,7 @@ const WILDCARD_IDS = [
   'corner-spark',
   'last-word',
 ];
+const POWER_IDS = ['power-cell', 'surge-line', 'shield-line'];
 
 const linesScenarios = [
   ['Casual vs Casual', 'easy', 'easy'],
@@ -348,6 +360,57 @@ const maybeChooseWildcardMove = ({ board, currentPlayer, requestedMove, wildcard
   };
 };
 
+const createPowerMetricState = () => ({
+  bonusByType: Object.fromEntries(POWER_IDS.map((power) => [power, 0])),
+  bonusScores: createBonusScores(),
+  changedOutcome: false,
+  enabled: false,
+  picks: { O: null, X: null },
+  shieldDenied: 0,
+  triggered: [],
+});
+
+const draftAuditPowers = ({ board, currentPlayer, lineScores, powerState }) => {
+  let nextState = createFinalSixPowerDraft({
+    currentPlayer,
+    lineScores,
+  });
+  const picks = { O: null, X: null };
+
+  while (nextState.phase === 'choosing') {
+    const picker = nextState.pickOrder[nextState.pickIndex];
+    const choice = chooseFinalSixPower(board, picker);
+
+    if (!choice) {
+      break;
+    }
+
+    picks[picker] = choice.id;
+    nextState = pickFinalSixPower(nextState, board, picker, choice);
+  }
+
+  return {
+    ...nextState,
+    bonusScores: powerState.bonusScores,
+    metricPicks: picks,
+  };
+};
+
+const maybeChoosePowerMove = ({ board, currentPlayer, powerState, requestedMove }) => {
+  if (!powerState || powerState.phase !== 'active') {
+    return requestedMove;
+  }
+
+  return chooseFinalSixPowerMove(board, currentPlayer, powerState) ?? requestedMove;
+};
+
+const getBlockedLinesForMove = (board, move, player) =>
+  getLineThreats(board, getOtherPlayer(player)).filter(
+    (line) =>
+      line.includes(move) &&
+      line.find((cellIndex) => board[cellIndex] === null) === move,
+  );
+
 const outcomeKey = (result) =>
   result.isDraw || !result.winner ? 'draw' : result.winner;
 
@@ -397,8 +460,12 @@ const simulateGame = ({
   };
   const wildcardEnabled =
     ruleset === 'lines' && endgameVariant === FINAL_SIX_WILDCARDS_VARIANT;
+  const powerEnabled =
+    ruleset === 'lines' && endgameVariant === FINAL_SIX_POWERS_VARIANT;
   const wildcardMetric = createWildcardMetricState();
+  const powerMetric = createPowerMetricState();
   let auditWildcardState = null;
+  let auditPowerState = null;
   let boardAtMove21 = null;
   let currentPlayerAtMove21 = null;
   const openingPlayer = opener;
@@ -415,6 +482,7 @@ const simulateGame = ({
   let result = evaluateAuditBoard(board, ruleset, linesVariant);
 
   wildcardMetric.enabled = wildcardEnabled;
+  powerMetric.enabled = powerEnabled;
 
   while (!result.isComplete) {
     const availableMoves = getAvailableMoves(board);
@@ -439,6 +507,23 @@ const simulateGame = ({
       wildcardMetric.picks = draft.metricPicks;
       delete draft.metricPicks;
       auditWildcardState = draft;
+    }
+
+    if (
+      powerEnabled &&
+      auditPowerState === null &&
+      result.remainingCells === 6
+    ) {
+      const draft = draftAuditPowers({
+        board,
+        currentPlayer,
+        lineScores: evaluateAuditBoard(board, ruleset, linesVariant).lineScores,
+        powerState: powerMetric,
+      });
+
+      powerMetric.picks = draft.metricPicks;
+      delete draft.metricPicks;
+      auditPowerState = draft;
     }
 
     const hints =
@@ -496,6 +581,12 @@ const simulateGame = ({
 
     requestedMove = wildcardChoice.move;
     auditWildcardState = wildcardChoice.wildcardState;
+    requestedMove = maybeChoosePowerMove({
+      board,
+      currentPlayer,
+      powerState: auditPowerState,
+      requestedMove,
+    });
 
     const move =
       requestedMove !== null && board[requestedMove] === null
@@ -522,6 +613,11 @@ const simulateGame = ({
     const previous = [...board];
     board[move] = currentPlayer;
     moveCount += 1;
+    const completedLines = getNewCompletedLines(previous, board, currentPlayer);
+    const blockedLines =
+      ruleset === 'lines'
+        ? getBlockedLinesForMove(previous, move, currentPlayer)
+        : [];
 
     if (auditWildcardState?.players[currentPlayer]?.active) {
       const consumed = consumeActiveWildcard(
@@ -544,16 +640,45 @@ const simulateGame = ({
       }
     }
 
+    if (auditPowerState?.phase === 'active') {
+      const appliedPower = applyFinalSixPowerMove({
+        blockedLines,
+        completedLines,
+        move,
+        player: currentPlayer,
+        state: auditPowerState,
+      });
+
+      auditPowerState = appliedPower.nextState;
+      powerMetric.bonusScores = appliedPower.nextState.bonusScores;
+
+      if (appliedPower.impact.powerMessage) {
+        powerMetric.triggered.push({
+          bonus: appliedPower.impact.bonusPoints,
+          player: currentPlayer,
+          power: appliedPower.impact.shieldDenied
+            ? 'shield-line'
+            : appliedPower.impact.power,
+          shieldDenied: appliedPower.impact.shieldDenied,
+        });
+
+        if (appliedPower.impact.power) {
+          powerMetric.bonusByType[appliedPower.impact.power] +=
+            appliedPower.impact.bonusPoints;
+        }
+
+        if (appliedPower.impact.shieldDenied) {
+          powerMetric.shieldDenied += 1;
+        }
+      }
+    }
+
     if (firstMove === null) {
       firstMove = move;
       firstMovePlayer = currentPlayer;
     }
 
-    const newLineCount = getNewCompletedLines(
-      previous,
-      board,
-      currentPlayer,
-    ).length;
+    const newLineCount = completedLines.length;
 
     if (newLineCount > 1) {
       multiLineMoves += 1;
@@ -563,7 +688,7 @@ const simulateGame = ({
       board,
       ruleset,
       linesVariant,
-      wildcardMetric.bonusScores,
+      powerEnabled ? powerMetric.bonusScores : wildcardMetric.bonusScores,
     );
 
     if (scoreSnapshots[moveCount] === null && moveCount in scoreSnapshots) {
@@ -609,6 +734,11 @@ const simulateGame = ({
 
   if (wildcardEnabled) {
     wildcardMetric.changedOutcome =
+      outcomeKey(baseFinalResult) !== outcomeKey(result);
+  }
+
+  if (powerEnabled) {
+    powerMetric.changedOutcome =
       outcomeKey(baseFinalResult) !== outcomeKey(result);
   }
 
@@ -688,6 +818,7 @@ const simulateGame = ({
     multiLineMoves,
     opener: openingPlayer,
     pieSwaps,
+    power: powerMetric,
     result,
     scoreSnapshots,
     leaderAtFinalSix,
@@ -847,6 +978,29 @@ const summarizeScenario = ({
         0,
       ),
     ]),
+  );
+  const powerPickedCount = games.reduce(
+    (sum, game) =>
+      sum +
+      (game.power.enabled
+        ? Number(game.power.picks.X !== null) +
+          Number(game.power.picks.O !== null)
+        : 0),
+    0,
+  );
+  const powerTriggers = games.flatMap((game) => game.power.triggered);
+  const powerBonusByType = Object.fromEntries(
+    POWER_IDS.map((power) => [
+      power,
+      games.reduce(
+        (sum, game) => sum + (game.power.bonusByType[power] ?? 0),
+        0,
+      ),
+    ]),
+  );
+  const powerShieldDenials = games.reduce(
+    (sum, game) => sum + game.power.shieldDenied,
+    0,
   );
 
   return {
@@ -1030,6 +1184,23 @@ const summarizeScenario = ({
     oDifficulty,
     oWinRate: oWins / games.length,
     pieSwaps: games.reduce((sum, game) => sum + game.pieSwaps, 0),
+    power:
+      endgameVariant === FINAL_SIX_POWERS_VARIANT
+        ? {
+            bonusByType: powerBonusByType,
+            changedOutcomeRate:
+              games.filter((game) => game.power.changedOutcome).length /
+              games.length,
+            gameTriggeredRate:
+              games.filter((game) => game.power.triggered.length > 0).length /
+              games.length,
+            pickedCount: powerPickedCount,
+            shieldDenied: powerShieldDenials,
+            triggerRate:
+              powerPickedCount > 0 ? powerTriggers.length / powerPickedCount : null,
+            triggers: powerTriggers.length,
+          }
+        : null,
     ruleset,
     xDifficulty,
     xWinRate: xWins / games.length,
@@ -1429,6 +1600,47 @@ const makeWildcardTable = (scenarios) => [
   ),
 ].join('\n');
 
+const formatPowerBonus = (scenario) =>
+  [
+    ...POWER_IDS.filter((power) => power !== 'shield-line').map((power) => {
+      const total = scenario.power?.bonusByType[power] ?? 0;
+
+      return `${FINAL_SIX_POWER_LABEL[power]} ${fixed(total / scenario.games, 2)}/g`;
+    }),
+    `Shield denied ${fixed((scenario.power?.shieldDenied ?? 0) / scenario.games, 2)}/g`,
+  ].join('; ');
+
+const makePowerTable = (scenarios) => [
+  '| Scenario | First-player score | Center-owner score | Avg final margin | Final-6 changed | Final move changed | Comeback after 21 | Power triggered | Winner/tie changed | Bonus by power type |',
+  '| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |',
+  ...scenarios.map((scenario) =>
+    `| ${[
+      scenario.label,
+      pct(scenario.openerScoreRate),
+      scenario.centerOwnerScoreRate === null
+        ? 'n/a'
+        : pct(scenario.centerOwnerScoreRate),
+      fixed(scenario.averageLineDifferential),
+      scenario.finalSixChangedOutcomeRate === null
+        ? 'n/a'
+        : pct(scenario.finalSixChangedOutcomeRate),
+      scenario.finalMoveChangedOutcomeRate === null
+        ? 'n/a'
+        : pct(scenario.finalMoveChangedOutcomeRate),
+      scenario.comebackAfterMove21Rate === null
+        ? 'n/a'
+        : pct(scenario.comebackAfterMove21Rate),
+      scenario.power?.triggerRate === null || !scenario.power
+        ? 'n/a'
+        : `${pct(scenario.power.triggerRate)} trigger/pick, ${pct(
+            scenario.power.gameTriggeredRate,
+          )} games`,
+      scenario.power ? pct(scenario.power.changedOutcomeRate) : 'n/a',
+      scenario.power ? formatPowerBonus(scenario) : 'n/a',
+    ].join(' | ')} |`,
+  ),
+].join('\n');
+
 const makeMatchTable = (matches) => [
   '| Matchup | Matches | Avg rounds | Went to 5 | First-round loser won | X match score rate |',
   '| --- | ---: | ---: | ---: | ---: | ---: |',
@@ -1536,6 +1748,7 @@ const makeReport = ({
   games,
   lineReports,
   matchReports,
+  powerReports,
   seed,
   variantMode,
   variantReports,
@@ -1559,10 +1772,10 @@ Variant mode: \`${variantMode}\`
 
 ## Scope
 
-This report validates the current design before any rules changes. It focuses on
-Lines Mode and uses deterministic AI self-play plus automated Coach-hint
-analysis. It does not add retention, cosmetics, permanent rules changes, or AI
-balance changes.
+This report validates the current Lines design plus audit-only/local prototype
+variants. It uses deterministic AI self-play plus automated Coach-hint analysis.
+It does not promote any prototype to default, add retention, add cosmetics, or
+make permanent rules changes.
 
 Human subjective playtest evidence is still missing, so issue #15 should remain
 open after this report. The automated data can identify design risk, but it
@@ -1578,6 +1791,8 @@ cannot fully answer confusion, satisfaction, frustration, or replay desire.
 - \`--variant final-six-wildcards\` runs the same deterministic Lines matrix
   with local-only Wildcard draft/use rules and includes bonus scores in final
   totals.
+- \`--variant final-six-powers-v2\` runs Standard Lines, the current Wildcards
+  experiment, and Final Six Powers v2 for direct comparison.
 
 ## Recommendation
 
@@ -1683,6 +1898,23 @@ Wildcard audit notes:
 - Winner/tie changed compares the final board result before Wildcard bonus to
   the final total after Wildcard bonus.
 
+## Final Six Powers v2 Experimental Variant
+
+${powerReports.length > 0
+  ? makePowerTable(powerReports)
+  : 'Final Six Powers v2 audit not run for this report.'}
+
+Power audit notes:
+
+- Powers are deterministic and local-only: at six empty cells, the trailing
+  player by Lines score chooses first, then the other player chooses.
+- Power Cell, Surge Line, and Shield Line are represented as cell/line targets
+  in the simulation, not hidden text effects.
+- Final scores include normal Lines plus power bonus points; standard Lines
+  remains the default player-facing ruleset.
+- Winner/tie changed compares the final board result before power bonus to the
+  final total after power bonus.
+
 ## Best-of-5 Match Simulation
 
 ${makeMatchTable(matchReports)}
@@ -1784,7 +2016,10 @@ const main = () => {
   const variantMode = readVariantMode();
   const shouldRunCenterNormalized =
     variantMode === 'both' || variantMode === CENTER_NORMALIZED_VARIANT;
-  const shouldRunWildcards = variantMode === FINAL_SIX_WILDCARDS_VARIANT;
+  const shouldRunWildcards =
+    variantMode === FINAL_SIX_WILDCARDS_VARIANT ||
+    variantMode === FINAL_SIX_POWERS_VARIANT;
+  const shouldRunPowers = variantMode === FINAL_SIX_POWERS_VARIANT;
 
   const lineReports = linesScenarios.map(([label, xDifficulty, oDifficulty], index) =>
     runScenario({
@@ -1838,6 +2073,20 @@ const main = () => {
         }),
       )
     : [];
+  const powerReports = shouldRunPowers
+    ? linesScenarios.map(([label, xDifficulty, oDifficulty], index) =>
+        runScenario({
+          endgameVariant: FINAL_SIX_POWERS_VARIANT,
+          games,
+          label,
+          oDifficulty,
+          ruleset: 'lines',
+          scenarioIndex: index,
+          seed,
+          xDifficulty,
+        }),
+      )
+    : [];
   const difficultyRecords = aggregateDifficultyRecords(lineReports);
   const coachDifficultyRecords = aggregateCoachDifficultyRecords(lineReports);
   const matchReports = runMatchAudit({ games, seed });
@@ -1848,6 +2097,7 @@ const main = () => {
     games,
     lineReports,
     matchReports,
+    powerReports,
     seed,
     variantMode,
     variantReports,
@@ -1865,6 +2115,9 @@ const main = () => {
   );
   console.log(
     `Final Six Wildcards audit scenarios: ${wildcardReports.length} x ${games} games`,
+  );
+  console.log(
+    `Final Six Powers v2 audit scenarios: ${powerReports.length} x ${games} games`,
   );
   console.log(`Classic scenarios: ${classicReports.length} x ${games} games`);
   console.log(`Best-of-5 focus scenarios: ${matchReports.length}`);

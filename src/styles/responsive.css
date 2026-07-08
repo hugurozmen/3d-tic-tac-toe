@@ -14,7 +14,8 @@
   .stage-loading-cube i,
   .line-score-tile.score-bump,
   .line-score-tile.score-bump::before,
-  .line-score-empty.tension {
+  .line-score-empty.tension,
+  .scanner-cell.power-trigger {
     animation: none;
   }
 
@@ -26,7 +27,8 @@
   .secondary-action,
   .segmented-control button,
   .wildcard-option,
-  .wildcard-player-row button {
+  .wildcard-player-row button,
+  .power-option {
     transition-duration: 0.01ms;
   }
 }
@@ -58,6 +60,11 @@
   }
 
   .wildcard-option:hover:not(:disabled) {
+    border-color: color-mix(in srgb, var(--app-primary) 46%, var(--app-border));
+    background: color-mix(in srgb, var(--app-primary) 8%, var(--app-panel-strong));
+  }
+
+  .power-option:hover:not(:disabled) {
     border-color: color-mix(in srgb, var(--app-primary) 46%, var(--app-border));
     background: color-mix(in srgb, var(--app-primary) 8%, var(--app-panel-strong));
   }
@@ -313,14 +320,17 @@
 
   .wildcard-header,
   .wildcard-draft-status,
-  .wildcard-player-row {
+  .wildcard-player-row,
+  .power-header,
+  .power-draft-status,
+  .power-player-row {
     align-items: stretch;
     flex-direction: column;
   }
 
-  .wildcard-player-row button {
+  .wildcard-player-row button,
+  .power-options {
     width: 100%;
-    justify-content: center;
   }
 
   .streak-grid {

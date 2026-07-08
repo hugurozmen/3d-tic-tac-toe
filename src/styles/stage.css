@@ -528,3 +528,27 @@
 .cell-coach-badge.coach-soft-score {
   box-shadow: 0 0 10px color-mix(in srgb, var(--hint-score) 16%, transparent);
 }
+
+.cell-power-badge {
+  width: max-content;
+  min-width: 26px;
+  padding: 5px 8px;
+  border: 1px solid rgba(248, 214, 90, 0.34);
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1;
+  text-align: center;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 0 16px color-mix(in srgb, var(--hint-both) 22%, transparent);
+  pointer-events: none;
+  user-select: none;
+}
+
+.cell-power-badge.power-surge-line {
+  box-shadow: 0 0 14px color-mix(in srgb, var(--hint-score) 22%, transparent);
+}
+
+.cell-power-badge.power-shield-line {
+  box-shadow: 0 0 14px color-mix(in srgb, var(--hint-block) 22%, transparent);
+}

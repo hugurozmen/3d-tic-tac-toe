@@ -622,17 +622,18 @@ test('lines final result explains the score and filled board', async ({ page }) 
   ).toBeVisible();
 });
 
-test('local Lines Wildcards draft at Final Six and add bonus score', async ({
+test('local Lines Final Six Powers choose board targets and add bonus score', async ({
   page,
 }) => {
   await openGame(page, { layout: 'scanner' });
   await chooseTwoPlayer(page);
-  await page.getByRole('button', { name: 'Wildcards Experimental' }).click();
+  await page.getByRole('button', { name: 'Powers v2 Experimental' }).click();
   await expect(page.locator('.line-score-card')).toContainText('X total');
   await expect(page.locator('.line-score-card')).toContainText('Bonus');
-  await expect(page.locator('.wildcard-card')).toContainText(
-    'Final Six: draft one Wildcard',
+  await expect(page.locator('.power-card')).toContainText(
+    'Choose powers on the board',
   );
+  await expect(page.locator('.power-options')).toHaveCount(0);
 
   for (const floor of [1, 2, 3] as const) {
     await showFloor(page, floor);
@@ -645,34 +646,45 @@ test('local Lines Wildcards draft at Final Six and add bonus score', async ({
     }
   }
 
-  await expect(page.locator('.wildcard-card')).toContainText(
-    'Final Six: draft one Wildcard',
-  );
-  await page.getByRole('button', { name: /Double Line/ }).click();
-  await page.getByRole('button', { name: /Block Bonus/ }).click();
-  await expect(page.locator('.wildcard-card')).toContainText('Bonus 0-0');
+  await expect(page.locator('.power-draft-status')).toContainText('O chooses');
+  const powerOptions = page.locator('.power-options');
 
-  const oWildcardRow = page
-    .locator('.wildcard-player-row')
-    .filter({ hasText: 'O Wildcard' });
-  const oWildcardText = await oWildcardRow.textContent();
+  await powerOptions.getByRole('button', { name: 'Surge' }).click();
+  await expect(
+    page.locator('.scanner-cell.power-preview-line-surge-line').first(),
+  ).toBeVisible();
+  await powerOptions.getByRole('button', { name: 'Shield' }).click();
+  await expect(
+    page.locator('.scanner-cell.power-preview-line-shield-line').first(),
+  ).toBeVisible();
+  await powerOptions.getByRole('button', { name: 'Cell' }).click();
+  await expect(
+    page.getByRole('button', {
+      name: /Place O at cell 22, floor 3.*\+2 preview for Power Cell/,
+    }),
+  ).toBeVisible();
+  await place(page, 'O', 22);
 
-  await oWildcardRow.getByRole('button', { name: /Use/ }).click();
+  await expect(page.locator('.power-draft-status')).toContainText('X chooses');
+  await expect(
+    page.getByRole('button', {
+      name: /Place X at cell 25, floor 3.*\+2 preview for Power Cell/,
+    }),
+  ).toBeVisible();
+  await place(page, 'X', 25);
 
-  if (oWildcardText?.includes('Block Bonus')) {
-    await place(page, 'O', 25);
-  } else {
-    await place(page, 'O', 22);
-  }
+  await expect(page.locator('.power-card')).toContainText('O Power');
+  await expect(page.locator('.power-card')).toContainText('Power Cell');
+  await expect(page.locator('.scanner-cell.power-cell')).toHaveCount(2);
 
-  await expect(page.getByText(/\+1 bonus/)).toBeVisible();
-  await expect(page.locator('.wildcard-card')).toContainText('Bonus 0-1');
+  await place(page, 'O', 22);
+
+  await expect(page.getByText(/Power Cell \+2/)).toBeVisible();
+  await expect(page.locator('.power-card')).toContainText('Bonus 0-2');
   await expect(page.locator('.line-bonus-note')).toContainText(
-    'Lines',
+    'Bonus 0-2',
   );
-  await expect(page.locator('.line-bonus-note')).toContainText(
-    'Bonus 0-1',
-  );
+  await expect(page.locator('.line-bonus-note')).toContainText('Lines');
   await expect(page.locator('.line-bonus-note')).toContainText(
     'Total',
   );
@@ -707,7 +719,7 @@ test('online host and guest can join and relay a scanner move', async ({
     'Coach disabled online',
   );
   await expect(host.locator('.online-card')).toContainText(
-    'Wildcards are local prototype only',
+    'Final Six Powers are local prototype only',
   );
   await expect(
     host.locator('.coach-control').getByRole('button', { name: /Auto/ }),
@@ -715,7 +727,7 @@ test('online host and guest can join and relay a scanner move', async ({
   await expect(
     host
       .locator('.endgame-control')
-      .getByRole('button', { name: 'Wildcards Experimental' }),
+      .getByRole('button', { name: 'Powers v2 Experimental' }),
   ).toBeDisabled();
 
   await host.getByRole('button', { name: 'Host' }).click();

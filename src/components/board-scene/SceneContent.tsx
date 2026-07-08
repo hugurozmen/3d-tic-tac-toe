@@ -28,6 +28,7 @@ export function SceneContent({
   finalLines,
   hoveredCell,
   layout,
+  powerEffects,
   scoredLines,
   theme,
   viewCommand,
@@ -45,6 +46,37 @@ export function SceneContent({
   const softScoreCells = new Set(coachSoftScoreCells);
   const finalPhaseScoreCells = new Set(finalPhase?.scoringCells ?? []);
   const finalPhaseBlockCells = new Set(finalPhase?.blockingCells ?? []);
+  const powerCellByCell = new Map(
+    powerEffects.powerCells
+      .filter((choice) => choice.cell !== null)
+      .map((choice) => [choice.cell!, choice]),
+  );
+  const powerPreviewByCell = new Map(
+    powerEffects.previewCells.map((preview) => [preview.cell, preview]),
+  );
+  const previewSurgeCells = new Set(
+    powerEffects.previewLines
+      .filter((preview) => preview.kind === 'surge-line')
+      .flatMap((preview) => preview.line),
+  );
+  const previewShieldCells = new Set(
+    powerEffects.previewLines
+      .filter((preview) => preview.kind === 'shield-line')
+      .flatMap((preview) => preview.line),
+  );
+  const surgeCells = new Set(
+    powerEffects.surgeLines.flatMap((choice) => choice.line ?? []),
+  );
+  const shieldCells = new Set(
+    powerEffects.shieldLines.flatMap((choice) => choice.line ?? []),
+  );
+  const triggerCells = new Set(
+    powerEffects.trigger
+      ? powerEffects.trigger.line ?? [powerEffects.trigger.cell].filter(
+          (cell): cell is number => cell !== null,
+        )
+      : [],
+  );
   const hintsByCell = new Map(coachHints.map((hint) => [hint.cell, hint]));
   const activeCoachCell = armedCell ?? hoveredCell;
   const activeCoachHint =
@@ -92,6 +124,34 @@ export function SceneContent({
             line={activeCoachHint.primaryLine}
           />
         ) : null}
+        {powerEffects.previewLines.map((preview) => (
+          <CoachLinePath
+            key={`preview-${preview.kind}-${preview.player}-${preview.line.join('-')}`}
+            color={preview.kind === 'surge-line' ? '#74f0a7' : '#ff6f76'}
+            layout={layout}
+            line={preview.line}
+          />
+        ))}
+        {powerEffects.surgeLines.map((choice) =>
+          choice.line ? (
+            <CoachLinePath
+              key={`surge-${choice.player}-${choice.line.join('-')}`}
+              color={choice.triggered ? '#f8d65a' : '#74f0a7'}
+              layout={layout}
+              line={choice.line}
+            />
+          ) : null,
+        )}
+        {powerEffects.shieldLines.map((choice) =>
+          choice.line ? (
+            <CoachLinePath
+              key={`shield-${choice.player}-${choice.line.join('-')}`}
+              color={choice.triggered ? '#f8d65a' : '#ff6f76'}
+              layout={layout}
+              line={choice.line}
+            />
+          ) : null,
+        )}
         {board.map((value, index) => {
           const isScore = !value && scoreCells.has(index);
           const isBlock = !value && blockCells.has(index);
@@ -99,6 +159,13 @@ export function SceneContent({
           const isFinalPhaseScore = !value && finalPhaseScoreCells.has(index);
           const isFinalPhaseBlock = !value && finalPhaseBlockCells.has(index);
           const coachHint = hintsByCell.get(index);
+          const powerCell = powerCellByCell.get(index);
+          const powerPreview = powerPreviewByCell.get(index);
+          const isPowerSurge = surgeCells.has(index);
+          const isPowerShield = shieldCells.has(index);
+          const isPowerPreviewSurge = previewSurgeCells.has(index);
+          const isPowerPreviewShield = previewShieldCells.has(index);
+          const isPowerTrigger = triggerCells.has(index);
           const coachMark =
             isScore && isBlock
               ? 'both'
@@ -136,7 +203,28 @@ export function SceneContent({
                       ? 'scored'
                       : null
               }
-              layout={layout}
+                layout={layout}
+              powerMark={
+                isPowerTrigger
+                  ? 'power-trigger'
+                  : powerCell
+                    ? 'power-cell'
+                    : powerPreview
+                      ? 'power-preview'
+                      : isPowerSurge
+                        ? 'surge-line'
+                        : isPowerShield
+                          ? 'shield-line'
+                          : isPowerPreviewSurge
+                            ? 'surge-line'
+                            : isPowerPreviewShield
+                              ? 'shield-line'
+                          : null
+              }
+              powerText={
+                powerPreview?.label ??
+                (powerCell || isPowerSurge ? '+2' : isPowerShield ? 'SH' : null)
+              }
               tensionMark={tensionMark}
               theme={theme}
               value={value}

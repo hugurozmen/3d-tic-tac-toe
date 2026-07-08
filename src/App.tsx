@@ -56,15 +56,14 @@ import {
 import { useMatchState } from './game/useMatchState';
 import { type OnlineRoomSettings, useOnlineGame } from './game/useOnlineGame';
 import {
-  WILDCARDS,
+  FINAL_SIX_POWER_LABEL,
+  type FinalSixPowerId,
   type LinesEndgameMode,
-  type WildcardId,
-  canActivateWildcard,
-  chooseWildcardDraft,
-  chooseWildcardMove,
-  getCurrentWildcardPicker,
-  getRemainingDraftOptions,
-} from './game/wildcards';
+  chooseFinalSixPower,
+  chooseFinalSixPowerMove,
+  getCurrentFinalSixPowerPicker,
+  getFinalSixPowerBoardEffects,
+} from './game/finalSixPowers';
 import { THEME_ORDER, THEMES, ThemeId, themeToCssVariables } from './theme';
 import { useLocalStorageState } from './useLocalStorageState';
 
@@ -77,7 +76,7 @@ const getInitialLayout = (): BoardLayout => {
 };
 
 const COACH_OPTIONS = ['auto', 'on', 'off'] as const;
-const ENDGAME_OPTIONS = ['standard', 'wildcards'] as const;
+const ENDGAME_OPTIONS = ['standard', 'powers-v2'] as const;
 type CoachSetting = (typeof COACH_OPTIONS)[number];
 const ONLINE_CLASSIC_PIE_RULE = false;
 const NARROW_3D_RETRY_DELAY_MS = 140;
@@ -114,21 +113,20 @@ export function App() {
     ruleset === 'lines' && mode !== 'online' ? linesEndgameMode : 'standard';
   const {
     applyMove,
-    activateWildcard,
     baseLineScores,
     board,
     currentPlayer,
     currentPlayerRef,
+    finalSixPowers,
     lastMove,
     lifetimeScore,
     linesBonusScores,
     match,
     oMoves,
-    pickWildcard,
+    pickFinalSixPower,
     resetMatch,
     resetRound,
     result,
-    wildcards,
     xMoves,
     opener,
     recentLines,
@@ -193,6 +191,8 @@ export function App() {
   const [piePromptOpen, setPiePromptOpen] = useState(false);
   const [pieDecisionDone, setPieDecisionDone] = useState(false);
   const [isAiThinking, setIsAiThinking] = useState(false);
+  const [powerSelection, setPowerSelection] =
+    useState<FinalSixPowerId>('power-cell');
   const [difficultyStreaks, setDifficultyStreaks] = useState(
     loadDifficultyStreaks,
   );
@@ -212,8 +212,10 @@ export function App() {
     [difficultyStreaks, themeUnlockHooks],
   );
   const aiPlayer = getOtherPlayer(humanSide);
-  const wildcardPicker = getCurrentWildcardPicker(wildcards);
-  const isWildcardDrafting = wildcards.phase === 'drafting';
+  const powerPicker = getCurrentFinalSixPowerPicker(finalSixPowers);
+  const isPowerChoosing = finalSixPowers.phase === 'choosing';
+  const canHumanChoosePower =
+    Boolean(powerPicker) && (mode !== 'solo' || powerPicker === humanSide);
   const moveCount = xMoves + oMoves;
   const pieRuleEnabled = ruleset === 'classic' && mode !== 'online';
   const pieDecisionPending =
@@ -228,7 +230,7 @@ export function App() {
     currentPlayer === aiPlayer &&
     !result.winner &&
     !result.isDraw &&
-    !isWildcardDrafting &&
+    !isPowerChoosing &&
     !pieDecisionPending;
   const completedLocalRounds =
     lifetimeScore.X + lifetimeScore.O + lifetimeScore.draws;
@@ -282,6 +284,16 @@ export function App() {
         ? getLinesEndgameAnalysis(board, currentPlayer)
         : null,
     [board, currentPlayer, result.isComplete, ruleset],
+  );
+  const powerEffects = useMemo(
+    () =>
+      getFinalSixPowerBoardEffects({
+        board,
+        picker: powerPicker,
+        selection: powerSelection,
+        state: finalSixPowers,
+      }),
+    [board, finalSixPowers, powerPicker, powerSelection],
   );
   const scoredLines = ruleset === 'lines' ? recentLines : [];
   const finalLines: number[][] =
@@ -396,7 +408,9 @@ export function App() {
       parts.push(`${blockCount} ${blockText}`);
     }
 
-    if (bonusPoints > 0) {
+    if (recentImpact.powerMessage) {
+      parts.push(recentImpact.powerMessage);
+    } else if (bonusPoints > 0) {
       parts.push(`+${bonusPoints} bonus`);
     }
 
@@ -549,7 +563,7 @@ export function App() {
     online.localPlayer === currentPlayer;
   const isBoardDisabled =
     isAiTurn ||
-    isWildcardDrafting ||
+    (isPowerChoosing && !canHumanChoosePower) ||
     pieDecisionPending ||
     Boolean(result.winner) ||
     result.isDraw ||
@@ -574,26 +588,22 @@ export function App() {
   useEffect(() => {
     if (
       mode !== 'solo' ||
-      wildcardPicker !== aiPlayer ||
+      powerPicker !== aiPlayer ||
       result.winner ||
       result.isDraw
     ) {
       return;
     }
 
-    const choice = chooseWildcardDraft(
-      board,
-      aiPlayer,
-      getRemainingDraftOptions(wildcards),
-    );
+    const choice = chooseFinalSixPower(board, aiPlayer);
 
     if (!choice) {
       return;
     }
 
     const timer = window.setTimeout(() => {
-      if (pickWildcard(aiPlayer, choice)) {
-        flashNotice(`AI drafted ${WILDCARDS[choice].name}`);
+      if (pickFinalSixPower(aiPlayer, choice)) {
+        flashNotice(`AI chose ${FINAL_SIX_POWER_LABEL[choice.id]}`);
       }
     }, 520);
 
@@ -603,48 +613,31 @@ export function App() {
     board,
     flashNotice,
     mode,
-    pickWildcard,
+    pickFinalSixPower,
+    powerPicker,
     result.isDraw,
     result.winner,
-    wildcardPicker,
-    wildcards,
   ]);
 
-  const chooseAiWildcardMove = useCallback(
+  const chooseAiPowerMove = useCallback(
     (suggestedMove: number | null) => {
       if (
         suggestedMove === null ||
-        effectiveLinesEndgameMode !== 'wildcards' ||
-        wildcards.phase !== 'active' ||
-        !canActivateWildcard(wildcards, aiPlayer)
+        effectiveLinesEndgameMode !== 'powers-v2' ||
+        finalSixPowers.phase !== 'active'
       ) {
         return suggestedMove;
       }
 
-      const wildcard = wildcards.players[aiPlayer].picked;
-      const wildcardMove = wildcard
-        ? chooseWildcardMove(board, aiPlayer, wildcard)
-        : null;
+      const powerMove = chooseFinalSixPowerMove(board, aiPlayer, finalSixPowers);
 
-      if (wildcardMove === null || !wildcard) {
-        return suggestedMove;
-      }
-
-      if (activateWildcard(aiPlayer)) {
-        flashNotice(`AI armed ${WILDCARDS[wildcard].name}`);
-        return wildcardMove;
+      if (powerMove !== null) {
+        return powerMove;
       }
 
       return suggestedMove;
     },
-    [
-      activateWildcard,
-      aiPlayer,
-      board,
-      effectiveLinesEndgameMode,
-      flashNotice,
-      wildcards,
-    ],
+    [aiPlayer, board, effectiveLinesEndgameMode, finalSixPowers],
   );
 
   useEffect(() => {
@@ -675,7 +668,7 @@ export function App() {
 
       pendingTimeout = window.setTimeout(() => {
         if (aiRequestIdRef.current === id) {
-          const finalMove = chooseAiWildcardMove(move);
+          const finalMove = chooseAiPowerMove(move);
 
           if (finalMove === null) {
             setIsAiThinking(false);
@@ -734,7 +727,7 @@ export function App() {
     aiPlayer,
     applyMove,
     board,
-    chooseAiWildcardMove,
+    chooseAiPowerMove,
     difficulty,
     isAiTurn,
     ruleset,
@@ -769,12 +762,12 @@ export function App() {
       return 'Swap choice';
     }
 
-    if (wildcardPicker) {
+    if (powerPicker) {
       if (mode === 'solo') {
-        return wildcardPicker === aiPlayer ? 'AI drafting' : 'Draft Wildcard';
+        return powerPicker === aiPlayer ? 'AI choosing' : 'Choose Power';
       }
 
-      return `${wildcardPicker} draft`;
+      return `${powerPicker} power`;
     }
 
     if (isAiTurn) {
@@ -801,7 +794,6 @@ export function App() {
     currentPlayer,
     humanSide,
     isAiTurn,
-    wildcardPicker,
     match.winner,
     mode,
     online.isConnected,
@@ -813,11 +805,33 @@ export function App() {
     result.winner,
     ruleset,
     pieDecisionPending,
+    powerPicker,
   ]);
 
   const handleSelect = useCallback(
     (index: number) => {
-      if (isAiTurn || isWildcardDrafting) {
+      if (isAiTurn) {
+        return;
+      }
+
+      if (isPowerChoosing) {
+        if (!powerPicker || !canHumanChoosePower) {
+          return;
+        }
+
+        if (
+          pickFinalSixPower(powerPicker, {
+            id: powerSelection,
+            targetCell: index,
+          })
+        ) {
+          flashNotice(
+            `${powerPicker} chose ${FINAL_SIX_POWER_LABEL[powerSelection]}`,
+          );
+        } else {
+          flashNotice('Choose a glowing power target');
+        }
+
         return;
       }
 
@@ -852,11 +866,15 @@ export function App() {
       currentPlayer,
       flashNotice,
       isAiTurn,
-      isWildcardDrafting,
+      isPowerChoosing,
       mode,
       online,
+      pickFinalSixPower,
+      powerPicker,
+      powerSelection,
       result.isDraw,
       result.winner,
+      canHumanChoosePower,
     ],
   );
 
@@ -913,7 +931,7 @@ export function App() {
     }
 
     if (ruleset !== 'lines' || mode === 'online') {
-      flashNotice('Wildcards are local prototype only');
+      flashNotice('Final Six Powers are local prototype only');
       return;
     }
 
@@ -973,42 +991,6 @@ export function App() {
 
     setCoachSetting('on');
     flashNotice('Coach on: green scores, red blocks');
-  };
-
-  const handlePickWildcard = (player: Player, wildcard: WildcardId) => {
-    if (
-      mode === 'online' ||
-      ruleset !== 'lines' ||
-      effectiveLinesEndgameMode !== 'wildcards'
-    ) {
-      flashNotice('Wildcards are local prototype only');
-      return;
-    }
-
-    if (pickWildcard(player, wildcard)) {
-      flashNotice(`${player} drafted ${WILDCARDS[wildcard].name}`);
-    }
-  };
-
-  const handleActivateWildcard = (player: Player) => {
-    if (
-      mode === 'online' ||
-      ruleset !== 'lines' ||
-      effectiveLinesEndgameMode !== 'wildcards'
-    ) {
-      flashNotice('Wildcards are local prototype only');
-      return;
-    }
-
-    if (player !== currentPlayer) {
-      return;
-    }
-
-    const wildcard = wildcards.players[player].picked;
-
-    if (wildcard && activateWildcard(player)) {
-      flashNotice(`${WILDCARDS[wildcard].name} armed`);
-    }
   };
 
   const restoreStageForMobile = useCallback(() => {
@@ -1298,7 +1280,7 @@ export function App() {
         coachHints={coachHints}
         coachScoreCells={coachScoreCells}
         coachSoftScoreCells={coachSoftScoreCells}
-        currentPlayer={currentPlayer}
+        currentPlayer={powerPicker ?? currentPlayer}
         disabled={isBoardDisabled}
         finalPhase={linesEndgame}
         finalLines={finalLines}
@@ -1306,6 +1288,7 @@ export function App() {
         layout={layout}
         matchResultLabel={matchResultLabel}
         openedText={openedText}
+        powerEffects={powerEffects}
         result={result}
         resultLabel={resultLabel}
         scannerFloor={scannerFloor}
@@ -1368,10 +1351,8 @@ export function App() {
         status={status}
         themeId={themeId}
         themeUnlockProgress={themeUnlockProgress}
-        wildcardPicker={wildcardPicker}
-        wildcards={wildcards}
+        canHumanChoosePower={canHumanChoosePower}
         effectiveLinesEndgameMode={effectiveLinesEndgameMode}
-        onActivateWildcard={handleActivateWildcard}
         onCoachSettingChange={setCoachSetting}
         onCopySignal={handleCopySignal}
         onDailyPuzzleMove={handleDailyPuzzleMove}
@@ -1382,7 +1363,7 @@ export function App() {
         onModeChange={handleModeChange}
         onOnlineSignal={handleOnlineSignal}
         onOpenGuide={() => setGuideOpen(true)}
-        onPickWildcard={handlePickWildcard}
+        onPowerSelectionChange={setPowerSelection}
         onRemoteSignalChange={setRemoteSignal}
         onResetMatch={handleResetMatch}
         onResetRound={handleResetRound}
@@ -1394,6 +1375,9 @@ export function App() {
         onToggleSound={() =>
           setSoundSetting(soundSetting === 'on' ? 'off' : 'on')
         }
+        powerPicker={powerPicker}
+        powerSelection={powerSelection}
+        finalSixPowers={finalSixPowers}
       />
 
       <GameDialogs
