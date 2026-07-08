@@ -283,7 +283,7 @@ export function Cell({
       {hovered || armed ? (
         <Html
           center
-          className="cell-layer-badge"
+          className={`cell-layer-badge ${armed ? 'cell-badge-armed' : ''}`}
           distanceFactor={10}
           position={[0, -0.48, 0]}
           style={{
@@ -292,7 +292,7 @@ export function Cell({
             color: theme.labelText,
           }}
         >
-          {index + 1}
+          {armed ? `${index + 1} · tap again to place` : index + 1}
         </Html>
       ) : null}
       {(hovered || armed) && coachExplanation ? (
