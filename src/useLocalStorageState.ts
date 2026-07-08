@@ -12,6 +12,17 @@ export function useLocalStorageState<T extends string>(
       if (stored !== null && (allowedValues as readonly string[]).includes(stored)) {
         return stored as T;
       }
+
+      if (stored !== null) {
+        const parsed = JSON.parse(stored);
+
+        if (
+          typeof parsed === 'string' &&
+          (allowedValues as readonly string[]).includes(parsed)
+        ) {
+          return parsed as T;
+        }
+      }
     } catch {
       // localStorage can be unavailable (privacy mode); fall through to default
     }
