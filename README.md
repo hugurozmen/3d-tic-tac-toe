@@ -81,6 +81,16 @@ Build the web app:
 npm run build
 ```
 
+Deploy the web app on Vercel:
+
+```bash
+npm run build
+```
+
+Vercel uses the settings in `vercel.json`: Vite framework, `npm ci`, `npm run
+build`, and `dist` output. See [Vercel Production Release](docs/vercel-production.md)
+for the release gate, smoke checklist, and online-server requirements.
+
 Run the online room server:
 
 ```bash
@@ -174,12 +184,17 @@ npm run product:final-pass
 ## Online Deployment Notes
 
 The room server exposes a WebSocket endpoint and `GET /health` on the same port.
-For production, run it behind a TLS-capable reverse proxy and build the client
-with a secure WebSocket URL:
+For production, run it behind a TLS-capable reverse proxy or a host that
+supports long-lived WebSocket processes, then build the client with a secure
+WebSocket URL:
 
 ```bash
 VITE_ONLINE_SERVER_URL=wss://your-server.example npm run build
 ```
+
+The Vercel deployment serves the static Vite client. Do not assume the current
+in-memory room server is deployed with Vercel unless it is intentionally rebuilt
+for Vercel Functions and backed by external room state.
 
 Useful server environment variables:
 
