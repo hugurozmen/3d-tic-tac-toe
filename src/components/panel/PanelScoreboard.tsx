@@ -91,25 +91,25 @@ export function PanelScoreboard({
 
       <section className="panel-scoreboard" aria-label="Round and score">
         <div className="scoreboard-meta">
-          <div>
+          <div className="scoreboard-round">
             <span>Round</span>
             <strong>{match.roundNumber}</strong>
           </div>
-          <div>
+          <div className="scoreboard-match-score">
             <span>{match.winner ? 'Winner' : 'Match'}</span>
             <strong>
               {matchWinnerText ?? `${match.score.X}-${match.score.O}`}
             </strong>
           </div>
-          <div>
+          <div className="scoreboard-draws">
             <span>Draws</span>
             <strong>{match.score.draws}</strong>
           </div>
-          <div>
+          <div className="scoreboard-opener">
             <span>Opener</span>
             <strong>{openerText}</strong>
           </div>
-          <div>
+          <div className="scoreboard-next">
             <span>Next</span>
             <strong>{match.isComplete ? 'Done' : nextOpenerText}</strong>
           </div>

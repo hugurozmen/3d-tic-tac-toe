@@ -53,7 +53,7 @@ async function place(page: Page, player: 'X' | 'O', cell: number) {
 }
 
 async function keepPieIfVisible(page: Page) {
-  const keepSides = page.getByRole('button', { name: 'Keep sides?' });
+  const keepSides = page.getByRole('button', { name: 'Keep sides' });
 
   try {
     await keepSides.waitFor({ state: 'visible', timeout: 1000 });
@@ -158,7 +158,7 @@ test('mobile first run starts on the playable scanner board', async ({ page }) =
   expect(metrics.gridWidth).toBeGreaterThanOrEqual(280);
 });
 
-test('first-time guide teaches Lines, views, Coach, and 3D diagonals', async ({
+test('first-time guide teaches Lines scoring and 3D diagonals', async ({
   page,
 }) => {
   await openGame(page, { guide: 'pending', layout: 'scanner' });
@@ -170,12 +170,8 @@ test('first-time guide teaches Lines, views, Coach, and 3D diagonals', async ({
     'Lines is the main game',
   );
   await expect(guide).toContainText('all 27 cells fill');
-  await expect(guide).toContainText('Classic is a variant');
   await expect(guide).toContainText('Cells 1, 14, and 27');
-  await expect(guide).toContainText('Coach hints');
-  await expect(guide).toContainText('Scanner is fastest');
-  await expect(guide).toContainText('Cube shows the shape');
-  await expect(guide).toContainText('Floors compares layers');
+  await expect(guide.locator('.guide-list li')).toHaveCount(2);
 
   await page.getByRole('button', { name: 'Got it' }).click();
   await expect(guide).toHaveCount(0);
@@ -213,7 +209,10 @@ test('Lines is the default ruleset and all themes remain switchable', async ({
   ).toContainText('Classic');
   await expect(page.locator('.line-score-card')).toHaveCount(0);
 
-  await page.getByRole('button', { name: 'Lines' }).click();
+  await page
+    .locator('.ruleset-control')
+    .getByRole('button', { name: 'Lines', exact: true })
+    .click();
   await expect(
     page.locator('.ruleset-control button.active'),
   ).toContainText('Lines');
@@ -226,6 +225,8 @@ test('Lines is the default ruleset and all themes remain switchable', async ({
     ['Crystal', 'crystal'],
     ['Cage', 'cage'],
   ] as const;
+
+  await page.locator('.panel-section-options summary').click();
 
   for (const [label, themeId] of expectedThemes) {
     await page.getByRole('button', { name: label }).click();
@@ -323,11 +324,20 @@ test('narrow persisted 3D views refresh safely through Scanner', async ({
 test('solo panel shows local progress and the daily puzzle', async ({ page }) => {
   await openGame(page, { layout: 'scanner' });
 
-  await expect(page.locator('.progress-card')).toContainText('Progress');
+  const dailyEntry = page.getByRole('button', { name: /Daily #\d+/ });
+  const progressEntry = page.getByRole('button', { name: /Progress/ });
+
+  await expect(dailyEntry).toBeVisible();
+  await expect(progressEntry).toBeVisible();
+
+  await progressEntry.click();
   await expect(page.locator('.progress-card')).toContainText('Total lines');
   await expect(page.locator('.progress-card')).toContainText('Master wins');
   await expect(page.locator('.progress-card')).toContainText('Theme accents');
-  await expect(page.locator('.daily-puzzle-card')).toContainText(/Daily #\d+/);
+  await expect(page.locator('.progress-card')).toContainText('Lifetime');
+  await page.getByRole('button', { name: 'Close' }).click();
+
+  await dailyEntry.click();
   await expect(page.locator('.daily-puzzle-card')).toContainText(/Find the|Score the/);
   await expect(page.locator('.daily-cell')).toHaveCount(27);
 });
@@ -408,7 +418,7 @@ test('scanner board supports a complete 2P winning round', async ({ page }) => {
   await chooseTwoPlayer(page);
 
   await place(page, 'X', 10);
-  await page.getByRole('button', { name: 'Keep sides?' }).click();
+  await page.getByRole('button', { name: 'Keep sides' }).click();
   await place(page, 'O', 13);
   await place(page, 'X', 11);
   await place(page, 'O', 14);
@@ -429,36 +439,37 @@ test('best-of-5 match alternates openers and ends at 3 wins', async ({
   await page.getByRole('button', { name: 'Classic' }).click();
   await chooseTwoPlayer(page);
 
-  await expect(page.locator('.score-row')).toContainText('X wins');
-  await expect(page.locator('.match-card')).toContainText('Race to 3');
-  await expect(page.locator('.match-card')).toContainText('X opens');
+  await expect(page.locator('.panel-scoreboard')).toContainText('Round');
+  await expect(page.locator('.scoreboard-match-score strong')).toHaveText('0-0');
+  await expect(page.locator('.scoreboard-opener')).toContainText('X opens');
 
   await winClassicRoundForX(page, 'X');
   await expect(page.getByText('Round 1: X wins the round')).toBeVisible();
   await expect(page.getByText('X opened - O opens next')).toBeVisible();
-  await expect(page.locator('.score-x strong')).toHaveText('1');
+  await expect(page.locator('.scoreboard-match-score strong')).toHaveText('1-0');
 
   await page.getByRole('button', { name: 'Play again' }).click();
-  await expect(page.locator('.match-card')).toContainText('O opens');
+  await expect(page.locator('.scoreboard-opener')).toContainText('O opens');
 
   await winClassicRoundForX(page, 'O');
   await expect(page.getByText('Round 2: X wins the round')).toBeVisible();
   await expect(page.getByText('O opened - X opens next')).toBeVisible();
-  await expect(page.locator('.score-x strong')).toHaveText('2');
+  await expect(page.locator('.scoreboard-match-score strong')).toHaveText('2-0');
 
   await page.getByRole('button', { name: 'Play again' }).click();
-  await expect(page.locator('.match-card')).toContainText('X opens');
+  await expect(page.locator('.scoreboard-opener')).toContainText('X opens');
 
   await winClassicRoundForX(page, 'X');
   await expect(page.getByText('Round 3: X wins the round')).toBeVisible();
   await expect(page.getByText('X wins the match, 3–0')).toBeVisible();
   await expect(page.getByRole('button', { name: 'New match' })).toBeVisible();
-  await expect(page.locator('.score-x strong')).toHaveText('3');
+  await expect(page.locator('.scoreboard-match-score strong')).toHaveText('X');
 
   await page.getByRole('button', { name: 'New match' }).click();
-  await expect(page.locator('.score-x strong')).toHaveText('0');
-  await expect(page.locator('.match-card')).toContainText('Lifetime');
-  await expect(page.locator('.match-card')).toContainText('3-0');
+  await expect(page.locator('.scoreboard-match-score strong')).toHaveText('0-0');
+  await page.getByRole('button', { name: /Progress/ }).click();
+  await expect(page.locator('.progress-card')).toContainText('Lifetime');
+  await expect(page.locator('.progress-card')).toContainText('3-0');
 });
 
 test('lines mode scores completed lines without ending the round', async ({
@@ -686,7 +697,7 @@ test('local Lines Final Six Powers choose board targets and add bonus score', as
 }) => {
   await openGame(page, { layout: 'scanner' });
   await chooseTwoPlayer(page);
-  await page.getByRole('button', { name: 'Powers v3 Experimental' }).click();
+  await page.getByRole('button', { name: 'Final Six Powers (beta)' }).click();
   await expect(page.locator('.line-score-card')).toContainText('X total');
   await expect(page.locator('.line-score-card')).toContainText('Bonus');
   await expect(page.locator('.power-card')).toContainText(
@@ -788,13 +799,14 @@ test('online host and guest can join and relay a scanner move', async ({
   await expect(host.locator('.online-card')).toContainText(
     'Final Six Powers are local prototype only',
   );
+  await host.locator('.panel-section-options summary').click();
   await expect(
     host.locator('.coach-control').getByRole('button', { name: /Auto/ }),
   ).toBeDisabled();
   await expect(
     host
       .locator('.endgame-control')
-      .getByRole('button', { name: 'Powers v3 Experimental' }),
+      .getByRole('button', { name: 'Final Six Powers (beta)' }),
   ).toBeDisabled();
 
   await host.getByRole('button', { name: 'Host' }).click();
