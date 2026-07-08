@@ -99,62 +99,107 @@ async function winClassicRoundForX(page: Page, opener: 'X' | 'O') {
 }
 
 async function expectCanvasHasPixels(page: Page) {
-  let screenshot: Buffer | null = null;
+  let lastMetrics: {
+    colorBuckets: number;
+    foregroundSamples: number;
+    screenshotLength: number;
+  } | null = null;
 
-  for (let attempt = 0; attempt < 3; attempt += 1) {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
     try {
       await expect(page.locator('canvas')).toBeVisible();
       await page.waitForTimeout(350);
-      screenshot = await page.locator('canvas').screenshot();
-      break;
+      const screenshot = await page.locator('canvas').screenshot();
+      const png = PNG.sync.read(screenshot);
+      const background = [png.data[0], png.data[1], png.data[2]];
+      const colorBuckets = new Set<string>();
+      let foregroundSamples = 0;
+      const stepX = Math.max(1, Math.floor(png.width / 40));
+      const stepY = Math.max(1, Math.floor(png.height / 40));
+
+      for (let y = 0; y < png.height; y += stepY) {
+        for (let x = 0; x < png.width; x += stepX) {
+          const index = (png.width * y + x) * 4;
+          const red = png.data[index];
+          const green = png.data[index + 1];
+          const blue = png.data[index + 2];
+          const alpha = png.data[index + 3];
+
+          if (alpha === 0) {
+            continue;
+          }
+
+          colorBuckets.add(`${red >> 4}-${green >> 4}-${blue >> 4}`);
+
+          const delta =
+            Math.abs(red - background[0]) +
+            Math.abs(green - background[1]) +
+            Math.abs(blue - background[2]);
+
+          if (delta > 35) {
+            foregroundSamples += 1;
+          }
+        }
+      }
+
+      lastMetrics = {
+        colorBuckets: colorBuckets.size,
+        foregroundSamples,
+        screenshotLength: screenshot.length,
+      };
+
+      if (
+        lastMetrics.screenshotLength > 1000 &&
+        lastMetrics.colorBuckets > 3 &&
+        lastMetrics.foregroundSamples > 10
+      ) {
+        return;
+      }
     } catch (error) {
-      if (attempt === 2) {
+      if (attempt === 4) {
         throw error;
       }
-
-      await page.waitForTimeout(300);
     }
+
+    await page.waitForTimeout(300);
   }
 
-  if (!screenshot) {
-    throw new Error('Canvas screenshot was not captured');
-  }
+  expect(lastMetrics?.screenshotLength ?? 0).toBeGreaterThan(1000);
+  expect(lastMetrics?.colorBuckets ?? 0).toBeGreaterThan(3);
+  expect(lastMetrics?.foregroundSamples ?? 0).toBeGreaterThan(10);
+}
 
-  const png = PNG.sync.read(screenshot);
-  const background = [png.data[0], png.data[1], png.data[2]];
-  const colorBuckets = new Set<string>();
-  let foregroundSamples = 0;
-  const stepX = Math.max(1, Math.floor(png.width / 40));
-  const stepY = Math.max(1, Math.floor(png.height / 40));
+async function expectCurrentCanvasContextHealthy(page: Page) {
+  const contextHandle = await page.waitForFunction(
+    () => {
+      const canvas = document.querySelector<HTMLCanvasElement>(
+        '.game-stage canvas',
+      );
+      const gl =
+        canvas?.getContext('webgl2') ?? canvas?.getContext('webgl') ?? null;
 
-  for (let y = 0; y < png.height; y += stepY) {
-    for (let x = 0; x < png.width; x += stepX) {
-      const index = (png.width * y + x) * 4;
-      const red = png.data[index];
-      const green = png.data[index + 1];
-      const blue = png.data[index + 2];
-      const alpha = png.data[index + 3];
-
-      if (alpha === 0) {
-        continue;
+      if (!canvas || !gl || gl.isContextLost()) {
+        return false;
       }
 
-      colorBuckets.add(`${red >> 4}-${green >> 4}-${blue >> 4}`);
+      return {
+        hasCanvas: true,
+        hasContext: true,
+        isLost: false,
+      };
+    },
+    null,
+    { timeout: 4000 },
+  );
+  const context = (await contextHandle.jsonValue()) as {
+    hasCanvas: boolean;
+    hasContext: boolean;
+    isLost: boolean;
+  };
 
-      const delta =
-        Math.abs(red - background[0]) +
-        Math.abs(green - background[1]) +
-        Math.abs(blue - background[2]);
-
-      if (delta > 35) {
-        foregroundSamples += 1;
-      }
-    }
-  }
-
-  expect(screenshot.length).toBeGreaterThan(1000);
-  expect(colorBuckets.size).toBeGreaterThan(3);
-  expect(foregroundSamples).toBeGreaterThan(10);
+  expect(context.hasCanvas).toBe(true);
+  expect(context.hasContext).toBe(true);
+  expect(context.isLost).toBe(false);
 }
 
 async function expectPanelModalCoversViewport(page: Page) {
@@ -514,8 +559,66 @@ test('desktop 3D cube renders real canvas pixels', async ({ page }) => {
   await openGame(page, { layout: 'cube' });
 
   await expectCanvasHasPixels(page);
+  await expectCurrentCanvasContextHealthy(page);
   await page.getByRole('button', { name: 'Rotate board right' }).click();
   await expectCanvasHasPixels(page);
+  await expectCurrentCanvasContextHealthy(page);
+});
+
+test('3D board recovers from WebGL context loss', async ({ page }) => {
+  await openGame(page, { layout: 'cube' });
+  await expectCanvasHasPixels(page);
+  await expectCurrentCanvasContextHealthy(page);
+
+  const loss = await page.evaluate(() => {
+    const canvas = document.querySelector<HTMLCanvasElement>(
+      '.game-stage canvas',
+    );
+    (
+      window as unknown as { __lostBoardCanvas?: HTMLCanvasElement | null }
+    ).__lostBoardCanvas = canvas;
+    const gl =
+      canvas?.getContext('webgl2') ?? canvas?.getContext('webgl') ?? null;
+    const extension = gl?.getExtension('WEBGL_lose_context') as {
+      loseContext: () => void;
+    } | null;
+
+    if (!gl || !extension) {
+      return { supported: false };
+    }
+
+    extension.loseContext();
+
+    return {
+      isLost: gl.isContextLost(),
+      supported: true,
+    };
+  });
+
+  if (!loss.supported) {
+    test.skip(true, 'WEBGL_lose_context is not available');
+    return;
+  }
+
+  expect(loss.isLost).toBe(true);
+
+  await page.waitForFunction(
+    () => {
+      const canvas = document.querySelector<HTMLCanvasElement>(
+        '.game-stage canvas',
+      );
+      const lostCanvas = (
+        window as unknown as { __lostBoardCanvas?: HTMLCanvasElement | null }
+      ).__lostBoardCanvas;
+
+      return Boolean(canvas && lostCanvas && canvas !== lostCanvas);
+    },
+    null,
+    { polling: 100, timeout: 5000 },
+  );
+
+  await expectCanvasHasPixels(page);
+  await expectCurrentCanvasContextHealthy(page);
 });
 
 test('compact desktop gives Cube and Floors the full stage width', async ({
@@ -559,35 +662,42 @@ test('compact desktop gives Cube and Floors the full stage width', async ({
   }
 });
 
-test('narrow persisted 3D views refresh safely through Scanner', async ({
+test('narrow persisted 3D views refresh without rewriting saved layout', async ({
   page,
 }) => {
   for (const view of ['cube', 'floors'] as const) {
-    await openGame(page, {
-      layout: view,
-      viewport: { height: 863, width: 599 },
-    });
+    await page.setViewportSize({ height: 863, width: 599 });
+    await page.addInitScript((preferredLayout) => {
+      window.localStorage.clear();
+      window.localStorage.setItem('3dxox-guide', 'done');
+      window.localStorage.setItem(
+        '3dxox-layout',
+        JSON.stringify(preferredLayout),
+      );
+    }, view);
+    await page.goto(appUrl);
 
     await expect(page.locator('.app-shell')).toHaveAttribute(
       'data-layout',
-      'scanner',
+      view,
     );
-    await expect(page.locator('.scanner-grid')).toBeVisible();
-
-    await page
-      .getByRole('button', { name: view === 'cube' ? 'Cube' : 'Floors' })
-      .click();
-    await page.waitForTimeout(650);
-    await expect(page.locator('.app-shell')).toHaveAttribute('data-layout', view);
     await expectCanvasHasPixels(page);
+    await expectCurrentCanvasContextHealthy(page);
+    expect(
+      await page.evaluate(() => window.localStorage.getItem('3dxox-layout')),
+    ).toBe(view);
 
     await page.reload({ waitUntil: 'domcontentloaded' });
 
     await expect(page.locator('.app-shell')).toHaveAttribute(
       'data-layout',
-      'scanner',
+      view,
     );
-    await expect(page.locator('.scanner-grid')).toBeVisible();
+    await expectCanvasHasPixels(page);
+    await expectCurrentCanvasContextHealthy(page);
+    expect(
+      await page.evaluate(() => window.localStorage.getItem('3dxox-layout')),
+    ).toBe(view);
   }
 });
 

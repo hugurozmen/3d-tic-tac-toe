@@ -1611,11 +1611,22 @@ h1 {
 
   .segmented-control button {
     min-height: 40px;
-    gap: 0;
+    gap: 6px;
     padding-inline: 6px;
+    font-size: 0.82rem;
   }
 
-  .segmented-control button > span {
+  /* Icon-only is safe only where every icon is distinct (mode, rules).
+     Difficulty and coach reuse one icon per group, so their labels stay
+     and the icon is dropped instead. */
+  .mode-control button > span,
+  .ruleset-control button > span {
+    display: none;
+  }
+
+  .difficulty-control button svg,
+  .coach-control button svg,
+  .endgame-control button svg {
     display: none;
   }
 
@@ -1634,6 +1645,10 @@ h1 {
   .mode-control,
   .coach-control {
     --segment-count: 3;
+  }
+
+  .difficulty-control {
+    --segment-count: 2;
   }
 
   .control-label {
