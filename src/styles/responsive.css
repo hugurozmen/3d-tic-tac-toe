@@ -138,14 +138,22 @@
   }
 
   .game-panel {
-    height: auto;
-    min-height: auto;
+    height: 38svh;
+    min-height: 360px;
     gap: 16px;
     border-top: 1px solid var(--app-border);
     border-left: 0;
     box-shadow: inset 0 1px 0
       color-mix(in srgb, var(--app-text) 6%, transparent);
-    overflow: visible;
+    overflow: hidden;
+  }
+
+  .panel-scroll {
+    overflow-y: auto;
+  }
+
+  .scoreboard-meta {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   h1 {
@@ -206,13 +214,13 @@
 
   .app-shell[data-layout="cube"] .game-panel,
   .app-shell[data-layout="floors"] .game-panel {
-    height: auto;
-    min-height: auto;
+    height: min(520px, 58svh);
+    min-height: 360px;
     border-top: 1px solid var(--app-border);
     border-left: 0;
     box-shadow: inset 0 1px 0
       color-mix(in srgb, var(--app-text) 6%, transparent);
-    overflow: visible;
+    overflow: hidden;
   }
 
   .app-shell[data-layout="cube"] .stage-actions,
