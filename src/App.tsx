@@ -181,6 +181,16 @@ export function App() {
     'pending',
     ['pending', 'done'] as const,
   );
+  const [finalSixNudgeState, setFinalSixNudgeState] = useLocalStorageState(
+    '3dxox-final-six-nudge',
+    'pending',
+    ['pending', 'done'] as const,
+  );
+  const [dailyNudgeState, setDailyNudgeState] = useLocalStorageState(
+    '3dxox-daily-nudge',
+    'pending',
+    ['pending', 'done'] as const,
+  );
   const [guideOpen, setGuideOpen] = useState(onboarded === 'pending');
   const [viewCommand, setViewCommand] = useState<BoardViewCommand | null>(null);
   const [remoteSignal, setRemoteSignal] = useState('');
@@ -313,6 +323,18 @@ export function App() {
   const recentBlockCount = recentImpact?.blockedLines.length ?? 0;
   const showCoachPrompt =
     mode !== 'online' && coachSetting === 'off' && completedLocalRounds < 3;
+  const isPowerScoreMode =
+    ruleset === 'lines' &&
+    (effectiveLinesEndgameMode === 'powers-v2' ||
+      effectiveLinesEndgameMode === 'powers-v3');
+  const canShowPowerPanel =
+    ruleset === 'lines' && isPowerScoreMode && mode !== 'online';
+  const showFinalSixNudge =
+    finalSixNudgeState === 'pending' &&
+    canShowPowerPanel &&
+    finalSixPowers.phase !== 'inactive';
+  const showDailyNudge =
+    dailyNudgeState === 'pending' && match.isComplete;
 
   useEffect(() => {
     if (
@@ -1353,74 +1375,99 @@ export function App() {
       />
 
       <GamePanel
-        baseLineScores={baseLineScores}
-        animationEvents={animationEvents}
-        coachEnabled={coachEnabled}
-        coachDisabledOnline={mode === 'online'}
-        coachSetting={coachSetting}
-        copiedSignal={copiedSignal}
-        currentPlayer={currentPlayer}
-        dailyPuzzle={dailyPuzzle}
-        dailyPuzzleResult={dailyPuzzleResult}
-        dailyPuzzleShareCopied={dailyPuzzleShareCopied}
-        difficulty={difficulty}
-        difficultyStreaks={difficultyStreaks}
-        humanSide={humanSide}
-        isAiThinking={isAiThinking}
-        lastMove={lastMove}
-        layout={layout}
-        lineScores={result.lineScores}
-        linesBonusScores={linesBonusScores}
-        linesEndgameMode={linesEndgameMode}
-        linesEndgameText={linesEndgame?.text ?? null}
-        lifetimeScore={lifetimeScore}
-        match={match}
-        matchWinnerText={matchWinnerText}
-        mode={mode}
-        nextOpenerText={nextOpenerText}
-        online={online}
-        onlineRulesLocked={onlineRoomActive}
-        openerText={openerText}
-        remoteSignal={remoteSignal}
-        recentBlockCount={recentBlockCount}
-        recentLineCount={recentLineCount}
-        recentLinePlayer={recentImpact?.player ?? null}
-        remainingCells={result.remainingCells}
-        result={result}
-        retentionStats={retentionStats}
-        ruleset={ruleset}
-        showCoachPrompt={showCoachPrompt}
-        soundSetting={soundSetting}
-        status={status}
-        themeId={themeId}
-        themeUnlockProgress={themeUnlockProgress}
-        canHumanChoosePower={canHumanChoosePower}
-        effectiveLinesEndgameMode={effectiveLinesEndgameMode}
-        onCoachSettingChange={setCoachSetting}
-        onCopySignal={handleCopySignal}
-        onDailyPuzzleMove={handleDailyPuzzleMove}
-        onDifficultyChange={handleDifficultyChange}
-        onEndgameModeChange={handleEndgameModeChange}
-        onHostOnline={handleHostOnline}
-        onLayoutChange={handleLayoutChange}
-        onModeChange={handleModeChange}
-        onOnlineSignal={handleOnlineSignal}
-        onOpenGuide={() => setGuideOpen(true)}
-        onPowerSelectionChange={setPowerSelection}
-        onRemoteSignalChange={setRemoteSignal}
-        onResetMatch={handleResetMatch}
-        onResetRound={handleResetRound}
-        onRulesetChange={handleRulesetChange}
-        onSideChange={handleSideChange}
-        onThemeChange={setThemeId}
-        onTryCoach={handleTryCoach}
-        onShareDailyPuzzle={handleShareDailyPuzzle}
-        onToggleSound={() =>
-          setSoundSetting(soundSetting === 'on' ? 'off' : 'on')
-        }
-        powerPicker={powerPicker}
-        powerSelection={powerSelection}
-        finalSixPowers={finalSixPowers}
+        actions={{
+          onResetMatch: handleResetMatch,
+          onResetRound: handleResetRound,
+        }}
+        dailyProgress={{
+          dailyPuzzle,
+          dailyPuzzleResult,
+          dailyPuzzleShareCopied,
+          difficultyStreaks,
+          lastMove,
+          lifetimeScore,
+          retentionStats,
+          showDailyNudge,
+          themeUnlockProgress,
+          onDailyPuzzleMove: handleDailyPuzzleMove,
+          onDismissDailyNudge: () => setDailyNudgeState('done'),
+          onShareDailyPuzzle: handleShareDailyPuzzle,
+        }}
+        matchPanel={{
+          canHumanChoosePower,
+          canShowPowerPanel,
+          coachDisabledOnline: mode === 'online',
+          coachEnabled,
+          finalSixPowers,
+          linesBonusScores,
+          mode,
+          powerPicker,
+          powerSelection,
+          showCoachPrompt,
+          showFinalSixNudge,
+          onCoachSettingChange: setCoachSetting,
+          onDismissFinalSixNudge: () => setFinalSixNudgeState('done'),
+          onPowerSelectionChange: setPowerSelection,
+          onTryCoach: handleTryCoach,
+        }}
+        options={{
+          coachDisabledOnline: mode === 'online',
+          coachEnabled,
+          coachSetting,
+          layout,
+          soundSetting,
+          themeId,
+          onCoachSettingChange: setCoachSetting,
+          onLayoutChange: handleLayoutChange,
+          onThemeChange: setThemeId,
+          onToggleSound: () =>
+            setSoundSetting(soundSetting === 'on' ? 'off' : 'on'),
+        }}
+        scoreboard={{
+          animationEvents,
+          baseLineScores,
+          currentPlayer,
+          isAiThinking,
+          isPowerScoreMode,
+          lastMove,
+          lineScores: result.lineScores,
+          linesBonusScores,
+          linesEndgameText: linesEndgame?.text ?? null,
+          lifetimeScore,
+          match,
+          matchWinnerText,
+          mode,
+          nextOpenerText,
+          openerText,
+          recentBlockCount,
+          recentLineCount,
+          recentLinePlayer: recentImpact?.player ?? null,
+          remainingCells: result.remainingCells,
+          result,
+          ruleset,
+          status,
+          onOpenGuide: () => setGuideOpen(true),
+        }}
+        setup={{
+          copiedSignal,
+          difficulty,
+          humanSide,
+          linesEndgameMode,
+          mode,
+          online,
+          onlineRulesLocked: onlineRoomActive,
+          remoteSignal,
+          ruleset,
+          onCopySignal: handleCopySignal,
+          onDifficultyChange: handleDifficultyChange,
+          onEndgameModeChange: handleEndgameModeChange,
+          onHostOnline: handleHostOnline,
+          onModeChange: handleModeChange,
+          onOnlineSignal: handleOnlineSignal,
+          onRemoteSignalChange: setRemoteSignal,
+          onRulesetChange: handleRulesetChange,
+          onSideChange: handleSideChange,
+        }}
       />
 
       <GameDialogs

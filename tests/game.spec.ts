@@ -40,6 +40,15 @@ async function chooseTwoPlayer(page: Page) {
   await page.getByRole('button', { name: '2P' }).click();
 }
 
+async function openOptions(page: Page) {
+  const section = page.locator('.panel-section-options');
+  const options = page.locator('.panel-section-options summary');
+
+  if ((await section.getAttribute('open')) === null) {
+    await options.click();
+  }
+}
+
 async function showFloor(page: Page, floor: 1 | 2 | 3) {
   await page.locator('.scanner-stop').filter({ hasText: `${floor}` }).click();
 }
@@ -53,7 +62,7 @@ async function place(page: Page, player: 'X' | 'O', cell: number) {
 }
 
 async function keepPieIfVisible(page: Page) {
-  const keepSides = page.getByRole('button', { name: 'Keep sides?' });
+  const keepSides = page.getByRole('button', { name: 'Keep sides' });
 
   try {
     await keepSides.waitFor({ state: 'visible', timeout: 1000 });
@@ -90,12 +99,27 @@ async function winClassicRoundForX(page: Page, opener: 'X' | 'O') {
 }
 
 async function expectCanvasHasPixels(page: Page) {
-  const canvas = page.locator('canvas');
+  let screenshot: Buffer | null = null;
 
-  await expect(canvas).toBeVisible();
-  await page.waitForTimeout(250);
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      await expect(page.locator('canvas')).toBeVisible();
+      await page.waitForTimeout(350);
+      screenshot = await page.locator('canvas').screenshot();
+      break;
+    } catch (error) {
+      if (attempt === 2) {
+        throw error;
+      }
 
-  const screenshot = await canvas.screenshot();
+      await page.waitForTimeout(300);
+    }
+  }
+
+  if (!screenshot) {
+    throw new Error('Canvas screenshot was not captured');
+  }
+
   const png = PNG.sync.read(screenshot);
   const background = [png.data[0], png.data[1], png.data[2]];
   const colorBuckets = new Set<string>();
@@ -133,6 +157,160 @@ async function expectCanvasHasPixels(page: Page) {
   expect(foregroundSamples).toBeGreaterThan(10);
 }
 
+async function expectPanelModalCoversViewport(page: Page) {
+  await expect(page.locator('.confirm-overlay')).toBeVisible();
+  await expect(page.locator('.panel-modal-card')).toBeVisible();
+  await page.waitForFunction(() => {
+    const card = document.querySelector('.panel-modal-card');
+    const transform = card ? window.getComputedStyle(card).transform : '';
+
+    return transform === 'none' || transform === 'matrix(1, 0, 0, 1, 0, 0)';
+  });
+
+  const metrics = await page.evaluate(() => {
+    const overlay = document
+      .querySelector('.confirm-overlay')
+      ?.getBoundingClientRect();
+    const card = document
+      .querySelector('.panel-modal-card')
+      ?.getBoundingClientRect();
+    const panel = document.querySelector('.game-panel');
+    const panelBounds = panel?.getBoundingClientRect();
+    const cardElement = document.querySelector('.panel-modal-card');
+
+    if (!overlay || !card || !panelBounds || !panel || !cardElement) {
+      throw new Error('Panel modal geometry could not be measured');
+    }
+
+    return {
+      cardCenterX: card.left + card.width / 2,
+      cardCenterY: card.top + card.height / 2,
+      cardHeight: card.height,
+      cardWidth: card.width,
+      innerHeight: window.innerHeight,
+      innerWidth: window.innerWidth,
+      modalInPanel: panel.contains(cardElement),
+      overlayHeight: overlay.height,
+      overlayLeft: overlay.left,
+      overlayTop: overlay.top,
+      overlayWidth: overlay.width,
+      panelWidth: panelBounds.width,
+    };
+  });
+  const expectedCardWidth = Math.min(760, metrics.innerWidth - 32);
+
+  expect(metrics.modalInPanel).toBe(false);
+  expect(metrics.overlayLeft).toBeLessThanOrEqual(1);
+  expect(metrics.overlayTop).toBeLessThanOrEqual(1);
+  expect(metrics.overlayWidth).toBeGreaterThanOrEqual(metrics.innerWidth - 1);
+  expect(metrics.overlayHeight).toBeGreaterThanOrEqual(metrics.innerHeight - 1);
+  expect(metrics.cardWidth).toBeGreaterThanOrEqual(expectedCardWidth - 2);
+  expect(metrics.cardWidth).toBeLessThanOrEqual(expectedCardWidth + 2);
+  expect(Math.abs(metrics.cardCenterX - metrics.innerWidth / 2)).toBeLessThanOrEqual(
+    8,
+  );
+  expect(Math.abs(metrics.cardCenterY - metrics.innerHeight / 2)).toBeLessThanOrEqual(
+    8,
+  );
+
+  if (metrics.innerWidth >= 900) {
+    expect(metrics.cardWidth).toBeGreaterThan(metrics.panelWidth);
+  }
+}
+
+async function expectStackedPanelUsesPageScroll(page: Page) {
+  await openOptions(page);
+
+  const scrollMetrics = await page.evaluate(() => {
+    const panel = document.querySelector<HTMLElement>('.game-panel');
+    const panelScroll = document.querySelector<HTMLElement>('.panel-scroll');
+    const stickyActions = document.querySelector<HTMLElement>(
+      '.panel-sticky-actions',
+    );
+    const stickyTop = document.querySelector<HTMLElement>('.panel-sticky-top');
+    const pageScroller = document.scrollingElement;
+
+    if (!panel || !panelScroll || !stickyActions || !stickyTop || !pageScroller) {
+      throw new Error('Stacked panel metrics could not be measured');
+    }
+
+    panelScroll.scrollTop = 120;
+
+    return {
+      actionsPosition: window.getComputedStyle(stickyActions).position,
+      pageClientHeight: pageScroller.clientHeight,
+      pageScrollHeight: pageScroller.scrollHeight,
+      panelHeight: panel.getBoundingClientRect().height,
+      panelOverflow: window.getComputedStyle(panel).overflowY,
+      panelScrollClientHeight: panelScroll.clientHeight,
+      panelScrollHeight: panelScroll.scrollHeight,
+      panelScrollOverflow: window.getComputedStyle(panelScroll).overflowY,
+      panelScrollTop: panelScroll.scrollTop,
+      stickyTopPosition: window.getComputedStyle(stickyTop).position,
+    };
+  });
+
+  expect(scrollMetrics.panelOverflow).toBe('visible');
+  expect(scrollMetrics.panelScrollOverflow).toBe('visible');
+  expect(scrollMetrics.panelScrollTop).toBe(0);
+  expect(scrollMetrics.panelScrollHeight).toBeLessThanOrEqual(
+    scrollMetrics.panelScrollClientHeight + 1,
+  );
+  expect(scrollMetrics.pageScrollHeight).toBeGreaterThan(
+    scrollMetrics.pageClientHeight,
+  );
+  expect(scrollMetrics.panelHeight).toBeGreaterThan(
+    scrollMetrics.panelScrollClientHeight,
+  );
+  expect(scrollMetrics.stickyTopPosition).toBe('sticky');
+  expect(scrollMetrics.actionsPosition).toBe('sticky');
+
+  await page.evaluate(() => {
+    const panel = document.querySelector<HTMLElement>('.game-panel');
+
+    if (!panel) {
+      throw new Error('Panel was not found');
+    }
+
+    window.scrollTo(0, window.scrollY + panel.getBoundingClientRect().top + 220);
+  });
+
+  const stickyMetrics = await page.evaluate(() => {
+    const actions = document
+      .querySelector<HTMLElement>('.panel-sticky-actions')
+      ?.getBoundingClientRect();
+    const panel = document
+      .querySelector<HTMLElement>('.game-panel')
+      ?.getBoundingClientRect();
+    const stickyTop = document
+      .querySelector<HTMLElement>('.panel-sticky-top')
+      ?.getBoundingClientRect();
+
+    if (!actions || !panel || !stickyTop) {
+      throw new Error('Sticky panel metrics could not be measured');
+    }
+
+    return {
+      actionsBottom: actions.bottom,
+      innerHeight: window.innerHeight,
+      panelBottom: panel.bottom,
+      panelTop: panel.top,
+      stickyTopTop: stickyTop.top,
+    };
+  });
+
+  expect(stickyMetrics.panelTop).toBeLessThan(0);
+  expect(stickyMetrics.panelBottom).toBeGreaterThan(stickyMetrics.innerHeight);
+  expect(stickyMetrics.stickyTopTop).toBeGreaterThanOrEqual(-1);
+  expect(stickyMetrics.stickyTopTop).toBeLessThanOrEqual(1);
+  expect(stickyMetrics.actionsBottom).toBeGreaterThanOrEqual(
+    stickyMetrics.innerHeight - 1,
+  );
+  expect(stickyMetrics.actionsBottom).toBeLessThanOrEqual(
+    stickyMetrics.innerHeight + 1,
+  );
+}
+
 test('mobile first run starts on the playable scanner board', async ({ page }) => {
   await openGame(page, {
     viewport: { height: 844, width: 390 },
@@ -156,9 +334,100 @@ test('mobile first run starts on the playable scanner board', async ({ page }) =
   expect(metrics.bodyScrollWidth).toBeLessThanOrEqual(metrics.innerWidth);
   expect(metrics.stageHeight).toBeGreaterThanOrEqual(430);
   expect(metrics.gridWidth).toBeGreaterThanOrEqual(280);
+
+  await page.evaluate(() => {
+    document.querySelector('.game-panel')?.scrollIntoView();
+  });
+
+  const panelMetrics = await page.evaluate(() => {
+    const actions = document
+      .querySelector('.panel-sticky-actions')
+      ?.getBoundingClientRect();
+    const panel = document.querySelector('.game-panel')?.getBoundingClientRect();
+    const scoreboard = document
+      .querySelector('.panel-scoreboard')
+      ?.getBoundingClientRect();
+
+    return {
+      actionsBottom: actions?.bottom ?? 0,
+      panelBottom: panel?.bottom ?? 0,
+      panelTop: panel?.top ?? 0,
+      scoreboardTop: scoreboard?.top ?? 0,
+    };
+  });
+
+  expect(panelMetrics.scoreboardTop).toBeGreaterThanOrEqual(
+    panelMetrics.panelTop,
+  );
+  expect(panelMetrics.actionsBottom).toBeLessThanOrEqual(
+    panelMetrics.panelBottom,
+  );
 });
 
-test('first-time guide teaches Lines, views, Coach, and 3D diagonals', async ({
+test('stacked panel uses the page scroll instead of a nested panel scroller', async ({
+  page,
+}) => {
+  await openGame(page, {
+    layout: 'scanner',
+    viewport: { height: 667, width: 375 },
+  });
+  await expectStackedPanelUsesPageScroll(page);
+
+  await openGame(page, {
+    layout: 'cube',
+    viewport: { height: 820, width: 1024 },
+  });
+  await expectCanvasHasPixels(page);
+  await expectStackedPanelUsesPageScroll(page);
+});
+
+test('desktop panel keeps its internal scroll model', async ({ page }) => {
+  await openGame(page, {
+    layout: 'scanner',
+    viewport: { height: 800, width: 1280 },
+  });
+  await openOptions(page);
+
+  const metrics = await page.evaluate(() => {
+    const panel = document.querySelector<HTMLElement>('.game-panel');
+    const panelScroll = document.querySelector<HTMLElement>('.panel-scroll');
+    const stickyActions = document.querySelector<HTMLElement>(
+      '.panel-sticky-actions',
+    );
+    const stickyTop = document.querySelector<HTMLElement>('.panel-sticky-top');
+
+    if (!panel || !panelScroll || !stickyActions || !stickyTop) {
+      throw new Error('Desktop panel metrics could not be measured');
+    }
+
+    panelScroll.scrollTop = 120;
+
+    return {
+      actionsPosition: window.getComputedStyle(stickyActions).position,
+      innerHeight: window.innerHeight,
+      panelHeight: panel.getBoundingClientRect().height,
+      panelOverflow: window.getComputedStyle(panel).overflowY,
+      panelScrollClientHeight: panelScroll.clientHeight,
+      panelScrollHeight: panelScroll.scrollHeight,
+      panelScrollOverflow: window.getComputedStyle(panelScroll).overflowY,
+      panelScrollTop: panelScroll.scrollTop,
+      stickyTopPosition: window.getComputedStyle(stickyTop).position,
+    };
+  });
+
+  expect(metrics.panelHeight).toBeGreaterThanOrEqual(metrics.innerHeight - 1);
+  expect(metrics.panelHeight).toBeLessThanOrEqual(metrics.innerHeight + 1);
+  expect(metrics.panelOverflow).toBe('hidden');
+  expect(metrics.panelScrollOverflow).toBe('auto');
+  expect(metrics.panelScrollHeight).toBeGreaterThan(
+    metrics.panelScrollClientHeight,
+  );
+  expect(metrics.panelScrollTop).toBeGreaterThan(0);
+  expect(metrics.stickyTopPosition).toBe('relative');
+  expect(metrics.actionsPosition).toBe('relative');
+});
+
+test('first-time guide teaches Lines scoring and 3D diagonals', async ({
   page,
 }) => {
   await openGame(page, { guide: 'pending', layout: 'scanner' });
@@ -170,12 +439,8 @@ test('first-time guide teaches Lines, views, Coach, and 3D diagonals', async ({
     'Lines is the main game',
   );
   await expect(guide).toContainText('all 27 cells fill');
-  await expect(guide).toContainText('Classic is a variant');
   await expect(guide).toContainText('Cells 1, 14, and 27');
-  await expect(guide).toContainText('Coach hints');
-  await expect(guide).toContainText('Scanner is fastest');
-  await expect(guide).toContainText('Cube shows the shape');
-  await expect(guide).toContainText('Floors compares layers');
+  await expect(guide.locator('.guide-list li')).toHaveCount(2);
 
   await page.getByRole('button', { name: 'Got it' }).click();
   await expect(guide).toHaveCount(0);
@@ -213,7 +478,10 @@ test('Lines is the default ruleset and all themes remain switchable', async ({
   ).toContainText('Classic');
   await expect(page.locator('.line-score-card')).toHaveCount(0);
 
-  await page.getByRole('button', { name: 'Lines' }).click();
+  await page
+    .locator('.ruleset-control')
+    .getByRole('button', { name: 'Lines', exact: true })
+    .click();
   await expect(
     page.locator('.ruleset-control button.active'),
   ).toContainText('Lines');
@@ -226,6 +494,8 @@ test('Lines is the default ruleset and all themes remain switchable', async ({
     ['Crystal', 'crystal'],
     ['Cage', 'cage'],
   ] as const;
+
+  await page.locator('.panel-section-options summary').click();
 
   for (const [label, themeId] of expectedThemes) {
     await page.getByRole('button', { name: label }).click();
@@ -255,6 +525,7 @@ test('compact desktop gives Cube and Floors the full stage width', async ({
     layout: 'scanner',
     viewport: { height: 720, width: 1000 },
   });
+  await openOptions(page);
 
   for (const view of ['Cube', 'Floors']) {
     await page.getByRole('button', { name: view }).click();
@@ -321,15 +592,34 @@ test('narrow persisted 3D views refresh safely through Scanner', async ({
 });
 
 test('solo panel shows local progress and the daily puzzle', async ({ page }) => {
-  await openGame(page, { layout: 'scanner' });
+  for (const viewport of [
+    { height: 900, width: 1440 },
+    { height: 812, width: 375 },
+  ]) {
+    await openGame(page, { layout: 'scanner', viewport });
 
-  await expect(page.locator('.progress-card')).toContainText('Progress');
-  await expect(page.locator('.progress-card')).toContainText('Total lines');
-  await expect(page.locator('.progress-card')).toContainText('Master wins');
-  await expect(page.locator('.progress-card')).toContainText('Theme accents');
-  await expect(page.locator('.daily-puzzle-card')).toContainText(/Daily #\d+/);
-  await expect(page.locator('.daily-puzzle-card')).toContainText(/Find the|Score the/);
-  await expect(page.locator('.daily-cell')).toHaveCount(27);
+    const dailyEntry = page.getByRole('button', { name: /Daily #\d+/ });
+    const progressEntry = page.getByRole('button', { name: /Progress/ });
+
+    await expect(dailyEntry).toBeVisible();
+    await expect(progressEntry).toBeVisible();
+
+    await progressEntry.click();
+    await expectPanelModalCoversViewport(page);
+    await expect(page.locator('.progress-card')).toContainText('Total lines');
+    await expect(page.locator('.progress-card')).toContainText('Master wins');
+    await expect(page.locator('.progress-card')).toContainText('Theme accents');
+    await expect(page.locator('.progress-card')).toContainText('Lifetime');
+    await page.getByRole('button', { name: 'Close' }).click();
+
+    await dailyEntry.click();
+    await expectPanelModalCoversViewport(page);
+    await expect(page.locator('.daily-puzzle-card')).toContainText(
+      /Find the|Score the/,
+    );
+    await expect(page.locator('.daily-cell')).toHaveCount(27);
+    await page.getByRole('button', { name: 'Close' }).click();
+  }
 });
 
 async function createCoachScoreAndBlockPosition(page: Page) {
@@ -408,7 +698,7 @@ test('scanner board supports a complete 2P winning round', async ({ page }) => {
   await chooseTwoPlayer(page);
 
   await place(page, 'X', 10);
-  await page.getByRole('button', { name: 'Keep sides?' }).click();
+  await page.getByRole('button', { name: 'Keep sides' }).click();
   await place(page, 'O', 13);
   await place(page, 'X', 11);
   await place(page, 'O', 14);
@@ -429,36 +719,37 @@ test('best-of-5 match alternates openers and ends at 3 wins', async ({
   await page.getByRole('button', { name: 'Classic' }).click();
   await chooseTwoPlayer(page);
 
-  await expect(page.locator('.score-row')).toContainText('X wins');
-  await expect(page.locator('.match-card')).toContainText('Race to 3');
-  await expect(page.locator('.match-card')).toContainText('X opens');
+  await expect(page.locator('.panel-scoreboard')).toContainText('Round');
+  await expect(page.locator('.scoreboard-match-score strong')).toHaveText('0-0');
+  await expect(page.locator('.scoreboard-opener')).toContainText('X opens');
 
   await winClassicRoundForX(page, 'X');
   await expect(page.getByText('Round 1: X wins the round')).toBeVisible();
   await expect(page.getByText('X opened - O opens next')).toBeVisible();
-  await expect(page.locator('.score-x strong')).toHaveText('1');
+  await expect(page.locator('.scoreboard-match-score strong')).toHaveText('1-0');
 
   await page.getByRole('button', { name: 'Play again' }).click();
-  await expect(page.locator('.match-card')).toContainText('O opens');
+  await expect(page.locator('.scoreboard-opener')).toContainText('O opens');
 
   await winClassicRoundForX(page, 'O');
   await expect(page.getByText('Round 2: X wins the round')).toBeVisible();
   await expect(page.getByText('O opened - X opens next')).toBeVisible();
-  await expect(page.locator('.score-x strong')).toHaveText('2');
+  await expect(page.locator('.scoreboard-match-score strong')).toHaveText('2-0');
 
   await page.getByRole('button', { name: 'Play again' }).click();
-  await expect(page.locator('.match-card')).toContainText('X opens');
+  await expect(page.locator('.scoreboard-opener')).toContainText('X opens');
 
   await winClassicRoundForX(page, 'X');
   await expect(page.getByText('Round 3: X wins the round')).toBeVisible();
   await expect(page.getByText('X wins the match, 3–0')).toBeVisible();
   await expect(page.getByRole('button', { name: 'New match' })).toBeVisible();
-  await expect(page.locator('.score-x strong')).toHaveText('3');
+  await expect(page.locator('.scoreboard-match-score strong')).toHaveText('X');
 
   await page.getByRole('button', { name: 'New match' }).click();
-  await expect(page.locator('.score-x strong')).toHaveText('0');
-  await expect(page.locator('.match-card')).toContainText('Lifetime');
-  await expect(page.locator('.match-card')).toContainText('3-0');
+  await expect(page.locator('.scoreboard-match-score strong')).toHaveText('0-0');
+  await page.getByRole('button', { name: /Progress/ }).click();
+  await expect(page.locator('.progress-card')).toContainText('Lifetime');
+  await expect(page.locator('.progress-card')).toContainText('3-0');
 });
 
 test('lines mode scores completed lines without ending the round', async ({
@@ -580,7 +871,11 @@ test('coach mode marks blocking and combined cells on the scanner board', async 
 }) => {
   await openGame(page, { layout: 'scanner' });
   await chooseTwoPlayer(page);
-  await page.getByRole('button', { name: 'On', exact: true }).click();
+  await openOptions(page);
+  await page
+    .locator('.coach-control')
+    .getByRole('button', { name: 'On', exact: true })
+    .click();
 
   await expect(page.locator('.coach-legend')).toContainText('Score');
   await expect(page.locator('.coach-legend')).toContainText('Block');
@@ -621,7 +916,11 @@ test('scanner coach explains cross-floor threats with rail and connector cues', 
 }) => {
   await openGame(page, { layout: 'scanner' });
   await chooseTwoPlayer(page);
-  await page.getByRole('button', { name: 'On', exact: true }).click();
+  await openOptions(page);
+  await page
+    .locator('.coach-control')
+    .getByRole('button', { name: 'On', exact: true })
+    .click();
 
   await showFloor(page, 1);
   await place(page, 'X', 1);
@@ -686,7 +985,7 @@ test('local Lines Final Six Powers choose board targets and add bonus score', as
 }) => {
   await openGame(page, { layout: 'scanner' });
   await chooseTwoPlayer(page);
-  await page.getByRole('button', { name: 'Powers v3 Experimental' }).click();
+  await page.getByRole('button', { name: 'Final Six Powers (beta)' }).click();
   await expect(page.locator('.line-score-card')).toContainText('X total');
   await expect(page.locator('.line-score-card')).toContainText('Bonus');
   await expect(page.locator('.power-card')).toContainText(
@@ -788,13 +1087,14 @@ test('online host and guest can join and relay a scanner move', async ({
   await expect(host.locator('.online-card')).toContainText(
     'Final Six Powers are local prototype only',
   );
+  await host.locator('.panel-section-options summary').click();
   await expect(
     host.locator('.coach-control').getByRole('button', { name: /Auto/ }),
   ).toBeDisabled();
   await expect(
     host
       .locator('.endgame-control')
-      .getByRole('button', { name: 'Powers v3 Experimental' }),
+      .getByRole('button', { name: 'Final Six Powers (beta)' }),
   ).toBeDisabled();
 
   await host.getByRole('button', { name: 'Host' }).click();

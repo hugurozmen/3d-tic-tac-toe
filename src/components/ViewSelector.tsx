@@ -29,7 +29,9 @@ export function ViewSelector({
         {viewOptions.map(({ Icon, id, label }) => (
           <button
             key={id}
+            aria-label={label}
             className={layout === id ? 'active' : ''}
+            title={label}
             type="button"
             onClick={() => onChange(id)}
           >

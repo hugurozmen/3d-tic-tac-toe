@@ -20,7 +20,6 @@ const isThreeVendor = (moduleId: string) => {
     '/node_modules/three/',
     '/node_modules/three-stdlib/',
     '/node_modules/troika-',
-    '/node_modules/zustand/',
   ].some((needle) => id.includes(needle));
 };
 

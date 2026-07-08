@@ -160,14 +160,14 @@ export function GameDialogs({
                 type="button"
                 onClick={onKeepPie}
               >
-                Keep sides?
+                Keep sides
               </button>
               <button
                 className="primary-action"
                 type="button"
                 onClick={onSwapPie}
               >
-                Swap sides?
+                Swap sides
               </button>
             </div>
           </div>
@@ -228,20 +228,8 @@ export function GameDialogs({
                 27 cells fill; every 3-cell row scores, and the higher total wins.
               </li>
               <li>
-                <strong>Classic is a variant.</strong> It ends immediately on the
-                first 3-in-a-row.
-              </li>
-              <li>
                 <strong>3D lines cross floors.</strong> Cells 1, 14, and 27 form
                 one diagonal through the cube.
-              </li>
-              <li>
-                <strong>Coach hints teach threats.</strong> Green scores, red
-                blocks, and gold does both.
-              </li>
-              <li>
-                <strong>Pick the view for the job.</strong> Scanner is fastest
-                to play, Cube shows the shape, and Floors compares layers.
               </li>
             </ul>
             <button className="primary-action" type="button" onClick={onCloseGuide}>

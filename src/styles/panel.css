@@ -1,10 +1,12 @@
 .game-panel {
+  --panel-padding: clamp(18px, 3vw, 32px);
   height: 100vh;
   min-height: 100vh;
+  container-type: inline-size;
   display: flex;
   flex-direction: column;
-  gap: 20px;
-  padding: clamp(18px, 3vw, 32px);
+  gap: 14px;
+  padding: var(--panel-padding);
   border-left: 1px solid var(--app-border);
   background: linear-gradient(
     180deg,
@@ -13,23 +15,58 @@
   );
   box-shadow: inset 1px 0 0 color-mix(in srgb, var(--app-text) 6%, transparent);
   backdrop-filter: blur(22px);
+  overflow: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--app-text) 22%, transparent)
+    transparent;
+}
+
+.panel-scroll {
+  min-height: 0;
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  gap: 12px;
+  padding-right: 2px;
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--app-text) 22%, transparent)
     transparent;
 }
 
-.game-panel::-webkit-scrollbar {
+.panel-scroll::-webkit-scrollbar {
   width: 8px;
 }
 
-.game-panel::-webkit-scrollbar-thumb {
+.panel-scroll::-webkit-scrollbar-thumb {
   border-radius: 999px;
   background: color-mix(in srgb, var(--app-text) 18%, transparent);
 }
 
-.game-panel::-webkit-scrollbar-track {
+.panel-scroll::-webkit-scrollbar-track {
   background: transparent;
+}
+
+.panel-sticky-top,
+.panel-sticky-actions {
+  position: relative;
+  z-index: 2;
+  flex: 0 0 auto;
+}
+
+.panel-sticky-top {
+  display: grid;
+  gap: 12px;
+}
+
+.panel-sticky-actions {
+  padding-top: 10px;
+  border-top: 1px solid var(--app-border);
+  background: linear-gradient(
+    180deg,
+    transparent,
+    color-mix(in srgb, var(--app-panel) 88%, transparent) 36%
+  );
 }
 
 .panel-header {
@@ -294,6 +331,142 @@ h1 {
 
 .score-o strong {
   color: var(--mark-o);
+}
+
+.panel-scoreboard {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--app-border);
+  border-radius: var(--radius-l);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--app-panel-strong) 64%, transparent),
+    color-mix(in srgb, var(--app-tile) 82%, transparent)
+  );
+  box-shadow:
+    0 18px 36px rgba(0, 0, 0, 0.18),
+    inset 0 1px 0 color-mix(in srgb, var(--app-text) 7%, transparent);
+}
+
+.scoreboard-meta {
+  display: grid;
+  grid-template-columns: 0.78fr 1fr 0.78fr 1fr 1fr;
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid var(--app-border);
+  border-radius: var(--radius-s);
+  background: var(--app-border);
+}
+
+.scoreboard-meta div {
+  min-width: 0;
+  min-height: 48px;
+  display: grid;
+  align-content: center;
+  gap: 4px;
+  padding: 8px 7px;
+  background: color-mix(in srgb, var(--app-panel-strong) 58%, transparent);
+  text-align: center;
+}
+
+.scoreboard-meta span,
+.scoreboard-match-complete {
+  color: var(--app-muted);
+  font-size: 0.62rem;
+  font-weight: 850;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.scoreboard-meta strong {
+  color: var(--app-text);
+  font-family: var(--font-display);
+  font-size: clamp(0.92rem, 1.4vw, 1.12rem);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  overflow-wrap: anywhere;
+}
+
+.scoreboard-match-complete {
+  justify-self: center;
+  color: var(--app-win);
+}
+
+.panel-section {
+  display: grid;
+  gap: 12px;
+  padding: 13px;
+  border: 1px solid var(--app-border);
+  border-radius: var(--radius-l);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--app-panel-strong) 46%, transparent),
+    color-mix(in srgb, var(--app-tile) 84%, transparent)
+  );
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--app-text) 5%, transparent);
+}
+
+.panel-section > summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  margin: -13px;
+  padding: 13px;
+  color: var(--app-text);
+  cursor: pointer;
+  font-weight: 900;
+  list-style: none;
+}
+
+.panel-section > summary::-webkit-details-marker {
+  display: none;
+}
+
+.panel-section > summary::after {
+  content: "+";
+  width: 26px;
+  height: 26px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid var(--app-border);
+  border-radius: 999px;
+  color: var(--app-muted);
+  background: color-mix(in srgb, var(--app-panel-strong) 58%, transparent);
+}
+
+.panel-section[open] > summary::after {
+  content: "−";
+}
+
+.panel-section summary span,
+.panel-section-heading span {
+  color: var(--app-text);
+  font-size: 0.86rem;
+  font-weight: 950;
+}
+
+.panel-section summary small,
+.panel-section-heading small {
+  color: var(--app-muted);
+  font-size: 0.72rem;
+  font-weight: 760;
+  line-height: 1.25;
+}
+
+.panel-section-heading {
+  display: grid;
+  gap: 3px;
+}
+
+.panel-section-body {
+  display: grid;
+  gap: 12px;
+}
+
+.panel-section-match {
+  border-color: color-mix(in srgb, var(--hint-both) 28%, var(--app-border));
 }
 
 .line-score-card {
@@ -683,6 +856,7 @@ h1 {
 
 .segmented-control button {
   min-height: 42px;
+  min-width: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -692,6 +866,7 @@ h1 {
   background: transparent;
   cursor: pointer;
   font-weight: 700;
+  white-space: nowrap;
   transition:
     background-color 180ms ease,
     color 180ms ease,
@@ -736,6 +911,8 @@ h1 {
 .wildcard-option:focus-visible,
 .wildcard-player-row button:focus-visible,
 .power-option:focus-visible,
+.panel-entry-row:focus-visible,
+.panel-section > summary:focus-visible,
 .primary-action:focus-visible,
 .secondary-action:focus-visible,
 .scanner-cell:focus-visible,
@@ -1343,6 +1520,134 @@ h1 {
   box-shadow: inset 0 1px 0 color-mix(in srgb, var(--app-text) 6%, transparent);
 }
 
+.entry-row-list {
+  display: grid;
+  gap: 8px;
+}
+
+.panel-entry-row {
+  min-height: 58px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--app-border);
+  border-radius: var(--radius-m);
+  color: var(--app-text);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--app-panel-strong) 46%, transparent),
+    color-mix(in srgb, var(--app-tile) 86%, transparent)
+  );
+  cursor: pointer;
+  text-align: left;
+  transition:
+    border-color 180ms ease,
+    background-color 180ms ease,
+    transform 120ms ease;
+}
+
+.panel-entry-row:active {
+  transform: scale(0.98);
+}
+
+.panel-entry-row div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.panel-entry-row span {
+  color: var(--app-muted);
+  font-size: 0.66rem;
+  font-weight: 850;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.panel-entry-row strong {
+  color: var(--app-text);
+  font-size: 0.86rem;
+  font-weight: 900;
+  overflow-wrap: anywhere;
+}
+
+.panel-entry-row small {
+  color: var(--app-primary);
+  font-size: 0.74rem;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.panel-modal-card {
+  width: min(760px, calc(100vw - 32px));
+  max-height: min(86vh, 760px);
+  overflow-y: auto;
+}
+
+.panel-modal-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.panel-modal-heading .secondary-action {
+  min-height: 38px;
+  min-width: 0;
+  padding: 0 14px;
+}
+
+@container (max-width: 360px) {
+  .control-group {
+    gap: 7px;
+  }
+
+  .segmented-control {
+    gap: 4px;
+    padding: 4px;
+  }
+
+  .segmented-control button {
+    min-height: 40px;
+    gap: 0;
+    padding-inline: 6px;
+  }
+
+  .segmented-control button > span {
+    display: none;
+  }
+
+  .segmented-control button svg {
+    flex: 0 0 auto;
+  }
+
+  .endgame-control,
+  .difficulty-control,
+  .ruleset-control,
+  .coach-control,
+  .mode-control {
+    grid-template-columns: repeat(var(--segment-count, 2), minmax(0, 1fr));
+  }
+
+  .mode-control,
+  .coach-control {
+    --segment-count: 3;
+  }
+
+  .control-label {
+    display: block;
+  }
+}
+
+.modal-card-body {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+}
+
 .progress-card-header,
 .daily-puzzle-header,
 .theme-progress-heading {
@@ -1648,6 +1953,10 @@ h1 {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 9px;
   margin-top: auto;
+}
+
+.panel-sticky-actions .action-row {
+  margin-top: 0;
 }
 
 .primary-action,
