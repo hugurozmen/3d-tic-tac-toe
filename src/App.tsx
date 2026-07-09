@@ -23,8 +23,6 @@ import { getLinesEndgameAnalysis } from './game/linesTension';
 import {
   DIFFICULTY_OPTIONS,
   LAYOUT_OPTIONS,
-  MODE_DESCRIPTION,
-  RULESET_DESCRIPTION,
   RULESET_OPTIONS,
 } from './game/options';
 import {
@@ -65,6 +63,19 @@ import {
   getFinalSixPowerBoardEffects,
 } from './game/finalSixPowers';
 import { THEME_ORDER, THEMES, ThemeId, themeToCssVariables } from './theme';
+import {
+  formatLinesEndgameText,
+  getDailyPuzzleShareText,
+  getInitialLocale,
+  I18nProvider,
+  labelMode,
+  labelPower,
+  labelRulesetDescription,
+  LOCALE_OPTIONS,
+  translatePowerMessage,
+  type Locale,
+  useI18nValue,
+} from './i18n';
 import { useLocalStorageState } from './useLocalStorageState';
 
 const getInitialLayout = (): BoardLayout => {
@@ -163,6 +174,13 @@ export function App() {
     'on',
     ['on', 'off'] as const,
   );
+  const [language, setLanguage] = useLocalStorageState<Locale>(
+    '3dxox-language',
+    getInitialLocale(),
+    LOCALE_OPTIONS,
+  );
+  const i18n = useI18nValue(language);
+  const { t } = i18n;
   const [coachSetting, setCoachSetting] = useLocalStorageState<CoachSetting>(
     '3dxox-coach',
     'auto',
@@ -408,21 +426,25 @@ export function App() {
     const parts: string[] = [];
 
     if (lineCount > 0) {
-      const lineText = lineCount === 1 ? 'line' : 'lines';
+      const lineText = t(lineCount === 1 ? 'lines.line' : 'lines.lines');
       parts.push(`${recentImpact.player} +${lineCount} ${lineText}`);
     }
 
     if (blockCount > 0) {
-      const blockText = blockCount === 1 ? 'block' : 'blocks';
+      const blockText = t(blockCount === 1 ? 'lines.block' : 'lines.blocks');
       parts.push(`${blockCount} ${blockText}`);
     }
 
     if (recentImpact.powerMessages.length > 0) {
-      parts.push(...recentImpact.powerMessages);
+      parts.push(
+        ...recentImpact.powerMessages.map((message) =>
+          translatePowerMessage(i18n, message),
+        ),
+      );
     } else if (recentImpact.powerMessage) {
-      parts.push(recentImpact.powerMessage);
+      parts.push(translatePowerMessage(i18n, recentImpact.powerMessage));
     } else if (bonusPoints > 0) {
-      parts.push(`+${bonusPoints} bonus`);
+      parts.push(t('notice.bonus', { count: bonusPoints }));
     }
 
     flashNotice(
@@ -436,6 +458,8 @@ export function App() {
     result.lineScores.O,
     result.lineScores.X,
     ruleset,
+    i18n,
+    t,
   ]);
 
   useEffect(() => {
@@ -446,17 +470,23 @@ export function App() {
     }
 
     if (latest.type === 'final-six-start') {
-      flashNotice('Final Six: cube charged', 'system');
+      flashNotice(t('finalSix.chargedNotice'), 'system');
       return;
     }
 
     if (latest.type === 'power-selected') {
       flashNotice(
-        `${latest.player} chose ${FINAL_SIX_POWER_LABEL[latest.power as FinalSixPowerId] ?? latest.power}`,
+        t('finalSix.powerChosen', {
+          player: latest.player,
+          power:
+            latest.power in FINAL_SIX_POWER_LABEL
+              ? labelPower(i18n, latest.power as FinalSixPowerId)
+              : latest.power,
+        }),
         getAnimationTone(latest) === 'block' ? 'block' : 'system',
       );
     }
-  }, [animationEvents, flashNotice]);
+  }, [animationEvents, flashNotice, i18n, t]);
 
   useEffect(() => {
     if (!pieDecisionPending) {
@@ -470,9 +500,9 @@ export function App() {
 
       if (shouldSwap) {
         setHumanSide(getOtherPlayer(humanSide));
-        flashNotice('AI swapped sides');
+        flashNotice(t('notice.aiSwappedSides'));
       } else {
-        flashNotice('AI kept sides');
+        flashNotice(t('notice.aiKeptSides'));
       }
 
       return;
@@ -489,6 +519,7 @@ export function App() {
     mode,
     pieDecisionPending,
     setHumanSide,
+    t,
   ]);
 
   useEffect(() => {
@@ -553,7 +584,7 @@ export function App() {
     () => ({
       onRemoteMatchReset: () => {
         resetMatch();
-        flashNotice('Opponent reset the match');
+        flashNotice(t('notice.opponentResetMatch'));
       },
       onRemoteMove: (index: number, player: Player) => {
         // only accept moves the remote side is actually allowed to make
@@ -568,7 +599,7 @@ export function App() {
       },
       onRemoteRoundReset: () => {
         resetRound();
-        flashNotice('Opponent started a new round');
+        flashNotice(t('notice.opponentNewRound'));
       },
       onRoomSettings: (settings: OnlineRoomSettings) => {
         if (settings.ruleset !== ruleset) {
@@ -579,7 +610,7 @@ export function App() {
         }
       },
     }),
-    [applyMove, flashNotice, resetMatch, resetRound, ruleset, setRuleset],
+    [applyMove, flashNotice, resetMatch, resetRound, ruleset, setRuleset, t],
   );
   const online = useOnlineGame(onlineHandlers);
   const onlineRoomActive = mode === 'online' && Boolean(online.localSignal);
@@ -606,6 +637,10 @@ export function App() {
       ?.setAttribute('content', theme.ui.background);
     document.documentElement.style.colorScheme = theme.ui.scheme;
   }, [theme]);
+
+  useEffect(() => {
+    document.documentElement.lang = language;
+  }, [language]);
 
   useEffect(() => {
     if (mode !== 'online') {
@@ -769,59 +804,70 @@ export function App() {
   const status = useMemo(() => {
     if (match.winner) {
       if (mode === 'solo') {
-        return match.winner === humanSide ? 'You win match' : 'AI wins match';
+        return match.winner === humanSide
+          ? t('status.youWinMatch')
+          : t('status.aiWinsMatch');
       }
 
-      return `${match.winner} wins match`;
+      return t('status.playerWinsMatch', { player: match.winner });
     }
 
     if (result.winner) {
       if (ruleset === 'lines') {
-        return `${result.winner} wins ${result.lineScores.X}-${result.lineScores.O}`;
+        return t('status.playerWinsScore', {
+          player: result.winner,
+          score: `${result.lineScores.X}-${result.lineScores.O}`,
+        });
       }
 
-      return `${result.winner} wins`;
+      return t('status.playerWins', { player: result.winner });
     }
 
     if (result.isDraw) {
       if (ruleset === 'lines') {
-        return `Draw ${result.lineScores.X}-${result.lineScores.O}`;
+        return t('status.drawScore', {
+          score: `${result.lineScores.X}-${result.lineScores.O}`,
+        });
       }
 
-      return 'Draw';
+      return t('status.draw');
     }
 
     if (pieDecisionPending) {
-      return 'Swap choice';
+      return t('status.swapChoice');
     }
 
     if (powerPicker) {
       if (mode === 'solo') {
-        return powerPicker === aiPlayer ? 'AI choosing' : 'Choose Power';
+        return powerPicker === aiPlayer
+          ? t('status.aiChoosing')
+          : t('status.choosePower');
       }
 
-      return `${powerPicker} power`;
+      return t('status.playerPower', { player: powerPicker });
     }
 
     if (isAiTurn) {
-      return `${aiPlayer} thinking`;
+      return t('status.aiThinking', { player: aiPlayer });
     }
 
     if (mode === 'online') {
       if (!online.localPlayer) {
-        return 'Pair online';
+        return t('status.pairOnline');
       }
 
       if (!online.isConnected) {
-        return online.status === 'waiting' ? 'Room ready' : 'Online setup';
+        return online.status === 'waiting'
+          ? t('status.roomReady')
+          : t('status.onlineSetup');
       }
 
       if (online.localPlayer !== currentPlayer) {
-        return `${currentPlayer} remote`;
+        return t('status.playerRemote', { player: currentPlayer });
       }
     }
 
-    return `${currentPlayer} turn`;
+    return t('status.playerTurn', { player: currentPlayer });
   }, [
     aiPlayer,
     currentPlayer,
@@ -839,6 +885,7 @@ export function App() {
     ruleset,
     pieDecisionPending,
     powerPicker,
+    t,
   ]);
 
   const handleSelect = useCallback(
@@ -858,7 +905,7 @@ export function App() {
             targetCell: index,
           })
         ) {
-          flashNotice('Choose a glowing power target');
+          flashNotice(t('finalSix.chooseTargetNotice'));
         }
 
         return;
@@ -879,7 +926,7 @@ export function App() {
         }
 
         if (!online.sendMove(index, online.localPlayer)) {
-          flashNotice('Reconnect the room before moving');
+          flashNotice(t('notice.reconnectMove'));
           return;
         }
 
@@ -904,6 +951,7 @@ export function App() {
       result.isDraw,
       result.winner,
       canHumanChoosePower,
+      t,
     ],
   );
 
@@ -925,7 +973,7 @@ export function App() {
     }
 
     requestRoundReset(
-      `Switching to ${MODE_DESCRIPTION[nextMode]} ends the current round without scoring it.`,
+      t('setup.switchModeConfirm', { mode: labelMode(i18n, nextMode) }),
       () => {
         setMode(nextMode);
         resetRound();
@@ -939,12 +987,14 @@ export function App() {
     }
 
     if (onlineRoomActive) {
-      flashNotice('Online room settings are locked');
+      flashNotice(t('notice.onlineLocked'));
       return;
     }
 
     requestRoundReset(
-      `Switching to ${RULESET_DESCRIPTION[nextRuleset]} resets the active best of 5.`,
+      t('setup.switchRulesConfirm', {
+        ruleset: labelRulesetDescription(i18n, nextRuleset),
+      }),
       () => {
         setRuleset(nextRuleset);
         resetMatch();
@@ -960,12 +1010,12 @@ export function App() {
     }
 
     if (ruleset !== 'lines' || mode === 'online') {
-      flashNotice('Final Six Powers are local prototype only');
+      flashNotice(t('finalSix.localOnly'));
       return;
     }
 
     requestRoundReset(
-      'Switching the Lines endgame resets the active best of 5.',
+      t('setup.switchEndgameConfirm'),
       () => {
         setLinesEndgameMode(nextEndgameMode);
         if (nextEndgameMode !== 'standard') {
@@ -982,7 +1032,7 @@ export function App() {
     }
 
     requestRoundReset(
-      'Switching sides ends the current round without scoring it.',
+      t('setup.switchSideConfirm'),
       () => {
         setHumanSide(side);
         resetRound();
@@ -1002,7 +1052,7 @@ export function App() {
 
     setPieDecisionDone(true);
     setPiePromptOpen(false);
-    flashNotice(swap ? 'Sides swapped' : 'Sides kept');
+    flashNotice(swap ? t('notice.sidesSwapped') : t('notice.sidesKept'));
   };
 
   const closeGuide = () => {
@@ -1017,12 +1067,12 @@ export function App() {
 
   const handleTryCoach = () => {
     if (mode === 'online') {
-      flashNotice('Coach disabled online');
+      flashNotice(t('coach.disabledOnline'));
       return;
     }
 
     setCoachSetting('on');
-    flashNotice('Coach on: green scores, red blocks');
+    flashNotice(t('coach.onNotice'));
   };
 
   const restoreStageForMobile = useCallback(() => {
@@ -1081,7 +1131,7 @@ export function App() {
     }
 
     if (mode === 'online' && !online.sendRoundReset()) {
-      flashNotice('Reconnect the room before resetting');
+      flashNotice(t('notice.reconnectReset'));
       return;
     }
 
@@ -1090,7 +1140,7 @@ export function App() {
 
   const handleResetMatch = () => {
     if (mode === 'online' && !online.sendMatchReset()) {
-      flashNotice('Reconnect the room before resetting');
+      flashNotice(t('notice.reconnectReset'));
       return;
     }
 
@@ -1131,7 +1181,7 @@ export function App() {
     }
 
     try {
-      await navigator.clipboard.writeText(dailyPuzzleResult.shareText);
+      await navigator.clipboard.writeText(getDailyPuzzleShareText(i18n, dailyPuzzle));
       setDailyPuzzleShareCopied(true);
 
       if (dailyShareTimeoutRef.current !== null) {
@@ -1145,40 +1195,44 @@ export function App() {
     } catch {
       setDailyPuzzleShareCopied(false);
     }
-  }, [dailyPuzzleResult]);
+  }, [dailyPuzzle, dailyPuzzleResult, i18n]);
 
   const openerText = useMemo(() => {
     if (mode === 'solo') {
-      return opener === humanSide ? 'You open' : 'AI opens';
+      return opener === humanSide ? t('result.opensYou') : t('result.opensAi');
     }
 
-    return `${opener} opens`;
-  }, [humanSide, mode, opener]);
+    return t('result.opensPlayer', { player: opener });
+  }, [humanSide, mode, opener, t]);
 
   const nextOpenerText = useMemo(() => {
     if (mode === 'solo') {
-      return match.nextOpener === humanSide ? 'You open' : 'AI opens';
+      return match.nextOpener === humanSide
+        ? t('result.opensYou')
+        : t('result.opensAi');
     }
 
-    return `${match.nextOpener} opens`;
-  }, [humanSide, match.nextOpener, mode]);
+    return t('result.opensPlayer', { player: match.nextOpener });
+  }, [humanSide, match.nextOpener, mode, t]);
 
   const openedByText = useMemo(() => {
     if (mode === 'solo') {
-      return opener === humanSide ? 'You opened' : 'AI opened';
+      return opener === humanSide
+        ? t('result.openedYou')
+        : t('result.openedAi');
     }
 
-    return `${opener} opened`;
-  }, [humanSide, mode, opener]);
+    return t('result.openedPlayer', { player: opener });
+  }, [humanSide, mode, opener, t]);
 
   const openedText = useMemo(() => {
     const context =
       ruleset === 'lines' && (result.winner || result.isDraw)
-        ? 'Final board filled - '
+        ? `${t('lines.finalBoardFilled')} - `
         : '';
     const nextContext = match.isComplete
-      ? 'Match complete'
-      : `${nextOpenerText} next`;
+      ? t('match.complete')
+      : t('match.nextContext', { opener: nextOpenerText });
 
     return `${context}${openedByText} - ${nextContext}`;
   }, [
@@ -1188,6 +1242,7 @@ export function App() {
     result.isDraw,
     result.winner,
     ruleset,
+    t,
   ]);
 
   const resultLabel = useMemo(() => {
@@ -1195,35 +1250,43 @@ export function App() {
       return null;
     }
 
-    const roundPrefix = `Round ${match.roundNumber}: `;
+    const withRound = (text: string) =>
+      t('result.roundPrefix', { round: match.roundNumber, text });
 
     if (ruleset === 'lines') {
       const scoreText = `${result.lineScores.X}\u2013${result.lineScores.O}`;
 
       if (result.isDraw) {
-        return `${roundPrefix}Draw by lines, ${scoreText}`;
+        return withRound(t('result.drawByLines', { score: scoreText }));
       }
 
       if (mode === 'solo') {
         return result.winner === humanSide
-          ? `${roundPrefix}You win by lines, ${scoreText}`
-          : `${roundPrefix}AI wins by lines, ${scoreText}`;
+          ? withRound(t('result.youWinByLines', { score: scoreText }))
+          : withRound(t('result.aiWinsByLines', { score: scoreText }));
       }
 
-      return `${roundPrefix}${result.winner} wins by lines, ${scoreText}`;
+      return withRound(
+        t('result.playerWinsByLines', {
+          player: result.winner ?? '',
+          score: scoreText,
+        }),
+      );
     }
 
     if (result.isDraw) {
-      return `${roundPrefix}Round drawn`;
+      return withRound(t('result.roundDrawn'));
     }
 
     if (mode === 'solo') {
       return result.winner === humanSide
-        ? `${roundPrefix}You win the round`
-        : `${roundPrefix}AI wins the round`;
+        ? withRound(t('result.youWinRound'))
+        : withRound(t('result.aiWinsRound'));
     }
 
-    return `${roundPrefix}${result.winner} wins the round`;
+    return withRound(
+      t('result.playerWinsRound', { player: result.winner ?? '' }),
+    );
   }, [
     humanSide,
     match.roundNumber,
@@ -1233,6 +1296,7 @@ export function App() {
     result.lineScores.X,
     result.winner,
     ruleset,
+    t,
   ]);
 
   const matchWinnerText = useMemo(() => {
@@ -1256,20 +1320,25 @@ export function App() {
       const humanWins = match.score[humanSide];
       const aiWins = match.score[getOtherPlayer(humanSide)];
       return match.winner === humanSide
-        ? `You win the match, ${humanWins}\u2013${aiWins}`
-        : `AI wins the match, ${aiWins}\u2013${humanWins}`;
+        ? t('result.youWinMatch', { score: `${humanWins}\u2013${aiWins}` })
+        : t('result.aiWinsMatch', { score: `${aiWins}\u2013${humanWins}` });
     }
 
-    return `${match.winner} wins the match, ${match.score.X}\u2013${match.score.O}`;
-  }, [humanSide, match.score, match.winner, matchWinnerText, mode]);
+    return t('result.playerWinsMatch', {
+      player: match.winner,
+      score: `${match.score.X}\u2013${match.score.O}`,
+    });
+  }, [humanSide, match.score, match.winner, matchWinnerText, mode, t]);
 
   return (
-    <main
-      className="app-shell"
-      data-layout={layout}
-      data-theme={themeId}
-      style={themeStyle}
-    >
+    <I18nProvider value={i18n}>
+      <main
+        className="app-shell"
+        data-layout={layout}
+        data-theme={themeId}
+        lang={language}
+        style={themeStyle}
+      >
       <GameStage
         ref={stageRef}
         board={board}
@@ -1348,10 +1417,12 @@ export function App() {
           coachDisabledOnline: mode === 'online',
           coachEnabled,
           coachSetting,
+          language,
           layout,
           soundSetting,
           themeId,
           onCoachSettingChange: setCoachSetting,
+          onLanguageChange: setLanguage,
           onLayoutChange: handleLayoutChange,
           onThemeChange: setThemeId,
           onToggleSound: () =>
@@ -1366,7 +1437,7 @@ export function App() {
           lastMove,
           lineScores: result.lineScores,
           linesBonusScores,
-          linesEndgameText: linesEndgame?.text ?? null,
+          linesEndgameText: formatLinesEndgameText(i18n, linesEndgame),
           lifetimeScore,
           match,
           matchWinnerText,
@@ -1414,6 +1485,7 @@ export function App() {
         onKeepPie={() => resolvePieDecision(false)}
         onSwapPie={() => resolvePieDecision(true)}
       />
-    </main>
+      </main>
+    </I18nProvider>
   );
 }

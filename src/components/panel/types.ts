@@ -23,6 +23,7 @@ import type {
   LinesEndgameMode,
 } from '../../game/finalSixPowers';
 import type { ThemeId } from '../../theme';
+import type { Locale } from '../../i18n';
 
 export type SoundSetting = 'on' | 'off';
 export type CoachSetting = 'auto' | 'on' | 'off';
@@ -93,10 +94,12 @@ export type PanelOptionsProps = {
   coachDisabledOnline: boolean;
   coachEnabled: boolean;
   coachSetting: CoachSetting;
+  language: Locale;
   layout: BoardLayout;
   soundSetting: SoundSetting;
   themeId: ThemeId;
   onCoachSettingChange: (setting: CoachSetting) => void;
+  onLanguageChange: (language: Locale) => void;
   onLayoutChange: (layout: BoardLayout) => void;
   onThemeChange: (themeId: ThemeId) => void;
   onToggleSound: () => void;

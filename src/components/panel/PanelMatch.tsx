@@ -1,11 +1,14 @@
 import { Lightbulb, Shield, Sparkles, Zap } from 'lucide-react';
 import {
-  FINAL_SIX_POWER_DESCRIPTION,
-  FINAL_SIX_POWER_LABEL,
   FINAL_SIX_POWER_OPTIONS,
-  FINAL_SIX_POWER_SHORT_LABEL,
   type FinalSixPowerId,
 } from '../../game/finalSixPowers';
+import {
+  labelPower,
+  labelPowerDescription,
+  labelPowerShort,
+  useI18n,
+} from '../../i18n';
 import type { PanelMatchProps } from './types';
 
 const POWER_PLAYERS = ['X', 'O'] as const;
@@ -37,6 +40,8 @@ export function PanelMatch({
   onPowerSelectionChange,
   onTryCoach,
 }: PanelMatchProps) {
+  const i18n = useI18n();
+  const { t } = i18n;
   const powerOptions = FINAL_SIX_POWER_OPTIONS[finalSixPowers.mode];
   const showMatchActivity =
     canShowPowerPanel || coachEnabled || showCoachPrompt || showFinalSixNudge;
@@ -46,83 +51,84 @@ export function PanelMatch({
   }
 
   return (
-    <section className="panel-section panel-section-match" aria-label="Match">
+    <section className="panel-section panel-section-match" aria-label={t('aria.match')}>
       <div className="panel-section-heading">
-        <span>Match</span>
-        <small>Live help and Final Six state</small>
+        <span>{t('match.match')}</span>
+        <small>{t('finalSix.title')}</small>
       </div>
 
       <div className="panel-section-body">
         {showFinalSixNudge ? (
-          <div className="coach-prompt final-six-nudge" aria-label="Final Six powers hint">
+          <div className="coach-prompt final-six-nudge" aria-label={t('aria.powerHint')}>
             <div>
-              <strong>Final Six Powers</strong>
+              <strong>{t('finalSix.title')}</strong>
               <span>
-                The cube is charged. Pick a glowing cell to turn the endgame into
-                a visible board effect.
+                {t('finalSix.copy')}
               </span>
             </div>
             <button type="button" onClick={onDismissFinalSixNudge}>
               <Sparkles size={15} />
-              <span>Got it</span>
+              <span>{t('action.gotIt')}</span>
             </button>
           </div>
         ) : null}
 
         {coachEnabled ? (
-          <div className="coach-legend" aria-label="Coach legend">
+          <div className="coach-legend" aria-label={t('aria.coachLegend')}>
             <span>
               <i className="legend-dot legend-score" aria-hidden="true" />
-              Score
+              {t('coach.legend.score')}
             </span>
             <span>
               <i className="legend-dot legend-block" aria-hidden="true" />
-              Block
+              {t('coach.legend.block')}
             </span>
             <span>
               <i className="legend-dot legend-both" aria-hidden="true" />
-              Score + block
+              {t('coach.legend.both')}
             </span>
           </div>
         ) : null}
 
         {showCoachPrompt ? (
-          <div className="coach-prompt" aria-label="Try Coach prompt">
+          <div className="coach-prompt" aria-label={t('aria.coachPrompt')}>
             <div>
-              <strong>Try Coach</strong>
-              <span>See scoring moves, blocks, and cross-floor threats.</span>
+              <strong>{t('coach.tryTitle')}</strong>
+              <span>{t('coach.tryText')}</span>
             </div>
             <button type="button" onClick={onTryCoach}>
               <Lightbulb size={15} />
-              <span>Try Coach</span>
+              <span>{t('action.tryCoach')}</span>
             </button>
           </div>
         ) : null}
 
         {canShowPowerPanel ? (
-          <div className="power-card" aria-label="Final Six Powers">
+          <div className="power-card" aria-label={t('aria.powers')}>
             <div className="power-header">
               <div>
-                <span>Final Six</span>
-                <strong>Final Six Powers (beta)</strong>
+                <span>{t('finalSix.heading')}</span>
+                <strong>{t('endgame.finalSixPowers')}</strong>
               </div>
               <span className="power-score">
-                Bonus {linesBonusScores.X}-{linesBonusScores.O}
+                {t('lines.bonus')} {linesBonusScores.X}-{linesBonusScores.O}
               </span>
             </div>
 
             {finalSixPowers.phase === 'inactive' ? (
-              <p className="power-copy">At Final Six, choose on the board.</p>
+              <p className="power-copy">{t('finalSix.chooseBoard')}</p>
             ) : null}
 
             {finalSixPowers.phase === 'choosing' ? (
               <>
                 <div className="power-draft-status" aria-live="polite">
-                  <strong>Choose on board</strong>
+                  <strong>{t('finalSix.chooseOnBoard')}</strong>
                   <span>
                     {mode === 'solo' && !canHumanChoosePower
-                      ? 'AI chooses'
-                      : `${powerPicker ?? '-'} chooses`}
+                      ? t('finalSix.pickerAi')
+                      : t('finalSix.pickerPlayer', {
+                          player: powerPicker ?? '-',
+                        })}
                   </span>
                 </div>
                 <div className="power-options">
@@ -135,11 +141,11 @@ export function PanelMatch({
                       }`}
                       disabled={!powerPicker || !canHumanChoosePower}
                       type="button"
-                      title={FINAL_SIX_POWER_DESCRIPTION[power]}
+                      title={labelPowerDescription(i18n, power)}
                       onClick={() => onPowerSelectionChange(power)}
                     >
                       {powerIcon(power)}
-                      <span>{FINAL_SIX_POWER_SHORT_LABEL[power]}</span>
+                      <span>{labelPowerShort(i18n, power)}</span>
                     </button>
                   ))}
                 </div>
@@ -153,9 +159,9 @@ export function PanelMatch({
                   const target =
                     choice?.id === 'power-cell' ||
                     choice?.id === 'charged-cell'
-                      ? `Cell ${(choice.cell ?? 0) + 1}`
+                      ? t('puzzle.cell', { cell: (choice.cell ?? 0) + 1 })
                       : choice?.line
-                        ? `Cells ${choice.line
+                        ? `${t('power.cell')} ${choice.line
                             .map((cell) => cell + 1)
                             .join('-')}`
                         : '-';
@@ -163,14 +169,14 @@ export function PanelMatch({
                   return (
                     <div key={player} className="power-player-row">
                       <div>
-                        <span>{player} Power</span>
+                        <span>{t('finalSix.playerPower', { player })}</span>
                         <strong>
-                          {choice ? FINAL_SIX_POWER_LABEL[choice.id] : '-'}
+                          {choice ? labelPower(i18n, choice.id) : '-'}
                         </strong>
-                        <small>{choice ? target : 'Not chosen'}</small>
+                        <small>{choice ? target : t('power.notChosen')}</small>
                       </div>
                       <span className={choice?.triggered ? 'used' : 'ready'}>
-                        {choice?.triggered ? 'Used' : 'Ready'}
+                        {choice?.triggered ? t('finalSix.used') : t('finalSix.ready')}
                       </span>
                     </div>
                   );

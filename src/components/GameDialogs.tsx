@@ -1,4 +1,5 @@
 import { KeyboardEvent, useEffect, useRef } from 'react';
+import { useI18n } from '../i18n';
 
 export type PendingConfirm = {
   message: string;
@@ -26,6 +27,7 @@ export function GameDialogs({
   onKeepPie,
   onSwapPie,
 }: GameDialogsProps) {
+  const { t } = useI18n();
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const activeDialog = pendingConfirm
@@ -112,7 +114,7 @@ export function GameDialogs({
           className="confirm-overlay"
           role="dialog"
           aria-modal="true"
-          aria-label="Abandon this round?"
+          aria-label={t('confirm.abandon')}
           onKeyDown={handleDialogKeyDown}
           onClick={onCancelConfirm}
         >
@@ -121,7 +123,7 @@ export function GameDialogs({
             className="confirm-card"
             onClick={(event) => event.stopPropagation()}
           >
-            <strong>Abandon this round?</strong>
+            <strong>{t('confirm.abandon')}</strong>
             <p>{pendingConfirm.message}</p>
             <div className="confirm-actions">
               <button
@@ -129,14 +131,14 @@ export function GameDialogs({
                 type="button"
                 onClick={onCancelConfirm}
               >
-                Keep playing
+                {t('action.keepPlaying')}
               </button>
               <button
                 className="primary-action"
                 type="button"
                 onClick={onConfirmPending}
               >
-                Switch
+                {t('action.switch')}
               </button>
             </div>
           </div>
@@ -148,26 +150,26 @@ export function GameDialogs({
           className="confirm-overlay"
           role="dialog"
           aria-modal="true"
-          aria-label="Pie Rule decision"
+          aria-label={t('aria.pieDecision')}
           onKeyDown={handleDialogKeyDown}
         >
           <div ref={dialogRef} className="confirm-card">
-            <strong>Pie Rule</strong>
-            <p>The second player may swap sides after the first move.</p>
+            <strong>{t('dialog.pieRule')}</strong>
+            <p>{t('dialog.pieBody')}</p>
             <div className="confirm-actions">
               <button
                 className="secondary-action"
                 type="button"
                 onClick={onKeepPie}
               >
-                Keep sides
+                {t('dialog.keepSides')}
               </button>
               <button
                 className="primary-action"
                 type="button"
                 onClick={onSwapPie}
               >
-                Swap sides
+                {t('dialog.swapSides')}
               </button>
             </div>
           </div>
@@ -179,7 +181,7 @@ export function GameDialogs({
           className="confirm-overlay"
           role="dialog"
           aria-modal="true"
-          aria-label="How to play"
+          aria-label={t('aria.howToPlay')}
           onKeyDown={handleDialogKeyDown}
           onClick={onCloseGuide}
         >
@@ -188,7 +190,7 @@ export function GameDialogs({
             className="confirm-card guide-card"
             onClick={(event) => event.stopPropagation()}
           >
-            <strong>How to play</strong>
+            <strong>{t('dialog.howToPlay')}</strong>
             <svg
               aria-hidden="true"
               className="guide-diagram"
@@ -224,16 +226,16 @@ export function GameDialogs({
             </svg>
             <ul className="guide-list">
               <li>
-                <strong>Lines is the main game.</strong> Keep playing until all
-                27 cells fill; every 3-cell row scores, and the higher total wins.
+                <strong>{t('dialog.guideLine1Title')}</strong>{' '}
+                {t('dialog.guideLine1Body')}
               </li>
               <li>
-                <strong>3D lines cross floors.</strong> Cells 1, 14, and 27 form
-                one diagonal through the cube.
+                <strong>{t('dialog.guideLine2Title')}</strong>{' '}
+                {t('dialog.guideLine2Body')}
               </li>
             </ul>
             <button className="primary-action" type="button" onClick={onCloseGuide}>
-              Got it
+              {t('action.gotIt')}
             </button>
           </div>
         </div>

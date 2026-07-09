@@ -12,11 +12,15 @@ import {
   X,
 } from 'lucide-react';
 import {
-  DIFFICULTY_LABEL,
   DIFFICULTY_OPTIONS,
-  RULESET_LABEL,
   RULESET_OPTIONS,
-  } from '../../game/options';
+} from '../../game/options';
+import {
+  labelDifficulty,
+  labelRuleset,
+  translateOnlineMessage,
+  useI18n,
+} from '../../i18n';
 import type { PanelSetupProps } from './types';
 import { usePanelDisclosure } from './usePanelDisclosure';
 
@@ -41,21 +45,31 @@ export function PanelSetup({
   onSideChange,
 }: PanelSetupProps) {
   const [open, setOpen] = usePanelDisclosure('3dxox-panel-setup-open', true);
+  const i18n = useI18n();
+  const { t } = i18n;
   const onlineSettingsText = online.settings
     ? online.settings.ruleset === 'classic'
-      ? `${RULESET_LABEL[online.settings.ruleset]} room - Pie ${
-          online.settings.classicPieRule ? 'on' : 'off'
-        }`
-      : `${RULESET_LABEL[online.settings.ruleset]} room`
-    : `${RULESET_LABEL[ruleset]} room`;
+      ? t('online.roomRulesClassic', {
+          pie: online.settings.classicPieRule ? t('game.pieOn') : t('game.pieOff'),
+          ruleset: labelRuleset(i18n, online.settings.ruleset),
+        })
+      : t('online.roomRulesLines', {
+          ruleset: labelRuleset(i18n, online.settings.ruleset),
+        })
+    : t('online.roomRulesLines', { ruleset: labelRuleset(i18n, ruleset) });
   const onlineStatusText = online.isConfigured
-    ? online.status
-    : 'not configured';
+    ? t(`online.status.${online.status}`)
+    : t('online.notConfigured');
   const onlineServerText = online.isConfigured
     ? online.serverUrlSource === 'local'
-      ? 'Local server'
-      : 'Production server'
-    : 'Missing server';
+      ? t('online.localServer')
+      : t('online.productionServer')
+    : t('online.missingServer');
+  const onlineError = translateOnlineMessage(i18n, online.error);
+  const configurationError = translateOnlineMessage(
+    i18n,
+    online.configurationError,
+  );
 
   return (
     <details
@@ -64,111 +78,115 @@ export function PanelSetup({
       onToggle={(event) => setOpen(event.currentTarget.open)}
     >
       <summary>
-        <span>Setup</span>
-        <small>Changing these starts a new round</small>
+        <span>{t('setup.title')}</span>
+        <small>{t('setup.changingStarts')}</small>
       </summary>
 
       <div className="panel-section-body">
         <div className="control-group">
-          <span className="control-label">Mode</span>
+          <span className="control-label">{t('setup.mode')}</span>
           <div className="segmented-control mode-control">
             <button
-              aria-label="AI"
+              aria-label={t('game.ai')}
               className={mode === 'solo' ? 'active' : ''}
-              title="AI"
+              title={t('game.ai')}
               type="button"
               onClick={() => onModeChange('solo')}
             >
               <Brain size={17} />
-              <span>AI</span>
+              <span>{t('game.ai')}</span>
             </button>
             <button
-              aria-label="2P"
+              aria-label={t('game.twoPlayer')}
               className={mode === 'duo' ? 'active' : ''}
-              title="2P"
+              title={t('game.twoPlayer')}
               type="button"
               onClick={() => onModeChange('duo')}
             >
               <Swords size={17} />
-              <span>2P</span>
+              <span>{t('game.twoPlayer')}</span>
             </button>
             <button
-              aria-label="Online"
+              aria-label={t('game.online')}
               className={mode === 'online' ? 'active' : ''}
-              title="Online"
+              title={t('game.online')}
               type="button"
               onClick={() => onModeChange('online')}
             >
               <Wifi size={17} />
-              <span>Online</span>
+              <span>{t('game.online')}</span>
             </button>
           </div>
         </div>
 
         <div className="control-group">
-          <span className="control-label">Rules</span>
+          <span className="control-label">{t('setup.rules')}</span>
           <div className="segmented-control ruleset-control">
-            {RULESET_OPTIONS.map((option) => (
-              <button
-                key={option}
-                aria-label={RULESET_LABEL[option]}
-                className={ruleset === option ? 'active' : ''}
-                disabled={onlineRulesLocked}
-                title={RULESET_LABEL[option]}
-                type="button"
-                onClick={() => onRulesetChange(option)}
-              >
-                {option === 'lines' ? (
-                  <ListChecks size={16} />
-                ) : (
-                  <Trophy size={16} />
-                )}
-                <span>{RULESET_LABEL[option]}</span>
-              </button>
-            ))}
+            {RULESET_OPTIONS.map((option) => {
+              const label = labelRuleset(i18n, option);
+
+              return (
+                <button
+                  key={option}
+                  aria-label={label}
+                  className={ruleset === option ? 'active' : ''}
+                  disabled={onlineRulesLocked}
+                  title={label}
+                  type="button"
+                  onClick={() => onRulesetChange(option)}
+                >
+                  {option === 'lines' ? (
+                    <ListChecks size={16} />
+                  ) : (
+                    <Trophy size={16} />
+                  )}
+                  <span>{label}</span>
+                </button>
+              );
+            })}
           </div>
         </div>
 
         {ruleset === 'lines' ? (
           <div className="control-group">
-            <span className="control-label">Endgame</span>
+            <span className="control-label">{t('setup.endgame')}</span>
             <div className="segmented-control endgame-control">
               <button
-                aria-label="Standard"
+                aria-label={t('endgame.standard')}
                 className={linesEndgameMode === 'standard' ? 'active' : ''}
                 disabled={mode === 'online'}
-                title="Standard"
+                title={t('endgame.standard')}
                 type="button"
                 onClick={() => onEndgameModeChange('standard')}
               >
                 <ListChecks size={16} />
-                <span>Standard</span>
+                <span>{t('endgame.standard')}</span>
               </button>
               <button
-                aria-label="Final Six Powers (beta)"
+                aria-label={t('endgame.finalSixPowers')}
                 className={linesEndgameMode === 'powers-v3' ? 'active' : ''}
                 disabled={mode === 'online'}
-                title="Final Six Powers (beta)"
+                title={t('endgame.finalSixPowers')}
                 type="button"
                 onClick={() => onEndgameModeChange('powers-v3')}
               >
                 <Sparkles size={16} />
-                <span>Final Six Powers (beta)</span>
+                <span>{t('endgame.finalSixPowers')}</span>
               </button>
             </div>
             {mode === 'online' ? (
               <p className="control-note">
-                Final Six Powers are local prototype only
+                {t('finalSix.localOnly')}
               </p>
             ) : linesEndgameMode === 'powers-v3' ? (
-              <p className="control-note">Final Six charges the cube</p>
+              <p className="control-note">{t('finalSix.chargesCube')}</p>
             ) : null}
           </div>
         ) : null}
 
         {mode === 'solo' ? (
           <div className="control-group">
-            <span className="control-label">You play</span>
+            <span className="control-label">{t('setup.youPlay')}</span>
             <div className="segmented-control">
               <button
                 aria-label="X"
@@ -196,21 +214,25 @@ export function PanelSetup({
 
         {mode === 'solo' ? (
           <div className="control-group">
-            <span className="control-label">AI</span>
+            <span className="control-label">{t('setup.difficulty')}</span>
             <div className="segmented-control difficulty-control">
-              {DIFFICULTY_OPTIONS.map((level) => (
-                <button
-                  key={level}
-                  aria-label={DIFFICULTY_LABEL[level]}
-                  className={difficulty === level ? 'active' : ''}
-                  title={DIFFICULTY_LABEL[level]}
-                  type="button"
-                  onClick={() => onDifficultyChange(level)}
-                >
-                  <Sparkles size={16} />
-                  <span>{DIFFICULTY_LABEL[level]}</span>
-                </button>
-              ))}
+              {DIFFICULTY_OPTIONS.map((level) => {
+                const label = labelDifficulty(i18n, level);
+
+                return (
+                  <button
+                    key={level}
+                    aria-label={label}
+                    className={difficulty === level ? 'active' : ''}
+                    title={label}
+                    type="button"
+                    onClick={() => onDifficultyChange(level)}
+                  >
+                    <Sparkles size={16} />
+                    <span>{label}</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
         ) : null}
@@ -226,40 +248,44 @@ export function PanelSetup({
                 {onlineStatusText}
               </span>
               <strong>
-                {online.localPlayer ? `${online.localPlayer} local` : 'No side'}
+                {online.localPlayer
+                  ? t('game.playerLocal', { player: online.localPlayer })
+                  : t('game.noSide')}
               </strong>
             </div>
             <div className="online-settings">
               <span>{onlineSettingsText}</span>
-              <strong>{onlineRulesLocked ? 'Locked' : 'Host decides'}</strong>
+              <strong>
+                {onlineRulesLocked ? t('online.locked') : t('online.hostDecides')}
+              </strong>
             </div>
             <div className="online-settings">
-              <span>Server</span>
+              <span>{t('online.server')}</span>
               <strong>{onlineServerText}</strong>
             </div>
             <p className="online-hint">
-              Coach disabled online. Final Six Powers are local prototype only.
+              {t('online.hint')}
             </p>
             {!online.isConfigured ? (
               <div className="online-banner online-banner-warning">
                 <Unplug size={15} />
-                <span>{online.configurationError}</span>
+                <span>{configurationError}</span>
               </div>
             ) : null}
             {online.status === 'disconnected' ? (
               <div className="online-banner">
                 <Unplug size={15} />
-                <span>Room paused — reconnect or wait for the opponent.</span>
+                <span>{t('online.reconnectWait')}</span>
                 {online.canReconnect ? (
                   <button type="button" onClick={() => void online.reconnect()}>
-                    Reconnect
+                    {t('action.reconnect')}
                   </button>
                 ) : null}
               </div>
             ) : null}
             {online.status === 'waiting' ? (
               <p className="online-hint">
-                Waiting for an opponent — share the room code.
+                {t('online.waiting')}
               </p>
             ) : null}
             <div className="online-actions">
@@ -269,20 +295,20 @@ export function PanelSetup({
                 onClick={onHostOnline}
               >
                 <Link2 size={16} />
-                <span>Host</span>
+                <span>{t('action.host')}</span>
               </button>
               <button type="button" onClick={online.close}>
                 <Unplug size={16} />
-                <span>Clear</span>
+                <span>{t('action.clear')}</span>
               </button>
             </div>
             <label className="signal-field">
-              <span>Room</span>
+              <span>{t('online.room')}</span>
               <input
                 className="room-code-field"
                 readOnly
                 value={online.localSignal}
-                placeholder="Room code"
+                placeholder={t('online.roomCode')}
               />
             </label>
             <div className="online-actions">
@@ -292,15 +318,15 @@ export function PanelSetup({
                 onClick={onCopySignal}
               >
                 <Clipboard size={16} />
-                <span>{copiedSignal ? 'Copied' : 'Copy'}</span>
+                <span>{copiedSignal ? t('action.copied') : t('action.copy')}</span>
               </button>
             </div>
             <label className="signal-field">
-              <span>Join</span>
+              <span>{t('action.join')}</span>
               <input
                 className="room-code-field"
                 value={remoteSignal}
-                placeholder="Room code"
+                placeholder={t('online.roomCode')}
                 onChange={(event) => onRemoteSignalChange(event.target.value)}
               />
             </label>
@@ -314,9 +340,9 @@ export function PanelSetup({
               type="button"
               onClick={onOnlineSignal}
             >
-              Join
+              {t('action.join')}
             </button>
-            {online.error ? <p className="online-error">{online.error}</p> : null}
+            {onlineError ? <p className="online-error">{onlineError}</p> : null}
           </div>
         ) : null}
       </div>

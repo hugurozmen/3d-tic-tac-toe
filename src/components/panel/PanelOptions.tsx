@@ -1,4 +1,10 @@
-import { Lightbulb, Volume2, VolumeX } from 'lucide-react';
+import { Languages, Lightbulb, Volume2, VolumeX } from 'lucide-react';
+import {
+  labelLocale,
+  labelTheme,
+  LOCALE_OPTIONS,
+  useI18n,
+} from '../../i18n';
 import { THEME_ORDER, THEMES } from '../../theme';
 import { ViewSelector } from '../ViewSelector';
 import type { PanelOptionsProps } from './types';
@@ -8,15 +14,19 @@ export function PanelOptions({
   coachDisabledOnline,
   coachEnabled,
   coachSetting,
+  language,
   layout,
   soundSetting,
   themeId,
   onCoachSettingChange,
+  onLanguageChange,
   onLayoutChange,
   onThemeChange,
   onToggleSound,
 }: PanelOptionsProps) {
   const [open, setOpen] = usePanelDisclosure('3dxox-panel-options-open', false);
+  const i18n = useI18n();
+  const { t } = i18n;
 
   return (
     <details
@@ -25,11 +35,34 @@ export function PanelOptions({
       onToggle={(event) => setOpen(event.currentTarget.open)}
     >
       <summary>
-        <span>Options</span>
-        <small>View, theme, sound, Coach</small>
+        <span>{t('options.title')}</span>
+        <small>{t('options.subtitle')}</small>
       </summary>
 
       <div className="panel-section-body">
+        <div className="control-group">
+          <span className="control-label">{t('language.label')}</span>
+          <div className="segmented-control language-control">
+            {LOCALE_OPTIONS.map((locale) => {
+              const label = labelLocale(i18n, locale);
+
+              return (
+                <button
+                  key={locale}
+                  aria-label={label}
+                  className={language === locale ? 'active' : ''}
+                  title={label}
+                  type="button"
+                  onClick={() => onLanguageChange(locale)}
+                >
+                  <Languages size={16} />
+                  <span>{label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         <ViewSelector
           className="panel-view-selector"
           layout={layout}
@@ -37,10 +70,11 @@ export function PanelOptions({
         />
 
         <div className="control-group">
-          <span className="control-label">Style</span>
+          <span className="control-label">{t('options.style')}</span>
           <div className="theme-grid">
             {THEME_ORDER.map((id) => {
               const option = THEMES[id];
+              const label = labelTheme(i18n, id);
 
               return (
                 <button
@@ -58,7 +92,7 @@ export function PanelOptions({
                     <span style={{ background: option.scene.o }} />
                     <span style={{ background: option.scene.edge }} />
                   </span>
-                  <span>{option.label}</span>
+                  <span>{label}</span>
                 </button>
               );
             })}
@@ -66,12 +100,12 @@ export function PanelOptions({
         </div>
 
         <div className="control-group">
-          <span className="control-label">Sound</span>
+          <span className="control-label">{t('options.sound')}</span>
           <div className="segmented-control">
             <button
-              aria-label="On"
+              aria-label={t('sound.on')}
               className={soundSetting === 'on' ? 'active' : ''}
-              title="On"
+              title={t('sound.on')}
               type="button"
               onClick={() => {
                 if (soundSetting !== 'on') {
@@ -80,12 +114,12 @@ export function PanelOptions({
               }}
             >
               <Volume2 size={16} />
-              <span>On</span>
+              <span>{t('sound.on')}</span>
             </button>
             <button
-              aria-label="Off"
+              aria-label={t('sound.off')}
               className={soundSetting === 'off' ? 'active' : ''}
-              title="Off"
+              title={t('sound.off')}
               type="button"
               onClick={() => {
                 if (soundSetting !== 'off') {
@@ -94,32 +128,32 @@ export function PanelOptions({
               }}
             >
               <VolumeX size={16} />
-              <span>Off</span>
+              <span>{t('sound.off')}</span>
             </button>
           </div>
         </div>
 
         <div className="control-group">
-          <span className="control-label">Coach</span>
+          <span className="control-label">{t('options.coach')}</span>
           <div className="segmented-control coach-control">
             {(['auto', 'on', 'off'] as const).map((setting) => (
               <button
                 key={setting}
                 aria-label={
                   setting === 'auto'
-                    ? 'Auto'
+                    ? t('coach.auto')
                     : setting === 'on'
-                      ? 'On'
-                      : 'Off'
+                      ? t('sound.on')
+                      : t('sound.off')
                 }
                 className={coachSetting === setting ? 'active' : ''}
                 disabled={coachDisabledOnline}
                 title={
                   setting === 'auto'
-                    ? 'Auto'
+                    ? t('coach.auto')
                     : setting === 'on'
-                      ? 'On'
-                      : 'Off'
+                      ? t('sound.on')
+                      : t('sound.off')
                 }
                 type="button"
                 onClick={() => onCoachSettingChange(setting)}
@@ -127,18 +161,18 @@ export function PanelOptions({
                 <Lightbulb size={16} />
                 <span>
                   {setting === 'auto'
-                    ? 'Auto'
+                    ? t('coach.auto')
                     : setting === 'on'
-                      ? 'On'
-                      : 'Off'}
+                      ? t('sound.on')
+                      : t('sound.off')}
                 </span>
               </button>
             ))}
           </div>
           {coachDisabledOnline ? (
-            <p className="control-note">Coach disabled online</p>
+            <p className="control-note">{t('coach.disabledOnline')}</p>
           ) : coachSetting === 'auto' && coachEnabled ? (
-            <p className="control-note">Coach is active automatically.</p>
+            <p className="control-note">{t('coach.activeAuto')}</p>
           ) : null}
         </div>
       </div>

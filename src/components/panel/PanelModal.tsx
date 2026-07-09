@@ -5,6 +5,7 @@ import {
   useRef,
 } from 'react';
 import { createPortal } from 'react-dom';
+import { useI18n } from '../../i18n';
 
 type PanelModalProps = {
   ariaLabel: string;
@@ -19,6 +20,7 @@ export function PanelModal({
   title,
   onClose,
 }: PanelModalProps) {
+  const { t } = useI18n();
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
 
@@ -95,7 +97,7 @@ export function PanelModal({
         <div className="panel-modal-heading">
           <strong>{title}</strong>
           <button className="secondary-action" type="button" onClick={onClose}>
-            Close
+            {t('action.close')}
           </button>
         </div>
         {children}

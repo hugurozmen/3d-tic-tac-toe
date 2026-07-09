@@ -1,5 +1,5 @@
 import { type CSSProperties, KeyboardEvent, useRef } from 'react';
-import { Board, Player } from '../game/rules';
+import { Board, Player, getOtherPlayer } from '../game/rules';
 import type { CoachHint, CoachHintKind } from '../game/coach';
 import {
   type AnimationCellMoment,
@@ -8,10 +8,12 @@ import {
   getAnimationLines,
   type GameAnimationEvent,
 } from '../game/animationEvents';
+import type { FinalSixPowerBoardEffects } from '../game/finalSixPowers';
 import {
-  FINAL_SIX_POWER_LABEL,
-  type FinalSixPowerBoardEffects,
-} from '../game/finalSixPowers';
+  labelPower,
+  translateCoachHint,
+  useI18n,
+} from '../i18n';
 import type { LinesEndgameAnalysis } from '../game/linesTension';
 import { SceneTheme, ThemeStyle } from '../theme';
 
@@ -61,7 +63,10 @@ export function ScannerBoard({
   onFloorChange,
   onSelect,
 }: ScannerBoardProps) {
+  const i18n = useI18n();
+  const { t } = i18n;
   const gridRef = useRef<HTMLDivElement | null>(null);
+  const rival = getOtherPlayer(currentPlayer);
   const lastMoveFloor = lastMove === null ? null : floorOf(lastMove);
   const classicWinningCells = new Set(winningLine);
   const scoredCells = new Set(scoredLines.flatMap((line) => line));
@@ -217,14 +222,14 @@ export function ScannerBoard({
     }
 
     if (kind === 'both') {
-      return ', score and block hints';
+      return `, ${t('cell.scoreAndBlockHint')}`;
     }
 
     if (kind === 'score') {
-      return ', score hint';
+      return `, ${t('cell.scoreHint')}`;
     }
 
-    return ', block hint';
+    return `, ${t('cell.blockHint')}`;
   };
 
   const connectorKindForCell = (index: number) =>
@@ -415,7 +420,7 @@ export function ScannerBoard({
           {FLOOR_LAYERS.map((layer) => (
             <button
               key={layer}
-              aria-label={`Show floor ${layer + 1}`}
+              aria-label={t('cell.showFloor', { floor: layer + 1 })}
               className={`scanner-ghost-layer ${layer === floor ? 'active' : ''}`}
               style={{ transform: `translateZ(${(layer - 1) * 44}px)` }}
               type="button"
@@ -442,7 +447,11 @@ export function ScannerBoard({
       <div className="scanner-center">
         <div
           ref={gridRef}
-          aria-label={`Floor ${floor + 1} board. Use arrow keys to move, Page Up and Page Down to change floors.`}
+          aria-label={
+            i18n.locale === 'tr'
+              ? `Kat ${floor + 1} tahtası. Hareket etmek için ok tuşlarını, kat değiştirmek için Page Up ve Page Down tuşlarını kullan.`
+              : `Floor ${floor + 1} board. Use arrow keys to move, Page Up and Page Down to change floors.`
+          }
           className="scanner-grid"
           role="group"
         >
@@ -458,6 +467,9 @@ export function ScannerBoard({
               const isCoachSoftScore = !value && softScoreCells.has(index);
               const isCoachBoth = isCoachScore && isCoachBlock;
               const coachHint = hintsByCell.get(index);
+              const localizedCoachHint = coachHint
+                ? translateCoachHint(i18n, coachHint, rival)
+                : null;
               const connectorKind = connectorKindForCell(index);
               const finalPhaseCell = finalPhaseCells.get(index);
               const powerCell = powerCellByCell.get(index);
@@ -562,73 +574,101 @@ export function ScannerBoard({
                 : undefined;
 
               const lineLabel = isClassicWinning
-                ? ', winning line'
+                ? `, ${t('cell.winningLine')}`
                 : isFinalLine
-                  ? ', final winning line'
+                  ? `, ${t('cell.finalLine')}`
                   : isScoredLine
-                    ? ', scored line'
+                    ? `, ${t('cell.lineScored')}`
                     : '';
               const coachLabel = isCoachBoth
-                ? `, ${coachHint?.accessibleLabel ?? 'completes and blocks lines'}`
+                ? `, ${
+                    localizedCoachHint?.accessibleLabel ??
+                    t('cell.scoresAndBlocks')
+                  }`
                 : isCoachScore
-                  ? `, ${coachHint?.accessibleLabel ?? 'completes a line'}`
+                  ? `, ${
+                      localizedCoachHint?.accessibleLabel ?? t('cell.scoresLine')
+                    }`
                   : isCoachBlock
-                    ? `, ${coachHint?.accessibleLabel ?? 'blocks a line'}`
+                    ? `, ${
+                        localizedCoachHint?.accessibleLabel ?? t('cell.blocksLine')
+                      }`
                     : isCoachSoftScore
-                      ? `, score hint available on focus: ${
-                          coachHint?.accessibleLabel ?? 'completes a line'
-                        }`
+                      ? `, ${t('cell.scoreHintFocus', {
+                          label:
+                            localizedCoachHint?.accessibleLabel ??
+                            t('cell.scoresLine'),
+                        })}`
                     : '';
               const connectorLabel =
                 !coachLabel && connectorKind
-                  ? `, part of a cross-floor ${connectorKind === 'both' ? 'score and block' : connectorKind} hint`
+                  ? `, ${t('cell.coachConnector', {
+                      kind:
+                        connectorKind === 'both'
+                          ? t('cell.scoreAndBlock')
+                          : connectorKind === 'score'
+                            ? t('coach.score').toLowerCase()
+                            : t('coach.block').toLowerCase(),
+                    })}`
                   : '';
               const finalPhaseLabel = isFinalPhaseBoth
-                ? `, final-6 scoring and blocking move, scores ${
-                    finalPhaseCell?.scoreLines ?? 1
-                  } and blocks ${finalPhaseCell?.blockLines ?? 1}`
+                ? `, ${t('cell.finalScoreBlock', {
+                    block: finalPhaseCell?.blockLines ?? 1,
+                    score: finalPhaseCell?.scoreLines ?? 1,
+                  })}`
                 : isFinalPhaseScore
-                  ? `, final-6 scoring move, scores ${
-                      finalPhaseCell?.scoreLines ?? 1
-                    }`
+                  ? `, ${t('cell.finalScore', {
+                      count: finalPhaseCell?.scoreLines ?? 1,
+                    })}`
                   : isFinalPhaseBlock
-                    ? `, final-6 blocking move, blocks ${
-                        finalPhaseCell?.blockLines ?? 1
-                      }`
+                    ? `, ${t('cell.finalBlock', {
+                        count: finalPhaseCell?.blockLines ?? 1,
+                      })}`
                     : '';
               const powerLabel = powerPreview
-                  ? `, ${powerPreview.label} preview for ${
-                    FINAL_SIX_POWER_LABEL[powerPreview.kind]
-                  }`
+                  ? `, ${t('cell.powerPreview', {
+                    label: powerPreview.label,
+                    power: labelPower(i18n, powerPreview.kind),
+                  })}`
                 : isPowerCell && powerCell
-                  ? `, ${powerCell.player} ${FINAL_SIX_POWER_LABEL[powerCell.id]}`
+                  ? `, ${powerCell.player} ${labelPower(i18n, powerCell.id)}`
                   : isPowerShieldCell && shieldChoice
-                    ? `, ${shieldChoice.player} ${FINAL_SIX_POWER_LABEL[shieldChoice.id]}`
+                    ? `, ${shieldChoice.player} ${labelPower(i18n, shieldChoice.id)}`
                   : isPowerSurge || isPowerPreviewSurge
-                    ? ', Surge Line path'
+                    ? `, ${t('cell.powerPathSurge')}`
                   : isPowerShield || isPowerPreviewShield
-                      ? ', Shield Cell path'
+                      ? `, ${t('cell.powerPathShield')}`
                     : isPowerChargedEmpty
-                      ? ', charged final-six cell'
+                      ? `, ${t('cell.chargedFinalSix')}`
                       : '';
               const animationLabel = isPowerEvent
-                ? ', power animation active'
+                ? `, ${t('cell.animation.power')}`
                 : isScoreEvent
-                  ? ', scoring animation active'
+                  ? `, ${t('cell.animation.score')}`
                   : isBlockEvent
-                    ? ', block animation active'
+                    ? `, ${t('cell.animation.block')}`
                     : isPlaceEvent
-                      ? ', placement animation active'
+                      ? `, ${t('cell.animation.place')}`
                       : '';
               const cellLabel = value
-                ? `Cell ${index + 1}, ${value}${lineLabel}${powerLabel}${animationLabel}, floor ${floor + 1}`
+                ? `${t('cell.read', {
+                    cell: index + 1,
+                    mark: value,
+                  })}${lineLabel}${powerLabel}${animationLabel}, ${t('cell.floor', {
+                    floor: floor + 1,
+                  })}`
                 : isPlayable
-                  ? `Place ${currentPlayer} at cell ${index + 1}, floor ${
-                      floor + 1
-                    }${coachLabel}${connectorLabel}${finalPhaseLabel}${powerLabel}${animationLabel}`
-                  : `Cell ${index + 1}, empty, floor ${
-                      floor + 1
-                    }${lineLabel}${coachLabel}${connectorLabel}${finalPhaseLabel}${powerLabel}${animationLabel}`;
+                  ? `${t('cell.place', {
+                      cell: index + 1,
+                      floor: floor + 1,
+                      player: currentPlayer,
+                    })}${coachLabel}${connectorLabel}${finalPhaseLabel}${powerLabel}${animationLabel}`
+                  : `${t('cell.read', {
+                      cell: index + 1,
+                      mark: t('cell.empty'),
+                    })}, ${t('cell.floor', {
+                      floor: floor + 1,
+                    })}${lineLabel}${coachLabel}${connectorLabel}${finalPhaseLabel}${powerLabel}${animationLabel}`;
 
               return (
                 <button
@@ -641,7 +681,7 @@ export function ScannerBoard({
                   data-cell-index={index}
                   disabled={!isPlayable}
                   style={cellStyle}
-                  title={coachHint?.explanation}
+                  title={localizedCoachHint?.explanation ?? coachHint?.explanation}
                   type="button"
                   onKeyDown={(event) => handleCellKeyDown(event, index)}
                   onClick={() => onSelect(index)}
@@ -711,20 +751,26 @@ export function ScannerBoard({
             },
           )}
         </div>
-        <p className="scanner-caption">Floor {floor + 1} of 3</p>
+        <p className="scanner-caption">
+          {t('scanner.caption', { floor: floor + 1 })}
+        </p>
         {firstVisibleHint ? (
           <p className={`scanner-coach-note note-${firstVisibleHint.kind}`}>
-            {firstVisibleHint.explanation}
+            {translateCoachHint(i18n, firstVisibleHint, rival).explanation}
           </p>
         ) : null}
       </div>
 
-      <div className="scanner-rail" aria-label="Floor selector">
+      <div className="scanner-rail" aria-label={t('aria.floorSelector')}>
         {RAIL_LAYERS.map((layer) => (
           <button
             key={layer}
             aria-current={layer === floor}
-            aria-label={`Floor ${layer + 1}${hintLabelForFloor(layer)}`}
+            aria-label={`${
+              i18n.locale === 'en'
+                ? `Floor ${layer + 1}`
+                : t('cell.floor', { floor: layer + 1 })
+            }${hintLabelForFloor(layer)}`}
             className={stopClass(layer)}
             type="button"
             onClick={() => onFloorChange(layer)}
