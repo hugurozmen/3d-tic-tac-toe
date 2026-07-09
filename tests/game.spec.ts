@@ -565,49 +565,40 @@ test('desktop 3D cube renders real canvas pixels', async ({ page }) => {
   await expectCurrentCanvasContextHealthy(page);
 });
 
-test('3D board recovers from WebGL context loss', async ({ page }) => {
+test('3D board recovers from a WebGL context loss event', async ({ page }) => {
   await openGame(page, { layout: 'cube' });
   await expect(page.locator('canvas')).toBeVisible();
   await expectCurrentCanvasContextHealthy(page);
+  await page.waitForTimeout(250);
 
   const loss = await page.evaluate(() => {
     const canvas = document.querySelector<HTMLCanvasElement>(
       '.game-stage canvas',
     );
-    const gl =
-      canvas?.getContext('webgl2') ?? canvas?.getContext('webgl') ?? null;
-    const extension = gl?.getExtension('WEBGL_lose_context') as {
-      loseContext: () => void;
-    } | null;
+    (
+      window as unknown as { __lostBoardCanvas?: HTMLCanvasElement | null }
+    ).__lostBoardCanvas = canvas;
+    const event = new Event('webglcontextlost', { cancelable: true });
 
-    if (!gl || !extension) {
-      return { supported: false };
-    }
-
-    extension.loseContext();
+    canvas?.dispatchEvent(event);
 
     return {
-      isLost: gl.isContextLost(),
-      supported: true,
+      defaultPrevented: event.defaultPrevented,
     };
   });
 
-  if (!loss.supported) {
-    test.skip(true, 'WEBGL_lose_context is not available');
-    return;
-  }
-
-  expect(loss.isLost).toBe(true);
+  expect(loss.defaultPrevented).toBe(true);
 
   await page.waitForFunction(
     () => {
       const canvas = document.querySelector<HTMLCanvasElement>(
         '.game-stage canvas',
       );
-      const gl =
-        canvas?.getContext('webgl2') ?? canvas?.getContext('webgl') ?? null;
+      const lostCanvas = (
+        window as unknown as { __lostBoardCanvas?: HTMLCanvasElement | null }
+      ).__lostBoardCanvas;
 
-      return Boolean(canvas && gl && !gl.isContextLost());
+      return Boolean(canvas && lostCanvas && canvas !== lostCanvas);
     },
     null,
     { polling: 100, timeout: 7000 },

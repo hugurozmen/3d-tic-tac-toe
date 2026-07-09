@@ -70,17 +70,104 @@ type OnlineHandlers = {
 };
 
 const DEFAULT_SERVER_PORT = '8787';
-const getDefaultServerUrl = () => {
-  const configured = import.meta.env.VITE_ONLINE_SERVER_URL;
+const LOCAL_HOSTS = new Set(['127.0.0.1', '::1', 'localhost']);
+const ONLINE_SERVER_MISSING =
+  'Online server is not configured. Set VITE_ONLINE_SERVER_URL to a wss:// room server before publishing Online mode.';
 
-  if (configured) {
-    return configured;
+export type OnlineServerConfig =
+  | {
+      error: null;
+      isConfigured: true;
+      source: 'env' | 'local';
+      url: string;
+    }
+  | {
+      error: string;
+      isConfigured: false;
+      source: 'invalid' | 'missing';
+      url: null;
+    };
+
+const isLocalHostname = (hostname: string) =>
+  LOCAL_HOSTS.has(hostname) ||
+  hostname.endsWith('.localhost') ||
+  hostname.endsWith('.local');
+
+const isLocalWebSocketUrl = (url: URL) => isLocalHostname(url.hostname);
+
+export const resolveOnlineServerConfig = ({
+  configured,
+  hostname,
+  protocol,
+}: {
+  configured?: string;
+  hostname: string;
+  protocol: string;
+}): OnlineServerConfig => {
+  const trimmed = configured?.trim();
+
+  if (trimmed) {
+    try {
+      const parsed = new URL(trimmed);
+
+      if (parsed.protocol !== 'ws:' && parsed.protocol !== 'wss:') {
+        return {
+          error: 'Online server URL must start with ws:// or wss://.',
+          isConfigured: false,
+          source: 'invalid',
+          url: null,
+        };
+      }
+
+      if (
+        protocol === 'https:' &&
+        parsed.protocol === 'ws:' &&
+        !isLocalWebSocketUrl(parsed)
+      ) {
+        return {
+          error:
+            'Online server must use wss:// when the game is served over HTTPS.',
+          isConfigured: false,
+          source: 'invalid',
+          url: null,
+        };
+      }
+
+      return {
+        error: null,
+        isConfigured: true,
+        source: 'env',
+        url: parsed.toString(),
+      };
+    } catch {
+      return {
+        error: 'Online server URL is invalid.',
+        isConfigured: false,
+        source: 'invalid',
+        url: null,
+      };
+    }
   }
 
-  const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-  const host = window.location.hostname || '127.0.0.1';
+  const host = hostname || '127.0.0.1';
 
-  return `${protocol}://${host}:${DEFAULT_SERVER_PORT}`;
+  if (isLocalHostname(host)) {
+    const socketProtocol = protocol === 'https:' ? 'wss' : 'ws';
+
+    return {
+      error: null,
+      isConfigured: true,
+      source: 'local',
+      url: `${socketProtocol}://${host}:${DEFAULT_SERVER_PORT}`,
+    };
+  }
+
+  return {
+    error: ONLINE_SERVER_MISSING,
+    isConfigured: false,
+    source: 'missing',
+    url: null,
+  };
 };
 
 const isPlayer = (value: unknown): value is Player =>
@@ -188,7 +275,16 @@ const parseServerMessage = (data: string): ServerMessage | null => {
 export function useOnlineGame(handlers: OnlineHandlers) {
   const handlersRef = useRef(handlers);
   const socketRef = useRef<WebSocket | null>(null);
-  const serverUrl = useMemo(getDefaultServerUrl, []);
+  const serverConfig = useMemo(
+    () =>
+      resolveOnlineServerConfig({
+        configured: import.meta.env.VITE_ONLINE_SERVER_URL,
+        hostname: window.location.hostname,
+        protocol: window.location.protocol,
+      }),
+    [],
+  );
+  const serverUrl = serverConfig.url ?? '';
   const [error, setError] = useState<string | null>(null);
   const [role, setRole] = useState<OnlineRole | null>(null);
   const [roomId, setRoomId] = useState('');
@@ -353,6 +449,11 @@ export function useOnlineGame(handlers: OnlineHandlers) {
   const openSocket = useCallback(
     () =>
       new Promise<WebSocket>((resolve, reject) => {
+        if (!serverConfig.isConfigured) {
+          reject(new Error(serverConfig.error));
+          return;
+        }
+
         const socket = new WebSocket(serverUrl);
         const timeout = window.setTimeout(() => {
           socket.close();
@@ -370,12 +471,19 @@ export function useOnlineGame(handlers: OnlineHandlers) {
           reject(new Error(`Cannot reach ${serverUrl}`));
         };
       }),
-    [attachSocket, serverUrl],
+    [attachSocket, serverConfig, serverUrl],
   );
 
   const startHost = useCallback(
     async (roomSettings: OnlineRoomSettings) => {
       close();
+
+      if (!serverConfig.isConfigured) {
+        setError(serverConfig.error);
+        setStatus('error');
+        return;
+      }
+
       setStatus('connecting');
       setRole('host');
       setSettings(roomSettings);
@@ -391,12 +499,19 @@ export function useOnlineGame(handlers: OnlineHandlers) {
         setStatus('error');
       }
     },
-    [clearSession, close, openSocket],
+    [clearSession, close, openSocket, serverConfig],
   );
 
   const joinOffer = useCallback(
     async (roomCode: string) => {
       close();
+
+      if (!serverConfig.isConfigured) {
+        setError(serverConfig.error);
+        setStatus('error');
+        return;
+      }
+
       setStatus('connecting');
       setRole('guest');
 
@@ -414,10 +529,16 @@ export function useOnlineGame(handlers: OnlineHandlers) {
         setStatus('error');
       }
     },
-    [clearSession, close, openSocket],
+    [clearSession, close, openSocket, serverConfig],
   );
 
   const reconnect = useCallback(async () => {
+    if (!serverConfig.isConfigured) {
+      setError(serverConfig.error);
+      setStatus('error');
+      return false;
+    }
+
     if (!role || !roomId || !sessionId) {
       setError('No room session to reconnect');
       setStatus('error');
@@ -446,7 +567,14 @@ export function useOnlineGame(handlers: OnlineHandlers) {
       setStatus('disconnected');
       return false;
     }
-  }, [disconnectCurrentSocket, openSocket, role, roomId, sessionId]);
+  }, [
+    disconnectCurrentSocket,
+    openSocket,
+    role,
+    roomId,
+    serverConfig,
+    sessionId,
+  ]);
 
   const send = useCallback(
     (message: PeerMessage) => {
@@ -470,8 +598,10 @@ export function useOnlineGame(handlers: OnlineHandlers) {
   return {
     canReconnect: Boolean(role && roomId && sessionId),
     close,
+    configurationError: serverConfig.error,
     error,
     isConnected: status === 'connected',
+    isConfigured: serverConfig.isConfigured,
     joinOffer,
     localPlayer,
     localSignal: roomId,
@@ -483,6 +613,7 @@ export function useOnlineGame(handlers: OnlineHandlers) {
       send({ index, player, type: 'move' }),
     sendRoundReset: () => send({ type: 'reset-round' }),
     serverUrl,
+    serverUrlSource: serverConfig.source,
     startHost,
     status,
     settings,

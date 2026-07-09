@@ -3,11 +3,61 @@ import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { WebSocket, WebSocketServer } from 'ws';
 
+const numberFromEnv = (value, fallback, { allowZero = false } = {}) => {
+  const parsed = Number(value);
+
+  if (
+    Number.isInteger(parsed) &&
+    (allowZero ? parsed >= 0 : parsed > 0)
+  ) {
+    return parsed;
+  }
+
+  return fallback;
+};
+
+const parseAllowedOrigins = (value) => {
+  if (!value) {
+    return new Set();
+  }
+
+  if (value instanceof Set) {
+    return new Set(value);
+  }
+
+  if (Array.isArray(value)) {
+    return new Set(value.map(String).map((origin) => origin.trim()).filter(Boolean));
+  }
+
+  return new Set(
+    String(value)
+      .split(',')
+      .map((origin) => origin.trim())
+      .filter(Boolean),
+  );
+};
+
 const DEFAULT_HOST = process.env.HOST ?? '0.0.0.0';
-const DEFAULT_PORT = Number(process.env.PORT ?? 8787);
-const DEFAULT_HEARTBEAT_MS = Number(process.env.HEARTBEAT_MS ?? 30000);
-const DEFAULT_REJOIN_GRACE_MS = Number(process.env.REJOIN_GRACE_MS ?? 45000);
-const DEFAULT_ROOM_TTL_MS = Number(process.env.ROOM_TTL_MS ?? 30 * 60 * 1000);
+const DEFAULT_PORT = numberFromEnv(process.env.PORT, 8787, { allowZero: true });
+const DEFAULT_HEARTBEAT_MS = numberFromEnv(process.env.HEARTBEAT_MS, 30000);
+const DEFAULT_MAX_CLIENTS = numberFromEnv(process.env.MAX_CLIENTS, 200);
+const DEFAULT_MAX_MESSAGE_BYTES = numberFromEnv(
+  process.env.MAX_MESSAGE_BYTES,
+  4096,
+);
+const DEFAULT_MAX_ROOMS = numberFromEnv(process.env.MAX_ROOMS, 100);
+const DEFAULT_REJOIN_GRACE_MS = numberFromEnv(
+  process.env.REJOIN_GRACE_MS,
+  45000,
+);
+const DEFAULT_ROOM_TTL_MS = numberFromEnv(
+  process.env.ROOM_TTL_MS,
+  30 * 60 * 1000,
+);
+const DEFAULT_ALLOWED_ORIGINS = parseAllowedOrigins(
+  process.env.ONLINE_ALLOWED_ORIGINS,
+);
+const ROOM_ID_PATTERN = /^[A-Z0-9]{5}$/;
 
 const send = (socket, message) => {
   if (socket?.readyState === WebSocket.OPEN) {
@@ -26,6 +76,12 @@ const makeRoomId = (rooms) => {
 };
 
 const makeSessionId = () => randomUUID().replaceAll('-', '').slice(0, 24);
+
+const normalizeRoomId = (value) => {
+  const roomId = String(value ?? '').trim().toUpperCase();
+
+  return ROOM_ID_PATTERN.test(roomId) ? roomId : null;
+};
 
 const DEFAULT_ROOM_SETTINGS = {
   classicPieRule: false,
@@ -76,23 +132,39 @@ const roomPlayerSlot = (player) => (player === 'X' ? 'host' : 'guest');
 const roomSessionSlot = (player) =>
   player === 'X' ? 'hostSessionId' : 'guestSessionId';
 
+const isOriginAllowed = (origin, allowedOrigins) =>
+  allowedOrigins.size === 0 ||
+  allowedOrigins.has('*') ||
+  (origin ? allowedOrigins.has(origin) : false);
+
 export const createOnlineServer = ({
+  allowedOrigins = DEFAULT_ALLOWED_ORIGINS,
   heartbeatMs = DEFAULT_HEARTBEAT_MS,
   host = DEFAULT_HOST,
+  maxClients = DEFAULT_MAX_CLIENTS,
+  maxMessageBytes = DEFAULT_MAX_MESSAGE_BYTES,
+  maxRooms = DEFAULT_MAX_ROOMS,
   port = DEFAULT_PORT,
   rejoinGraceMs = DEFAULT_REJOIN_GRACE_MS,
   roomTtlMs = DEFAULT_ROOM_TTL_MS,
 } = {}) =>
   new Promise((resolve, reject) => {
+    const originAllowlist = parseAllowedOrigins(allowedOrigins);
     const rooms = new Map();
     const httpServer = http.createServer((request, response) => {
-      if (request.url === '/health') {
+      const pathname = new URL(request.url ?? '/', 'http://localhost').pathname;
+
+      if (request.method === 'GET' && (pathname === '/health' || pathname === '/ready')) {
         response.writeHead(200, { 'content-type': 'application/json' });
         response.end(
           JSON.stringify({
+            clients: wss.clients.size,
+            maxClients,
+            maxRooms,
             ok: true,
             rooms: rooms.size,
             service: '3d-xox-online',
+            uptimeSeconds: Math.round(process.uptime()),
           }),
         );
         return;
@@ -101,7 +173,18 @@ export const createOnlineServer = ({
       response.writeHead(404, { 'content-type': 'application/json' });
       response.end(JSON.stringify({ error: 'not-found' }));
     });
-    const wss = new WebSocketServer({ server: httpServer });
+    const wss = new WebSocketServer({
+      maxPayload: maxMessageBytes,
+      server: httpServer,
+      verifyClient: ({ origin }, done) => {
+        if (isOriginAllowed(origin, originAllowlist)) {
+          done(true);
+          return;
+        }
+
+        done(false, 403, 'Forbidden origin');
+      },
+    });
 
     const touchRoom = (room) => {
       room.updatedAt = Date.now();
@@ -205,6 +288,11 @@ export const createOnlineServer = ({
     }, heartbeatMs);
 
     wss.on('connection', (socket) => {
+      if (wss.clients.size > maxClients) {
+        socket.close(1013, 'Server busy');
+        return;
+      }
+
       socket.isAlive = true;
       socket.roomId = null;
       socket.player = null;
@@ -215,6 +303,12 @@ export const createOnlineServer = ({
       });
 
       socket.on('message', (data) => {
+        if (Buffer.byteLength(String(data)) > maxMessageBytes) {
+          send(socket, { message: 'Message too large', type: 'error' });
+          socket.close(1009, 'Message too large');
+          return;
+        }
+
         const message = parse(data);
 
         if (message?.type === 'create-room') {
@@ -226,6 +320,13 @@ export const createOnlineServer = ({
           }
 
           leaveRoom(socket);
+          cleanupRooms();
+
+          if (rooms.size >= maxRooms) {
+            send(socket, { message: 'Server is full', type: 'error' });
+            return;
+          }
+
           const roomId = makeRoomId(rooms);
           const sessionId = makeSessionId();
           const now = Date.now();
@@ -254,7 +355,13 @@ export const createOnlineServer = ({
         }
 
         if (message?.type === 'join-room') {
-          const roomId = String(message.roomId ?? '').trim().toUpperCase();
+          const roomId = normalizeRoomId(message.roomId);
+
+          if (!roomId) {
+            send(socket, { message: 'Invalid room code', type: 'error' });
+            return;
+          }
+
           const room = rooms.get(roomId);
 
           if (!room) {
@@ -296,12 +403,18 @@ export const createOnlineServer = ({
         }
 
         if (message?.type === 'rejoin-room') {
-          const roomId = String(message.roomId ?? '').trim().toUpperCase();
+          const roomId = normalizeRoomId(message.roomId);
           const player = message.player;
           const sessionId = String(message.sessionId ?? '');
+
+          if (!roomId || (player !== 'X' && player !== 'O')) {
+            send(socket, { message: 'Room not found', type: 'error' });
+            return;
+          }
+
           const room = rooms.get(roomId);
 
-          if (!room || (player !== 'X' && player !== 'O')) {
+          if (!room) {
             send(socket, { message: 'Room not found', type: 'error' });
             return;
           }
@@ -365,7 +478,18 @@ export const createOnlineServer = ({
           new Promise((closeResolve) => {
             clearInterval(cleanupInterval);
             clearInterval(heartbeatInterval);
+            for (const client of wss.clients) {
+              client.close(1001, 'Server shutdown');
+            }
+
+            const terminateTimer = setTimeout(() => {
+              for (const client of wss.clients) {
+                client.terminate();
+              }
+            }, 1000);
+
             wss.close(() => {
+              clearTimeout(terminateTimer);
               httpServer.close(() => closeResolve());
             });
           }),
@@ -383,4 +507,13 @@ const isMain = process.argv[1] && fileURLToPath(import.meta.url) === process.arg
 if (isMain) {
   const server = await createOnlineServer();
   console.log(`3D XOX online server listening on ws://${server.host}:${server.port}`);
+
+  const shutdown = async (signal) => {
+    console.log(`3D XOX online server received ${signal}, shutting down`);
+    await server.close();
+    process.exit(0);
+  };
+
+  process.on('SIGINT', () => void shutdown('SIGINT'));
+  process.on('SIGTERM', () => void shutdown('SIGTERM'));
 }

@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import {
   Component,
+  Fragment,
   Suspense,
   forwardRef,
   lazy,
@@ -83,17 +84,42 @@ class BoardSceneBoundary extends Component<
     fallback: ReactNode;
     resetKey: BoardLayout;
   },
-  { hasError: boolean }
+  { hasError: boolean; retryCount: number }
 > {
-  state = { hasError: false };
+  private retryTimer: number | null = null;
+
+  state = { hasError: false, retryCount: 0 };
 
   static getDerivedStateFromError() {
     return { hasError: true };
   }
 
+  componentDidCatch() {
+    if (this.retryTimer !== null || this.state.retryCount >= 2) {
+      return;
+    }
+
+    this.retryTimer = window.setTimeout(() => {
+      this.retryTimer = null;
+      this.setState((state) => ({
+        hasError: false,
+        retryCount: state.retryCount + 1,
+      }));
+    }, 300);
+  }
+
   componentDidUpdate(previousProps: { resetKey: BoardLayout }) {
-    if (previousProps.resetKey !== this.props.resetKey && this.state.hasError) {
-      this.setState({ hasError: false });
+    if (
+      previousProps.resetKey !== this.props.resetKey &&
+      (this.state.hasError || this.state.retryCount > 0)
+    ) {
+      this.setState({ hasError: false, retryCount: 0 });
+    }
+  }
+
+  componentWillUnmount() {
+    if (this.retryTimer !== null) {
+      window.clearTimeout(this.retryTimer);
     }
   }
 
@@ -102,7 +128,11 @@ class BoardSceneBoundary extends Component<
       return this.props.fallback;
     }
 
-    return this.props.children;
+    return (
+      <Fragment key={`${this.props.resetKey}-${this.state.retryCount}`}>
+        {this.props.children}
+      </Fragment>
+    );
   }
 }
 

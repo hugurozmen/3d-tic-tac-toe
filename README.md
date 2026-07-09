@@ -60,8 +60,9 @@ For online mode, run the room server in a second terminal:
 npm run online:server
 ```
 
-The web client defaults to `ws://<current-host>:8787`. For deployed web or
-native mobile builds, set `VITE_ONLINE_SERVER_URL` before building:
+The web client falls back to `ws://127.0.0.1:8787` only on local hosts. For
+deployed web or native mobile builds, set `VITE_ONLINE_SERVER_URL` before
+building:
 
 ```bash
 VITE_ONLINE_SERVER_URL=wss://your-server.example npm run build
@@ -196,10 +197,17 @@ The Vercel deployment serves the static Vite client. Do not assume the current
 in-memory room server is deployed with Vercel unless it is intentionally rebuilt
 for Vercel Functions and backed by external room state.
 
+See [Online Mode Production](docs/online-production.md) for the WebSocket server
+container, health checks, capacity/origin guardrails, and deploy checklist.
+
 Useful server environment variables:
 
 - `HOST`: bind host, default `0.0.0.0`
 - `PORT`: bind port, default `8787`
+- `ONLINE_ALLOWED_ORIGINS`: comma-separated browser origins allowed to connect
+- `MAX_CLIENTS`: maximum concurrent WebSocket clients, default `200`
+- `MAX_ROOMS`: maximum in-memory rooms, default `100`
+- `MAX_MESSAGE_BYTES`: maximum WebSocket message payload, default `4096`
 - `ROOM_TTL_MS`: idle/waiting room lifetime, default `1800000`
 - `REJOIN_GRACE_MS`: time to preserve an empty room for reconnect, default
   `45000`

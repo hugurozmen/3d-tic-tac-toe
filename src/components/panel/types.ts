@@ -30,10 +30,14 @@ export type CoachSetting = 'auto' | 'on' | 'off';
 export type OnlinePanelState = {
   canReconnect: boolean;
   close: () => void;
+  configurationError: string | null;
   error: string | null;
+  isConfigured: boolean;
   localPlayer: Player | null;
   localSignal: string;
   reconnect: () => Promise<boolean>;
+  serverUrl: string;
+  serverUrlSource: 'env' | 'invalid' | 'local' | 'missing';
   settings: OnlineRoomSettings | null;
   status: OnlineStatus;
 };

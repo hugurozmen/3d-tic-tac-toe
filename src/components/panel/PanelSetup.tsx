@@ -16,7 +16,7 @@ import {
   DIFFICULTY_OPTIONS,
   RULESET_LABEL,
   RULESET_OPTIONS,
-} from '../../game/options';
+  } from '../../game/options';
 import type { PanelSetupProps } from './types';
 import { usePanelDisclosure } from './usePanelDisclosure';
 
@@ -48,6 +48,14 @@ export function PanelSetup({
         }`
       : `${RULESET_LABEL[online.settings.ruleset]} room`
     : `${RULESET_LABEL[ruleset]} room`;
+  const onlineStatusText = online.isConfigured
+    ? online.status
+    : 'not configured';
+  const onlineServerText = online.isConfigured
+    ? online.serverUrlSource === 'local'
+      ? 'Local server'
+      : 'Production server'
+    : 'Missing server';
 
   return (
     <details
@@ -215,7 +223,7 @@ export function PanelSetup({
                 online.status === 'reconnecting' ? (
                   <span className="online-spinner" aria-hidden="true" />
                 ) : null}
-                {online.status}
+                {onlineStatusText}
               </span>
               <strong>
                 {online.localPlayer ? `${online.localPlayer} local` : 'No side'}
@@ -225,9 +233,19 @@ export function PanelSetup({
               <span>{onlineSettingsText}</span>
               <strong>{onlineRulesLocked ? 'Locked' : 'Host decides'}</strong>
             </div>
+            <div className="online-settings">
+              <span>Server</span>
+              <strong>{onlineServerText}</strong>
+            </div>
             <p className="online-hint">
               Coach disabled online. Final Six Powers are local prototype only.
             </p>
+            {!online.isConfigured ? (
+              <div className="online-banner online-banner-warning">
+                <Unplug size={15} />
+                <span>{online.configurationError}</span>
+              </div>
+            ) : null}
             {online.status === 'disconnected' ? (
               <div className="online-banner">
                 <Unplug size={15} />
@@ -246,7 +264,7 @@ export function PanelSetup({
             ) : null}
             <div className="online-actions">
               <button
-                disabled={online.status === 'connecting'}
+                disabled={!online.isConfigured || online.status === 'connecting'}
                 type="button"
                 onClick={onHostOnline}
               >
@@ -288,7 +306,11 @@ export function PanelSetup({
             </label>
             <button
               className="online-connect"
-              disabled={!remoteSignal.trim() || online.status === 'connecting'}
+              disabled={
+                !online.isConfigured ||
+                !remoteSignal.trim() ||
+                online.status === 'connecting'
+              }
               type="button"
               onClick={onOnlineSignal}
             >
