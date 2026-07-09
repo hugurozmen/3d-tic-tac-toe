@@ -142,7 +142,45 @@ const place = async (page, player, cell) => {
 };
 
 const clickButton = async (page, name) => {
-  await page.getByRole('button', { exact: true, name }).click();
+  const buttons = page.getByRole('button', { exact: true, name });
+  const count = await buttons.count();
+
+  for (let index = 0; index < count; index += 1) {
+    const button = buttons.nth(index);
+
+    if (await button.isVisible()) {
+      await button.click();
+      return;
+    }
+  }
+
+  await buttons.first().click();
+};
+
+const openOptions = async (page) => {
+  const optionsSection = page.locator('.panel-section-options');
+
+  if (
+    (await optionsSection.count()) > 0 &&
+    (await optionsSection.getAttribute('open')) === null
+  ) {
+    await optionsSection.locator('summary').click();
+  }
+};
+
+const setLayout = async (page, label) => {
+  const layout = label.toLowerCase();
+  const shell = page.locator('.app-shell');
+
+  if ((await shell.getAttribute('data-layout')) === layout) {
+    return;
+  }
+
+  await openOptions(page);
+  await clickButton(page, label);
+  await page.locator(`.app-shell[data-layout="${layout}"]`).waitFor({
+    state: 'visible',
+  });
 };
 
 const setRuleset = async (page, ruleset) => {
@@ -262,7 +300,7 @@ const waitForAiOpeningIfNeeded = async (page, humanSide, notes) => {
   notes.aiDurations.push(duration);
 };
 
-const handlePiePromptIfVisible = async (page, choice = 'Keep sides?', timeoutMs = 0) => {
+const handlePiePromptIfVisible = async (page, choice = 'Keep sides', timeoutMs = 0) => {
   const prompt = page.getByRole('dialog', { name: 'Pie Rule decision' });
 
   if (timeoutMs > 0) {
@@ -445,7 +483,7 @@ const runClassicPieAiFirst = async (page, notes) => {
   await setHumanSide(page, 'O');
   const duration = await waitForPiePromptOrTurn(page, 'O');
   notes.aiDurations.push(duration);
-  const sawPie = await handlePiePromptIfVisible(page, 'Keep sides?');
+  const sawPie = await handlePiePromptIfVisible(page, 'Keep sides');
 
   if (!sawPie) {
     fail('AI-first Classic did not show the Pie Rule decision');
@@ -481,7 +519,9 @@ const runTwoPlayerLinesScanner = async (page) => {
 const runTwoPlayerClassicCube = async (page) => {
   await setRuleset(page, 'Classic');
   await setMode(page, '2P');
-  await clickButton(page, 'Cube');
+  await page.locator('.app-shell[data-layout="cube"]').waitFor({
+    state: 'visible',
+  });
   await page.locator('canvas').waitFor({ state: 'visible' });
   const canvas = page.locator('canvas');
   const waitForCanvasBox = async () => {
@@ -528,12 +568,12 @@ const runTwoPlayerClassicCube = async (page) => {
   }
 
   for (const [xRatio, yRatio] of candidates) {
-    await clickButton(page, 'Cube');
+    await setLayout(page, 'Cube');
     const box = await waitForCanvasBox();
     await page.mouse.click(box.x + box.width * xRatio, box.y + box.height * yRatio);
     await delay(200);
-    await handlePiePromptIfVisible(page, 'Keep sides?', 500);
-    await clickButton(page, 'Scanner');
+    await handlePiePromptIfVisible(page, 'Keep sides', 2000);
+    await setLayout(page, 'Scanner');
 
     const marks = await boardMarkCount(page);
 
@@ -546,7 +586,20 @@ const runTwoPlayerClassicCube = async (page) => {
 };
 
 const runDailyPuzzle = async (page) => {
+  const entries = page.getByRole('button', { name: /Daily #\d+/ });
+  const count = await entries.count();
+
+  for (let index = 0; index < count; index += 1) {
+    const entry = entries.nth(index);
+
+    if (await entry.isVisible()) {
+      await entry.click();
+      break;
+    }
+  }
+
   const card = page.locator('.daily-puzzle-card');
+  await card.waitFor({ state: 'visible' });
   await expectText(card, 'Daily #', 'Daily puzzle card');
   const enabledCell = card.locator('.daily-cell:not([disabled])').first();
   const label = await enabledCell.getAttribute('aria-label');
@@ -579,6 +632,7 @@ const runMobileScanner = async (page) => {
 
 const runThemeSwitching = async (page) => {
   const seen = [];
+  await openOptions(page);
 
   for (const [label, id] of themes) {
     await clickButton(page, label);

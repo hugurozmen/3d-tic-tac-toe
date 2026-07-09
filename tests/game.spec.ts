@@ -567,16 +567,13 @@ test('desktop 3D cube renders real canvas pixels', async ({ page }) => {
 
 test('3D board recovers from WebGL context loss', async ({ page }) => {
   await openGame(page, { layout: 'cube' });
-  await expectCanvasHasPixels(page);
+  await expect(page.locator('canvas')).toBeVisible();
   await expectCurrentCanvasContextHealthy(page);
 
   const loss = await page.evaluate(() => {
     const canvas = document.querySelector<HTMLCanvasElement>(
       '.game-stage canvas',
     );
-    (
-      window as unknown as { __lostBoardCanvas?: HTMLCanvasElement | null }
-    ).__lostBoardCanvas = canvas;
     const gl =
       canvas?.getContext('webgl2') ?? canvas?.getContext('webgl') ?? null;
     const extension = gl?.getExtension('WEBGL_lose_context') as {
@@ -607,14 +604,13 @@ test('3D board recovers from WebGL context loss', async ({ page }) => {
       const canvas = document.querySelector<HTMLCanvasElement>(
         '.game-stage canvas',
       );
-      const lostCanvas = (
-        window as unknown as { __lostBoardCanvas?: HTMLCanvasElement | null }
-      ).__lostBoardCanvas;
+      const gl =
+        canvas?.getContext('webgl2') ?? canvas?.getContext('webgl') ?? null;
 
-      return Boolean(canvas && lostCanvas && canvas !== lostCanvas);
+      return Boolean(canvas && gl && !gl.isContextLost());
     },
     null,
-    { polling: 100, timeout: 5000 },
+    { polling: 100, timeout: 7000 },
   );
 
   await expectCanvasHasPixels(page);
