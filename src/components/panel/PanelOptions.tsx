@@ -1,4 +1,10 @@
-import { Languages, Lightbulb, Volume2, VolumeX } from 'lucide-react';
+import {
+  Languages,
+  Lightbulb,
+  MessageSquare,
+  Volume2,
+  VolumeX,
+} from 'lucide-react';
 import {
   labelLocale,
   labelTheme,
@@ -175,6 +181,19 @@ export function PanelOptions({
             <p className="control-note">{t('coach.activeAuto')}</p>
           ) : null}
         </div>
+
+        <a
+          className="panel-entry-row"
+          href="https://github.com/hugurozmen/3d-tic-tac-toe/issues"
+          rel="noreferrer"
+          target="_blank"
+        >
+          <div>
+            <span>{t('options.feedback')}</span>
+            <strong>{t('options.feedbackHint')}</strong>
+          </div>
+          <MessageSquare size={16} aria-hidden="true" />
+        </a>
       </div>
     </details>
   );

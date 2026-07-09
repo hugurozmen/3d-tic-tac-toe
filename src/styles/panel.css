@@ -1542,6 +1542,7 @@ h1 {
   );
   cursor: pointer;
   text-align: left;
+  text-decoration: none;
   transition:
     border-color 180ms ease,
     background-color 180ms ease,
