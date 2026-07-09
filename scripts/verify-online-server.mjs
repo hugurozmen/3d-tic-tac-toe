@@ -40,12 +40,69 @@ const waitFor = (socket, predicate, label) =>
     socket.once('error', handleError);
   });
 
-const openClient = async (url) => {
-  const socket = new WebSocket(url);
+const waitClose = (socket, label) =>
+  new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      cleanup();
+      reject(new Error(`Timed out waiting for ${label}`));
+    }, 5000);
+
+    const handleClose = (code, reason) => {
+      cleanup();
+      resolve({ code, reason: String(reason) });
+    };
+
+    const handleError = (error) => {
+      cleanup();
+      reject(error);
+    };
+
+    const cleanup = () => {
+      clearTimeout(timeout);
+      socket.off('close', handleClose);
+      socket.off('error', handleError);
+    };
+
+    socket.once('close', handleClose);
+    socket.once('error', handleError);
+  });
+
+const openClient = async (url, options = {}) => {
+  const socket = new WebSocket(url, options);
 
   await waitOpen(socket);
   return socket;
 };
+
+const expectOpenRejected = (url, options, label) =>
+  new Promise((resolve, reject) => {
+    const socket = new WebSocket(url, options);
+    const timeout = setTimeout(() => {
+      cleanup();
+      socket.terminate();
+      reject(new Error(`Timed out waiting for ${label}`));
+    }, 5000);
+
+    const cleanup = () => {
+      clearTimeout(timeout);
+      socket.off('open', handleOpen);
+      socket.off('error', handleError);
+    };
+
+    const handleOpen = () => {
+      cleanup();
+      socket.close();
+      reject(new Error(`${label} unexpectedly opened`));
+    };
+
+    const handleError = (error) => {
+      cleanup();
+      resolve({ message: error.message });
+    };
+
+    socket.once('open', handleOpen);
+    socket.once('error', handleError);
+  });
 
 const server = await createOnlineServer({
   heartbeatMs: 5000,
@@ -60,11 +117,26 @@ const guest = await openClient(url);
 const invalidClient = await openClient(url);
 const defaultHost = await openClient(url);
 const defaultGuest = await openClient(url);
+const invalidRoomClient = await openClient(url);
 
 try {
   const health = await fetch(`http://127.0.0.1:${server.port}/health`).then(
     (response) => response.json(),
   );
+  const ready = await fetch(`http://127.0.0.1:${server.port}/ready`).then(
+    (response) => response.json(),
+  );
+
+  invalidRoomClient.send(
+    JSON.stringify({ roomId: 'nope!', type: 'join-room' }),
+  );
+  const invalidRoomCodeRejected = await waitFor(
+    invalidRoomClient,
+    (message) =>
+      message.type === 'error' && message.message === 'Invalid room code',
+    'invalid room code rejection',
+  );
+  invalidRoomClient.close();
 
   invalidClient.send(
     JSON.stringify({
@@ -210,17 +282,89 @@ try {
   guest.close();
   await wait(700);
 
+  const restrictedServer = await createOnlineServer({
+    allowedOrigins: ['https://game.example'],
+    heartbeatMs: 5000,
+    host: '127.0.0.1',
+    port: 0,
+    rejoinGraceMs: 120,
+    roomTtlMs: 300,
+  });
+  const restrictedUrl = `ws://127.0.0.1:${restrictedServer.port}`;
+  const originAllowedClient = await openClient(restrictedUrl, {
+    headers: { Origin: 'https://game.example' },
+  });
+  const originRejected = await expectOpenRejected(
+    restrictedUrl,
+    { headers: { Origin: 'https://evil.example' } },
+    'origin rejection',
+  );
+  originAllowedClient.close();
+  await restrictedServer.close();
+
+  const capacityServer = await createOnlineServer({
+    heartbeatMs: 5000,
+    host: '127.0.0.1',
+    maxRooms: 1,
+    port: 0,
+    rejoinGraceMs: 120,
+    roomTtlMs: 300,
+  });
+  const capacityUrl = `ws://127.0.0.1:${capacityServer.port}`;
+  const capacityHost = await openClient(capacityUrl);
+  const capacityOverflow = await openClient(capacityUrl);
+
+  capacityHost.send(JSON.stringify({ type: 'create-room' }));
+  const capacityRoom = await waitFor(
+    capacityHost,
+    (message) => message.type === 'room-created',
+    'capacity room-created',
+  );
+  capacityOverflow.send(JSON.stringify({ type: 'create-room' }));
+  const capacityRejected = await waitFor(
+    capacityOverflow,
+    (message) => message.type === 'error' && message.message === 'Server is full',
+    'capacity rejection',
+  );
+  capacityHost.close();
+  capacityOverflow.close();
+  await capacityServer.close();
+
+  const clientLimitServer = await createOnlineServer({
+    heartbeatMs: 5000,
+    host: '127.0.0.1',
+    maxClients: 1,
+    port: 0,
+    rejoinGraceMs: 120,
+    roomTtlMs: 300,
+  });
+  const clientLimitUrl = `ws://127.0.0.1:${clientLimitServer.port}`;
+  const allowedClient = await openClient(clientLimitUrl);
+  const rejectedClient = new WebSocket(clientLimitUrl);
+  const clientLimitRejected = await waitClose(
+    rejectedClient,
+    'client limit rejection',
+  );
+  allowedClient.close();
+  await clientLimitServer.close();
+
   console.log(
     JSON.stringify(
       {
+        capacityRejected,
+        capacityRoom,
+        clientLimitRejected,
         defaultJoined,
         defaultRoom,
         health,
+        invalidRoomCodeRejected,
         invalidSettingsRejected,
         joined,
         move,
         moveAfterRejoin,
+        originRejected,
         peerJoined,
+        ready,
         rejoinSeenByGuest,
         rejoined,
         reset,
@@ -236,6 +380,7 @@ try {
   host.close();
   guest.close();
   invalidClient.close();
+  invalidRoomClient.close();
   defaultHost.close();
   defaultGuest.close();
   await server.close();

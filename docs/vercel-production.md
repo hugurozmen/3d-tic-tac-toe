@@ -26,9 +26,11 @@ variable before building:
 VITE_ONLINE_SERVER_URL=wss://your-online-server.example
 ```
 
-If the variable is omitted, the client falls back to `wss://<site-host>:8787`
-on HTTPS pages. That is useful for self-hosted deployments, but it is not a
-complete Vercel online-room setup by itself.
+If the variable is omitted on a hosted domain, the client disables Online mode
+with a setup message instead of trying a dead default URL.
+
+See [Online Mode Production](online-production.md) for the WebSocket server
+container, `ONLINE_ALLOWED_ORIGINS`, health checks, and smoke checklist.
 
 ## Release Gate
 
@@ -54,7 +56,7 @@ After deployment, verify:
 - Cube and Floors render nonblank canvases after hard refresh.
 - Theme switching works.
 - Daily and Progress modals open centered.
-- If `VITE_ONLINE_SERVER_URL` is configured, host and guest can create a Lines
-  room and a Classic room, settings lock, moves relay, and reconnect works.
-- If `VITE_ONLINE_SERVER_URL` is not configured, do not market Online mode as
-  production-ready for the Vercel deployment.
+- `VITE_ONLINE_SERVER_URL` is configured and the Online card shows the server
+  as configured.
+- Host and guest can create a Lines room and a Classic room, settings lock,
+  moves relay, and reconnect works.
