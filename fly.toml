@@ -1,0 +1,27 @@
+# Fly.io config for the online multiplayer WebSocket server.
+# Deploy from the repo root: `fly deploy`
+app = "tictacube-online"
+primary_region = "fra"
+
+[build]
+  dockerfile = "server/Dockerfile"
+
+[http_service]
+  internal_port = 8787
+  force_https = true
+  # WebSocket rooms live in memory; keep one machine always on.
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"
+
+[checks]
+  [checks.health]
+    type = "http"
+    port = 8787
+    path = "/health"
+    interval = "30s"
+    timeout = "5s"
