@@ -12,6 +12,7 @@ import type {
   PanelScoreboardProps,
   PanelSetupProps,
 } from './panel/types';
+import { useI18n } from '../i18n';
 
 type GamePanelProps = {
   actions: PanelActionsProps;
@@ -30,8 +31,10 @@ export function GamePanel({
   scoreboard,
   setup,
 }: GamePanelProps) {
+  const { t } = useI18n();
+
   return (
-    <aside className="game-panel" aria-label="Game controls">
+    <aside className="game-panel" aria-label={t('aria.gameControls')}>
       <PanelScoreboard {...scoreboard} />
       <div className="panel-scroll">
         <PanelMatch {...matchPanel} />

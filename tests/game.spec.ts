@@ -7,19 +7,22 @@ async function openGame(
   page: Page,
   {
     guide = 'done',
+    language = 'en',
     layout,
     localScore,
     viewport = { height: 720, width: 1280 },
   }: {
     guide?: 'done' | 'pending';
+    language?: 'en' | 'tr';
     layout?: 'cube' | 'floors' | 'scanner';
     localScore?: { draws: number; O: number; X: number };
     viewport?: { height: number; width: number };
   } = {},
 ) {
   await page.setViewportSize(viewport);
-  await page.addInitScript(({ preferredGuide, preferredLayout, preferredScore }) => {
+  await page.addInitScript(({ preferredGuide, preferredLanguage, preferredLayout, preferredScore }) => {
     window.localStorage.clear();
+    window.localStorage.setItem('3dxox-language', preferredLanguage);
 
     if (preferredGuide === 'done') {
       window.localStorage.setItem('3dxox-guide', 'done');
@@ -32,12 +35,24 @@ async function openGame(
     if (preferredScore) {
       window.localStorage.setItem('3dxox-score', JSON.stringify(preferredScore));
     }
-  }, { preferredGuide: guide, preferredLayout: layout, preferredScore: localScore });
+  }, {
+    preferredGuide: guide,
+    preferredLanguage: language,
+    preferredLayout: layout,
+    preferredScore: localScore,
+  });
   await page.goto(appUrl);
 }
 
 async function chooseTwoPlayer(page: Page) {
   await page.getByRole('button', { name: '2P' }).click();
+}
+
+async function chooseRuleset(page: Page, label: 'Classic' | 'Lines') {
+  await page
+    .locator('.ruleset-control')
+    .getByRole('button', { name: label, exact: true })
+    .click();
 }
 
 async function openOptions(page: Page) {
@@ -517,16 +532,13 @@ test('Lines is the default ruleset and all themes remain switchable', async ({
   ).toContainText('Lines');
   await expect(page.locator('.line-score-card')).toBeVisible();
 
-  await page.getByRole('button', { name: 'Classic' }).click();
+  await chooseRuleset(page, 'Classic');
   await expect(
     page.locator('.ruleset-control button.active'),
   ).toContainText('Classic');
   await expect(page.locator('.line-score-card')).toHaveCount(0);
 
-  await page
-    .locator('.ruleset-control')
-    .getByRole('button', { name: 'Lines', exact: true })
-    .click();
+  await chooseRuleset(page, 'Lines');
   await expect(
     page.locator('.ruleset-control button.active'),
   ).toContainText('Lines');
@@ -553,6 +565,23 @@ test('Lines is the default ruleset and all themes remain switchable', async ({
       page.getByRole('button', { name: /Place X at cell 10\b/ }),
     ).toBeVisible();
   }
+});
+
+test('language switching localizes the game controls to Turkish', async ({
+  page,
+}) => {
+  await openGame(page, { layout: 'scanner' });
+  await openOptions(page);
+
+  await page.getByRole('button', { name: 'Türkçe' }).click();
+
+  await expect(page.locator('html')).toHaveAttribute('lang', 'tr');
+  await expect(page.getByText('Kurulum')).toBeVisible();
+  await expect(page.getByText('Seçenekler')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Yeni tur' })).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: /X işaretini hücre \d+/ }).first(),
+  ).toBeVisible();
 });
 
 test('desktop 3D cube renders real canvas pixels', async ({ page }) => {
@@ -791,7 +820,7 @@ test('scanner supports keyboard navigation between cells and floors', async ({
 
 test('scanner board supports a complete 2P winning round', async ({ page }) => {
   await openGame(page, { layout: 'scanner' });
-  await page.getByRole('button', { name: 'Classic' }).click();
+  await chooseRuleset(page, 'Classic');
   await chooseTwoPlayer(page);
 
   await place(page, 'X', 10);
@@ -813,7 +842,7 @@ test('best-of-5 match alternates openers and ends at 3 wins', async ({
   page,
 }) => {
   await openGame(page, { layout: 'scanner' });
-  await page.getByRole('button', { name: 'Classic' }).click();
+  await chooseRuleset(page, 'Classic');
   await chooseTwoPlayer(page);
 
   await expect(page.locator('.panel-scoreboard')).toContainText('Round');
@@ -1239,7 +1268,7 @@ test('online guest adopts host Classic room settings and locks rules', async ({
   page: host,
 }) => {
   await openGame(host, { layout: 'scanner' });
-  await host.getByRole('button', { name: 'Classic' }).click();
+  await chooseRuleset(host, 'Classic');
   await host.getByRole('button', { name: 'Online' }).click();
   await host.getByRole('button', { name: 'Host' }).click();
 

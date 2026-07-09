@@ -1,5 +1,6 @@
 import { Circle, HelpCircle, Trophy, X } from 'lucide-react';
 import type { Player } from '../../game/rules';
+import { useI18n } from '../../i18n';
 import type { PanelScoreboardProps } from './types';
 
 function markIcon(player: Player) {
@@ -28,6 +29,7 @@ export function PanelScoreboard({
   isPowerScoreMode,
   onOpenGuide,
 }: PanelScoreboardProps) {
+  const { t } = useI18n();
   const lineScoreEventClass = [
     recentLineCount > 0 ? 'score-bump' : '',
     recentLineCount > 1 ? 'multi-line' : '',
@@ -79,7 +81,7 @@ export function PanelScoreboard({
             <span>{status}</span>
           </div>
           <button
-            aria-label="How to play"
+            aria-label={t('aria.howToPlay')}
             className="icon-button"
             type="button"
             onClick={onOpenGuide}
@@ -89,29 +91,29 @@ export function PanelScoreboard({
         </div>
       </header>
 
-      <section className="panel-scoreboard" aria-label="Round and score">
+      <section className="panel-scoreboard" aria-label={t('aria.roundScore')}>
         <div className="scoreboard-meta">
           <div className="scoreboard-round">
-            <span>Round</span>
+            <span>{t('match.round')}</span>
             <strong>{match.roundNumber}</strong>
           </div>
           <div className="scoreboard-match-score">
-            <span>{match.winner ? 'Winner' : 'Match'}</span>
+            <span>{match.winner ? t('match.winner') : t('match.match')}</span>
             <strong>
               {matchWinnerText ?? `${match.score.X}-${match.score.O}`}
             </strong>
           </div>
           <div className="scoreboard-draws">
-            <span>Draws</span>
+            <span>{t('match.draws')}</span>
             <strong>{match.score.draws}</strong>
           </div>
           <div className="scoreboard-opener">
-            <span>Opener</span>
+            <span>{t('match.opener')}</span>
             <strong>{openerText}</strong>
           </div>
           <div className="scoreboard-next">
-            <span>Next</span>
-            <strong>{match.isComplete ? 'Done' : nextOpenerText}</strong>
+            <span>{t('match.next')}</span>
+            <strong>{match.isComplete ? t('match.done') : nextOpenerText}</strong>
           </div>
         </div>
 
@@ -121,7 +123,7 @@ export function PanelScoreboard({
               className={`line-score-card ${
                 recentBlockCount > 0 ? 'block-event' : ''
               }`}
-              aria-label="Lines score"
+              aria-label={t('aria.score')}
               aria-live="polite"
             >
               <div
@@ -129,7 +131,9 @@ export function PanelScoreboard({
                   recentLinePlayer === 'X' ? lineScoreEventClass : ''
                 }`}
               >
-                <span>{isPowerScoreMode ? 'X total' : 'X lines'}</span>
+                <span>
+                  {isPowerScoreMode ? t('lines.xTotal') : t('lines.xLines')}
+                </span>
                 <strong>{lineScores.X}</strong>
               </div>
               <div
@@ -137,7 +141,9 @@ export function PanelScoreboard({
                   recentLineCount > 0 ? lineScoreEventClass : ''
                 }`}
               >
-                <span>{isPowerScoreMode ? 'Lines' : 'Round'}</span>
+                <span>
+                  {isPowerScoreMode ? t('game.lines') : t('lines.round')}
+                </span>
                 <strong>
                   {isPowerScoreMode
                     ? `${baseLineScores.X}-${baseLineScores.O}`
@@ -149,7 +155,9 @@ export function PanelScoreboard({
                   recentLinePlayer === 'O' ? lineScoreEventClass : ''
                 }`}
               >
-                <span>{isPowerScoreMode ? 'O total' : 'O lines'}</span>
+                <span>
+                  {isPowerScoreMode ? t('lines.oTotal') : t('lines.oLines')}
+                </span>
                 <strong>{lineScores.O}</strong>
               </div>
               <div
@@ -161,10 +169,10 @@ export function PanelScoreboard({
               >
                 <span>
                   {isPowerScoreMode
-                    ? 'Bonus'
+                    ? t('lines.bonus')
                     : emptyCellsTense
-                      ? 'Final cells'
-                      : 'Empty'}
+                      ? t('lines.finalCells')
+                      : t('lines.empty')}
                 </span>
                 <strong>
                   {isPowerScoreMode
@@ -180,21 +188,28 @@ export function PanelScoreboard({
                 }`}
                 aria-live="polite"
               >
-                {hasFinalSixEvent ? 'Final Six: cube charged' : linesEndgameText}
+                {hasFinalSixEvent ? t('finalSix.chargedNotice') : linesEndgameText}
               </p>
             ) : null}
             {hasLineBonus ? (
               <p className="line-bonus-note" aria-live="polite">
-                Lines {baseLineScores.X}-{baseLineScores.O} + Bonus{' '}
-                {linesBonusScores.X}-{linesBonusScores.O} = Total {lineScores.X}-
-                {lineScores.O}
+                {t('lines.scoreMath', {
+                  baseO: baseLineScores.O,
+                  baseX: baseLineScores.X,
+                  bonusO: linesBonusScores.O,
+                  bonusX: linesBonusScores.X,
+                  totalO: lineScores.O,
+                  totalX: lineScores.X,
+                })}
               </p>
             ) : null}
           </>
         ) : null}
 
         {hasMatchEndEvent ? (
-          <span className="scoreboard-match-complete">Match complete</span>
+          <span className="scoreboard-match-complete">
+            {t('match.complete')}
+          </span>
         ) : null}
       </section>
     </div>

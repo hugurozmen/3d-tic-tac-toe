@@ -1,15 +1,22 @@
 import { Clipboard, Sparkles } from 'lucide-react';
 import { useState } from 'react';
 import {
-  DIFFICULTY_LABEL,
   DIFFICULTY_OPTIONS,
-  RULESET_LABEL,
 } from '../../game/options';
+import {
+  formatMoveCell,
+  getDailyPuzzlePrompt,
+  getDailyPuzzleResultExplanation,
+  getDailyPuzzleTitle,
+  getThemeProgressCopy,
+  labelDifficulty,
+  labelRuleset,
+  useI18n,
+} from '../../i18n';
 import type { PanelDailyProgressProps } from './types';
 import { PanelModal } from './PanelModal';
 
 const DAILY_FLOORS = [0, 1, 2] as const;
-const formatCell = (move: number | null) => (move === null ? '-' : move + 1);
 
 export function PanelDailyProgress({
   dailyPuzzle,
@@ -27,6 +34,10 @@ export function PanelDailyProgress({
 }: PanelDailyProgressProps) {
   const [dailyOpen, setDailyOpen] = useState(false);
   const [progressOpen, setProgressOpen] = useState(false);
+  const i18n = useI18n();
+  const { t } = i18n;
+  const dailyTitle = getDailyPuzzleTitle(i18n, dailyPuzzle);
+  const dailyPrompt = getDailyPuzzlePrompt(i18n, dailyPuzzle);
 
   const openDaily = () => {
     onDismissDailyNudge();
@@ -36,33 +47,35 @@ export function PanelDailyProgress({
   return (
     <section
       className="panel-section panel-section-daily-progress"
-      aria-label="Daily and progress"
+      aria-label={t('aria.dailyProgress')}
     >
       <div className="panel-section-heading">
-        <span>Daily & Progress</span>
-        <small>Local goals and puzzle</small>
+        <span>{t('progress.dailyAndProgress')}</span>
+        <small>{t('progress.localGoals')}</small>
       </div>
 
       <div className="entry-row-list">
         {showDailyNudge ? (
-          <div className="coach-prompt daily-nudge" aria-label="Daily puzzle hint">
+          <div className="coach-prompt daily-nudge" aria-label={t('aria.dailyPuzzleHint')}>
             <div>
-              <strong>Daily puzzle unlocked</strong>
-              <span>Try one quick board challenge after your first match.</span>
+              <strong>{t('progress.dailyPuzzleUnlocked')}</strong>
+              <span>{t('progress.dailyPuzzleUnlockedText')}</span>
             </div>
             <button type="button" onClick={openDaily}>
               <Sparkles size={15} />
-              <span>Open</span>
+              <span>{t('action.open')}</span>
             </button>
           </div>
         ) : null}
 
         <button className="panel-entry-row" type="button" onClick={openDaily}>
           <div>
-            <span>Daily #{dailyPuzzle.id}</span>
-            <strong>{dailyPuzzle.title}</strong>
+            <span>{t('progress.dailyTitle', { id: dailyPuzzle.id })}</span>
+            <strong>{dailyTitle}</strong>
           </div>
-          <small>{dailyPuzzleResult ? 'Result saved' : 'Play today'}</small>
+          <small>
+            {dailyPuzzleResult ? t('progress.resultSaved') : t('progress.playToday')}
+          </small>
         </button>
 
         <button
@@ -71,28 +84,31 @@ export function PanelDailyProgress({
           onClick={() => setProgressOpen(true)}
         >
           <div>
-            <span>Progress</span>
-            <strong>Streaks & unlocks</strong>
+            <span>{t('progress.progress')}</span>
+            <strong>{t('progress.streaks')}</strong>
           </div>
-          <small>{themeUnlockProgress.filter((item) => item.unlocked).length}/3 accents</small>
+          <small>
+            {themeUnlockProgress.filter((item) => item.unlocked).length}/3{' '}
+            {t('progress.accents')}
+          </small>
         </button>
       </div>
 
       {dailyOpen ? (
         <PanelModal
-          ariaLabel="Daily puzzle"
-          title={`Daily #${dailyPuzzle.id}`}
+          ariaLabel={t('aria.dailyPuzzle')}
+          title={t('progress.dailyTitle', { id: dailyPuzzle.id })}
           onClose={() => setDailyOpen(false)}
         >
           <div className="daily-puzzle-card modal-card-body">
             <div className="daily-puzzle-header">
               <div>
-                <span>Daily #{dailyPuzzle.id}</span>
-                <strong>{dailyPuzzle.title}</strong>
+                <span>{t('progress.dailyTitle', { id: dailyPuzzle.id })}</span>
+                <strong>{dailyTitle}</strong>
               </div>
-              <span>{RULESET_LABEL[dailyPuzzle.ruleset]}</span>
+              <span>{labelRuleset(i18n, dailyPuzzle.ruleset)}</span>
             </div>
-            <p>{dailyPuzzle.prompt}</p>
+            <p>{dailyPrompt}</p>
             <div className="daily-puzzle-board">
               {DAILY_FLOORS.map((floor) => (
                 <div key={floor} className="daily-puzzle-floor">
@@ -107,9 +123,10 @@ export function PanelDailyProgress({
                       return (
                         <button
                           key={index}
-                          aria-label={`Daily puzzle cell ${index + 1}, ${
-                            value ?? 'empty'
-                          }`}
+                          aria-label={t('puzzle.cellEmpty', {
+                            cell: index + 1,
+                            value: value ?? t('cell.empty'),
+                          })}
                           className={[
                             'daily-cell',
                             value ? `occupied mark-${value.toLowerCase()}` : '',
@@ -137,10 +154,24 @@ export function PanelDailyProgress({
                 }`}
               >
                 <div className="daily-result-moves">
-                  <span>Best move {formatCell(dailyPuzzleResult.bestMove)}</span>
-                  <span>Your move {formatCell(dailyPuzzleResult.move)}</span>
+                  <span>
+                    {t('puzzle.bestMove', {
+                      cell: formatMoveCell(dailyPuzzleResult.bestMove),
+                    })}
+                  </span>
+                  <span>
+                    {t('puzzle.yourMove', {
+                      cell: formatMoveCell(dailyPuzzleResult.move),
+                    })}
+                  </span>
                 </div>
-                <p>{dailyPuzzleResult.explanation}</p>
+                <p>
+                  {getDailyPuzzleResultExplanation(
+                    i18n,
+                    dailyPuzzle,
+                    dailyPuzzleResult,
+                  )}
+                </p>
                 {dailyPuzzleResult.solved ? (
                   <button
                     className="daily-share"
@@ -148,7 +179,9 @@ export function PanelDailyProgress({
                     onClick={onShareDailyPuzzle}
                   >
                     <Clipboard size={15} />
-                    <span>{dailyPuzzleShareCopied ? 'Copied' : 'Share'}</span>
+                    <span>
+                      {dailyPuzzleShareCopied ? t('action.copied') : t('action.share')}
+                    </span>
                   </button>
                 ) : null}
               </div>
@@ -159,30 +192,30 @@ export function PanelDailyProgress({
 
       {progressOpen ? (
         <PanelModal
-          ariaLabel="Local progress"
-          title="Local progress"
+          ariaLabel={t('aria.localProgress')}
+          title={t('progress.localProgress')}
           onClose={() => setProgressOpen(false)}
         >
           <div className="progress-card modal-card-body">
             <div className="progress-card-header">
-              <span>Progress</span>
-              <strong>Local only</strong>
+              <span>{t('progress.localProgress')}</span>
+              <strong>{t('progress.localOnly')}</strong>
             </div>
-            <div className="streak-grid" aria-label="Win streak by difficulty">
+            <div className="streak-grid" aria-label={t('aria.winStreaks')}>
               {DIFFICULTY_OPTIONS.map((level) => (
                 <div key={level} className="streak-tile">
-                  <span>{DIFFICULTY_LABEL[level]}</span>
+                  <span>{labelDifficulty(i18n, level)}</span>
                   <strong>{difficultyStreaks[level]}</strong>
                 </div>
               ))}
             </div>
             <div className="retention-stat-grid">
               <div>
-                <span>Best margin</span>
+                <span>{t('progress.bestMargin')}</span>
                 <strong>+{retentionStats.bestLinesWinMargin}</strong>
               </div>
               <div>
-                <span>Total lines</span>
+                <span>{t('progress.totalLines')}</span>
                 <strong>{retentionStats.totalLinesScored}</strong>
               </div>
               <div
@@ -190,47 +223,51 @@ export function PanelDailyProgress({
                   retentionStats.masterWins > 0 ? 'earned' : ''
                 }`}
               >
-                <span>Master wins</span>
+                <span>{t('progress.masterWins')}</span>
                 <strong>{retentionStats.masterWins}</strong>
               </div>
             </div>
             <div className="retention-stat-grid progress-lifetime-grid">
               <div>
-                <span>Lifetime</span>
+                <span>{t('progress.lifetime')}</span>
                 <strong>
                   {lifetimeScore.X}-{lifetimeScore.O}
                 </strong>
               </div>
               <div>
-                <span>Life draws</span>
+                <span>{t('progress.lifeDraws')}</span>
                 <strong>{lifetimeScore.draws}</strong>
               </div>
               <div>
-                <span>Last move</span>
-                <strong>{formatCell(lastMove)}</strong>
+                <span>{t('progress.lastMove')}</span>
+                <strong>{formatMoveCell(lastMove)}</strong>
               </div>
             </div>
-            <div className="theme-progress-list" aria-label="Theme accent progress">
+            <div className="theme-progress-list" aria-label={t('aria.themeProgress')}>
               <div className="theme-progress-heading">
-                <span>Theme accents</span>
+                <span>{t('progress.themeAccents')}</span>
                 <strong>
                   {themeUnlockProgress.filter((item) => item.unlocked).length}/3
                 </strong>
               </div>
-              {themeUnlockProgress.map((item) => (
-                <div key={item.id} className="theme-progress-row">
-                  <div>
-                    <span>{item.label}</span>
-                    <small>{item.detail}</small>
+              {themeUnlockProgress.map((item) => {
+                const copy = getThemeProgressCopy(i18n, item);
+
+                return (
+                  <div key={item.id} className="theme-progress-row">
+                    <div>
+                      <span>{copy.label}</span>
+                      <small>{copy.detail}</small>
+                    </div>
+                    <strong>{copy.valueText}</strong>
+                    <i aria-hidden="true">
+                      <span
+                        style={{ width: `${Math.round(item.progress * 100)}%` }}
+                      />
+                    </i>
                   </div>
-                  <strong>{item.valueText}</strong>
-                  <i aria-hidden="true">
-                    <span
-                      style={{ width: `${Math.round(item.progress * 100)}%` }}
-                    />
-                  </i>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </PanelModal>

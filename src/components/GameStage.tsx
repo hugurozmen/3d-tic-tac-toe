@@ -28,6 +28,7 @@ import type { CoachHint } from '../game/coach';
 import type { FinalSixPowerBoardEffects } from '../game/finalSixPowers';
 import type { LinesEndgameAnalysis } from '../game/linesTension';
 import type { Board, GameResult, Player } from '../game/rules';
+import { formatLinesEndgameText, useI18n } from '../i18n';
 import type { SceneTheme } from '../theme';
 import { ScannerBoard } from './ScannerBoard';
 
@@ -170,6 +171,8 @@ export const GameStage = forwardRef<HTMLElement, GameStageProps>(
     },
     ref,
   ) {
+    const i18n = useI18n();
+    const { t } = i18n;
     const hasFinalSixStartEvent = animationEvents.some(
       (event) => event.type === 'final-six-start',
     );
@@ -179,11 +182,11 @@ export const GameStage = forwardRef<HTMLElement, GameStageProps>(
     const boardSceneFallback = (
       <div className="stage-error" role="alert">
         <TriangleAlert size={26} />
-        <strong>3D board could not start</strong>
-        <span>Scanner remains available for this round.</span>
+        <strong>{t('stage.boardCouldNotStart')}</strong>
+        <span>{t('stage.scannerAvailable')}</span>
         <button type="button" onClick={onUseScanner}>
           <ScanLine size={16} />
-          <span>Scanner</span>
+          <span>{t('layout.scanner')}</span>
         </button>
       </div>
     );
@@ -198,7 +201,7 @@ export const GameStage = forwardRef<HTMLElement, GameStageProps>(
         ]
           .filter(Boolean)
           .join(' ')}
-        aria-label="3D XOX board"
+        aria-label={t('aria.board')}
       >
         {layout === 'scanner' ? (
           <ScannerBoard
@@ -231,7 +234,7 @@ export const GameStage = forwardRef<HTMLElement, GameStageProps>(
                     <i />
                     <i />
                   </span>
-                  <span>Preparing 3D board</span>
+                  <span>{t('stage.prepareBoard')}</span>
                 </div>
               }
             >
@@ -270,7 +273,7 @@ export const GameStage = forwardRef<HTMLElement, GameStageProps>(
         ) : null}
         {finalPhase ? (
           <div className="final-phase-cue" role="status" aria-live="polite">
-            {finalPhase.text}
+            {formatLinesEndgameText(i18n, finalPhase)}
           </div>
         ) : null}
         {result.winner || result.isDraw ? (
@@ -289,8 +292,8 @@ export const GameStage = forwardRef<HTMLElement, GameStageProps>(
               <strong>
                 {resultLabel ??
                   (result.winner
-                    ? `${result.winner} wins the round`
-                    : 'Round drawn')}
+                    ? t('result.playerWinsRound', { player: result.winner })
+                    : t('result.roundDrawn'))}
               </strong>
             </span>
             <span className="round-result-opener">{openedText}</span>
@@ -302,47 +305,49 @@ export const GameStage = forwardRef<HTMLElement, GameStageProps>(
               onClick={matchResultLabel ? onResetMatch : onResetRound}
             >
               <RefreshCw size={15} />
-              <span>{matchResultLabel ? 'New match' : 'Play again'}</span>
+              <span>
+                {matchResultLabel ? t('action.newMatch') : t('action.playAgain')}
+              </span>
             </button>
           </div>
         ) : null}
         {layout !== 'scanner' ? (
-          <div className="stage-actions" aria-label="Board view controls">
+          <div className="stage-actions" aria-label={t('aria.boardControls')}>
             <button
-              aria-label="Rotate board left"
-              title="Rotate left"
+              aria-label={t('view.rotateBoardLeft')}
+              title={t('view.rotateLeft')}
               type="button"
               onClick={() => onViewCommand('rotate-left')}
             >
               <RotateCcw size={18} />
             </button>
             <button
-              aria-label="Rotate board right"
-              title="Rotate right"
+              aria-label={t('view.rotateBoardRight')}
+              title={t('view.rotateRight')}
               type="button"
               onClick={() => onViewCommand('rotate-right')}
             >
               <RotateCw size={18} />
             </button>
             <button
-              aria-label="Zoom board in"
-              title="Zoom in"
+              aria-label={t('view.zoomBoardIn')}
+              title={t('view.zoomIn')}
               type="button"
               onClick={() => onViewCommand('zoom-in')}
             >
               <ZoomIn size={18} />
             </button>
             <button
-              aria-label="Zoom board out"
-              title="Zoom out"
+              aria-label={t('view.zoomBoardOut')}
+              title={t('view.zoomOut')}
               type="button"
               onClick={() => onViewCommand('zoom-out')}
             >
               <ZoomOut size={18} />
             </button>
             <button
-              aria-label="Reset board view"
-              title="Reset view"
+              aria-label={t('view.resetBoard')}
+              title={t('view.reset')}
               type="button"
               onClick={() => onViewCommand('reset')}
             >
