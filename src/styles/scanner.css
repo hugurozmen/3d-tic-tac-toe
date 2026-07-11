@@ -87,19 +87,41 @@
 }
 
 .scanner-dot {
+  position: relative;
   border-radius: 50%;
   border: 1px solid var(--app-stage-line);
 }
 
 .scanner-dot.dot-x {
   border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+.scanner-dot.dot-x::before,
+.scanner-dot.dot-x::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 82%;
+  height: max(1px, 12%);
+  border-radius: 999px;
   background: var(--mark-x);
-  box-shadow: 0 0 6px color-mix(in srgb, var(--mark-x) 60%, transparent);
+  box-shadow: 0 0 5px color-mix(in srgb, var(--mark-x) 58%, transparent);
+  content: "";
+}
+
+.scanner-dot.dot-x::before {
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.scanner-dot.dot-x::after {
+  transform: translate(-50%, -50%) rotate(-45deg);
 }
 
 .scanner-dot.dot-o {
-  border-color: transparent;
-  background: var(--mark-o);
+  border: max(1px, 12%) solid var(--mark-o);
+  background: transparent;
   box-shadow: 0 0 6px color-mix(in srgb, var(--mark-o) 60%, transparent);
 }
 

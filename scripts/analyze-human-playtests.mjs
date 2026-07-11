@@ -738,7 +738,7 @@ export function renderPlaytestReport(analysis) {
     ? 'All recorded participants have all four protocol sessions.'
     : `Incomplete participant/session combinations: ${analysis.sample.missingSessions.join(', ')}.`;
 
-  return `# 3D XOX human playtest readout
+  return `# TicTacube human playtest readout
 
 Sample: **${analysis.sample.participants} participant(s)** and **${analysis.sample.games} game(s)** — new/casual ${analysis.sample.cohorts.new_casual}, experienced ${analysis.sample.cohorts.experienced}. ${incomplete}
 

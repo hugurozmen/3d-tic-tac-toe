@@ -507,6 +507,26 @@ test('menu preserves the mounted round and persisted screen supports resume', as
   await openMenu(page);
   await expect(page.locator('.menu-play-action')).toHaveText('Resume');
   await expect(page.locator('.play-screen')).toBeHidden();
+  await expect(page.locator('.play-screen')).toHaveAttribute(
+    'aria-hidden',
+    'true',
+  );
+  await expect(page.locator('.play-screen')).toHaveAttribute('inert', '');
+  const hiddenCanvasState = await page.evaluate(() => {
+    const canvas = document.querySelector<HTMLCanvasElement>(
+      '.game-stage canvas',
+    );
+    const bounds = canvas?.getBoundingClientRect();
+
+    return {
+      cameraDistance: canvas?.dataset.cameraDistance ?? null,
+      height: bounds?.height ?? 0,
+      width: bounds?.width ?? 0,
+    };
+  });
+
+  expect(hiddenCanvasState.width).toBeGreaterThan(0);
+  expect(hiddenCanvasState.height).toBeGreaterThan(0);
   expect(
     await page
       .locator('.game-stage canvas')
@@ -518,6 +538,9 @@ test('menu preserves the mounted round and persisted screen supports resume', as
     'data-mount-identity',
     'preserved',
   );
+  expect(
+    await page.locator('.game-stage canvas').getAttribute('data-camera-distance'),
+  ).toBe(hiddenCanvasState.cameraDistance);
   await page.getByRole('button', { name: 'Scanner' }).click();
   await expect(page.getByRole('button', { name: /Cell 10, X/ })).toBeVisible();
   await page.reload({ waitUntil: 'domcontentloaded' });

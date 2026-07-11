@@ -13,6 +13,7 @@ import type { Board, Player } from '../../game/rules';
 import type { SceneTheme } from '../../theme';
 
 export type BoardSceneProps = {
+  active: boolean;
   animationEvents: GameAnimationEvent[];
   board: Board;
   coachBlockCells: number[];

@@ -137,6 +137,13 @@ export function Cell({
         }}
         onPointerEnter={(event) => {
           event.stopPropagation();
+
+          if (!isPlayable) {
+            setHovered(false);
+            onHover(null);
+            return;
+          }
+
           setHovered(true);
           onHover(index);
         }}

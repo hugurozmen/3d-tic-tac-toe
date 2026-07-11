@@ -1,4 +1,4 @@
-# 3D XOX
+# TicTacube
 
 A mobile-friendly `3x3x3` XOX strategy game for web, with online rooms,
 AI opponents, release QA tooling, and Capacitor packaging hooks for native

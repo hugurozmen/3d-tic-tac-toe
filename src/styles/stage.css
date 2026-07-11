@@ -5,6 +5,10 @@
   isolation: isolate;
 }
 
+.game-stage:focus {
+  outline: none;
+}
+
 .game-stage::after {
   position: absolute;
   inset: 0;

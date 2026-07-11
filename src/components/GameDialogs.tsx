@@ -283,7 +283,7 @@ export function GameDialogs({
                 setTutorialStep((current) => getNextTutorialStep(current));
               }}
             >
-              {t(isLastStep ? 'action.startPlaying' : 'action.next')}
+              {t(isLastStep ? 'action.done' : 'action.next')}
             </button>
           </div>
         </div>

@@ -584,8 +584,8 @@
   }
 
   .scanner-first-use-hint button {
-    min-height: 23px;
-    padding: 3px 7px;
+    min-height: 32px;
+    padding: 4px 9px;
     font-size: 0.58rem;
   }
 

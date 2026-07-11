@@ -126,6 +126,9 @@ export function App() {
     'menu',
     APP_SCREENS,
   );
+  const [hasLaunchedGame, setHasLaunchedGame] = useState(
+    appScreen === 'game',
+  );
   const [ruleset, setRuleset] = useLocalStorageState<GameRuleset>(
     '3dxox-ruleset',
     'lines',
@@ -226,6 +229,7 @@ export function App() {
   const aiRequestIdRef = useRef(0);
   const dailyShareTimeoutRef = useRef<number | null>(null);
   const noticeTimeoutRef = useRef<number | null>(null);
+  const onlineHandoverTimeoutRef = useRef<number | null>(null);
   const streakRoundRef = useRef<string | null>(null);
   const [scannerFloor, setScannerFloor] = useState(1);
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(
@@ -236,6 +240,7 @@ export function App() {
   const [pieDecisionDone, setPieDecisionDone] = useState(false);
   const [isAiThinking, setIsAiThinking] = useState(false);
   const [onlineHandoverId, setOnlineHandoverId] = useState(0);
+  const [onlineHandoverActive, setOnlineHandoverActive] = useState(false);
   const [powerSelection, setPowerSelection] =
     useState<FinalSixPowerId>('charged-cell');
   const [difficultyStreaks, setDifficultyStreaks] = useState(
@@ -272,6 +277,7 @@ export function App() {
     !result.winner &&
     !result.isDraw;
   const isAiTurn =
+    appScreen === 'game' &&
     mode === 'solo' &&
     currentPlayer === aiPlayer &&
     !result.winner &&
@@ -416,6 +422,28 @@ export function App() {
     [],
   );
 
+  const clearOnlineHandover = useCallback(() => {
+    if (onlineHandoverTimeoutRef.current !== null) {
+      window.clearTimeout(onlineHandoverTimeoutRef.current);
+      onlineHandoverTimeoutRef.current = null;
+    }
+
+    setOnlineHandoverActive(false);
+  }, []);
+
+  const flashOnlineHandover = useCallback(() => {
+    if (onlineHandoverTimeoutRef.current !== null) {
+      window.clearTimeout(onlineHandoverTimeoutRef.current);
+    }
+
+    setOnlineHandoverId((current) => current + 1);
+    setOnlineHandoverActive(true);
+    onlineHandoverTimeoutRef.current = window.setTimeout(() => {
+      onlineHandoverTimeoutRef.current = null;
+      setOnlineHandoverActive(false);
+    }, 820);
+  }, []);
+
   useEffect(
     () => () => {
       if (noticeTimeoutRef.current !== null) {
@@ -424,6 +452,10 @@ export function App() {
 
       if (dailyShareTimeoutRef.current !== null) {
         window.clearTimeout(dailyShareTimeoutRef.current);
+      }
+
+      if (onlineHandoverTimeoutRef.current !== null) {
+        window.clearTimeout(onlineHandoverTimeoutRef.current);
       }
     },
     [],
@@ -568,6 +600,10 @@ export function App() {
     }
 
     if (mode === 'solo' && currentPlayer === aiPlayer) {
+      if (appScreen !== 'game') {
+        return;
+      }
+
       const shouldSwap = shouldSwapClassicPie(board, difficulty);
 
       setPieDecisionDone(true);
@@ -585,6 +621,7 @@ export function App() {
 
     setPiePromptOpen(true);
   }, [
+    appScreen,
     aiPlayer,
     board,
     currentPlayer,
@@ -659,9 +696,11 @@ export function App() {
   const onlineHandlers = useMemo(
     () => ({
       onAuthoritativeSnapshot: (snapshot: OnlineGameSnapshot) => {
+        clearOnlineHandover();
         restoreOnlineSnapshot(snapshot);
       },
       onLocalMatchResetAcknowledged: (snapshot: OnlineGameSnapshot) => {
+        clearOnlineHandover();
         restoreOnlineSnapshot(snapshot);
       },
       onLocalMoveAcknowledged: (
@@ -674,9 +713,11 @@ export function App() {
         }
       },
       onLocalRoundResetAcknowledged: (snapshot: OnlineGameSnapshot) => {
+        clearOnlineHandover();
         restoreOnlineSnapshot(snapshot);
       },
       onRemoteMatchReset: (snapshot: OnlineGameSnapshot) => {
+        clearOnlineHandover();
         restoreOnlineSnapshot(snapshot);
         flashNotice(t('notice.opponentResetMatch'));
       },
@@ -695,14 +736,16 @@ export function App() {
           restoreOnlineSnapshot(snapshot);
         }
 
-        setOnlineHandoverId((current) => current + 1);
+        flashOnlineHandover();
       },
       onRemoteRoundReset: (snapshot: OnlineGameSnapshot) => {
+        clearOnlineHandover();
         restoreOnlineSnapshot(snapshot);
         flashNotice(t('notice.opponentNewRound'));
       },
       onRoomSettings: (settings: OnlineRoomSettings) => {
         if (settings.ruleset !== ruleset) {
+          clearOnlineHandover();
           setRuleset(settings.ruleset);
           resetMatch();
           setPieDecisionDone(false);
@@ -712,7 +755,9 @@ export function App() {
     }),
     [
       applyMove,
+      clearOnlineHandover,
       flashNotice,
+      flashOnlineHandover,
       resetMatch,
       restoreOnlineSnapshot,
       ruleset,
@@ -777,14 +822,16 @@ export function App() {
     if (mode !== 'online') {
       online.close();
       setRemoteSignal('');
+      clearOnlineHandover();
       setOnlineHandoverId(0);
     }
-  }, [mode, online.close]);
+  }, [clearOnlineHandover, mode, online.close]);
 
   useEffect(() => () => aiWorkerRef.current?.terminate(), []);
 
   useEffect(() => {
     if (
+      appScreen !== 'game' ||
       mode !== 'solo' ||
       powerPicker !== aiPlayer ||
       result.winner ||
@@ -809,6 +856,7 @@ export function App() {
 
     return () => window.clearTimeout(timer);
   }, [
+    appScreen,
     aiPlayer,
     board,
     mode,
@@ -1291,6 +1339,23 @@ export function App() {
     }));
   }, []);
 
+  const enterGameScreen = useCallback(() => {
+    setHasLaunchedGame(true);
+    setAppScreen('game');
+    window.requestAnimationFrame(() => {
+      stageRef.current?.focus({ preventScroll: true });
+    });
+  }, [setAppScreen]);
+
+  const openGameMenu = useCallback(() => {
+    setAppScreen('menu');
+    window.requestAnimationFrame(() => {
+      document
+        .querySelector<HTMLButtonElement>('.menu-play-action')
+        ?.focus({ preventScroll: true });
+    });
+  }, [setAppScreen]);
+
   const handleOnlineSignal = () => {
     const roomCode = remoteSignal.trim();
 
@@ -1309,6 +1374,8 @@ export function App() {
   };
 
   const handleResetRound = () => {
+    clearOnlineHandover();
+
     if (match.isComplete) {
       handleResetMatch();
       return;
@@ -1326,6 +1393,8 @@ export function App() {
   };
 
   const handleResetMatch = () => {
+    clearOnlineHandover();
+
     if (mode === 'online') {
       if (!online.sendMatchReset()) {
         flashNotice(t('notice.reconnectReset'));
@@ -1672,9 +1741,9 @@ export function App() {
         >
           <GameMenu
             {...panelProps}
-            canResume={matchHasProgress || onlineRoomActive}
+            canResume={hasLaunchedGame || matchHasProgress || onlineRoomActive}
             onOpenGuide={() => setGuideOpen(true)}
-            onPlay={() => setAppScreen('game')}
+            onPlay={enterGameScreen}
           />
         </div>
 
@@ -1687,6 +1756,7 @@ export function App() {
         >
           <GameStage
             ref={stageRef}
+            active={appScreen === 'game'}
             board={board}
             animationEvents={animationEvents}
             coachBlockCells={coachBlockCells}
@@ -1701,7 +1771,7 @@ export function App() {
             finalLines={finalLines}
             hud={{
               currentPlayer: powerPicker ?? currentPlayer,
-              handoverId: onlineHandoverId,
+              handoverId: onlineHandoverActive ? onlineHandoverId : 0,
               isAiThinking,
               isComplete: Boolean(
                 match.winner || result.winner || result.isDraw,
@@ -1743,7 +1813,7 @@ export function App() {
           <GameScreenChrome
             layout={layout}
             onLayoutChange={handleLayoutChange}
-            onOpenMenu={() => setAppScreen('menu')}
+            onOpenMenu={openGameMenu}
           />
         </div>
 

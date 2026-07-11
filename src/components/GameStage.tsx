@@ -45,6 +45,7 @@ export const preloadBoardScene = () => {
 };
 
 export type GameStageProps = {
+  active?: boolean;
   animationEvents: GameAnimationEvent[];
   board: Board;
   coachBlockCells: number[];
@@ -135,6 +136,7 @@ export const GameStage = forwardRef<HTMLElement, GameStageProps>(
   function GameStage(
     {
       board,
+      active = true,
       animationEvents,
       coachBlockCells,
       coachHints,
@@ -200,6 +202,7 @@ export const GameStage = forwardRef<HTMLElement, GameStageProps>(
           .filter(Boolean)
           .join(' ')}
         aria-label={t('aria.board')}
+        tabIndex={-1}
       >
         {hud ? <StageHud {...hud} /> : null}
         {layout === 'scanner' ? (
@@ -239,6 +242,7 @@ export const GameStage = forwardRef<HTMLElement, GameStageProps>(
               }
             >
               <BoardScene
+                active={active}
                 board={board}
                 animationEvents={animationEvents}
                 coachBlockCells={coachBlockCells}

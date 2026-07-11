@@ -130,6 +130,7 @@
 
 .menu-content {
   width: min(1120px, 100%);
+  min-width: 0;
   min-height: calc(100svh - clamp(36px, 8vw, 96px));
   margin: 0 auto;
   display: grid;
@@ -138,6 +139,7 @@
 }
 
 .menu-hero {
+  min-width: 0;
   display: grid;
   grid-template-columns: minmax(0, 1.28fr) minmax(260px, 0.72fr);
   align-items: stretch;
@@ -148,6 +150,9 @@
 .menu-intro,
 .menu-section-column,
 .menu-round-actions {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   border: 1px solid var(--app-border);
   border-radius: clamp(18px, 2.5vw, 26px);
   background: linear-gradient(
@@ -163,6 +168,7 @@
 
 .menu-hero > .panel-sticky-top {
   padding: clamp(18px, 3vw, 30px);
+  container-type: inline-size;
 }
 
 .menu-hero h1 {
@@ -252,10 +258,33 @@
   display: grid;
   gap: 12px;
   padding: clamp(14px, 2vw, 20px);
+  container-type: inline-size;
 }
 
 .menu-section-column > .panel-section {
+  min-width: 0;
   background: color-mix(in srgb, var(--app-tile) 64%, transparent);
+}
+
+.menu-section-column .panel-section > summary {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.menu-section-column .panel-section > summary > span {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.menu-section-column .panel-section > summary > small {
+  min-width: 0;
+  grid-column: 1;
+  grid-row: 2;
+  overflow-wrap: anywhere;
+}
+
+.menu-section-column .panel-section > summary::after {
+  grid-column: 2;
+  grid-row: 1 / span 2;
 }
 
 .menu-round-actions {
@@ -309,6 +338,37 @@
       color-mix(in srgb, var(--app-panel) 92%, transparent),
       color-mix(in srgb, var(--app-panel-strong) 66%, transparent)
     );
+  }
+
+  .menu-hero .panel-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .menu-hero .panel-header > div:first-child {
+    min-width: 0;
+  }
+
+  .menu-hero .header-side {
+    width: 100%;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .menu-hero .scoreboard-meta {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+
+  .menu-hero .scoreboard-round,
+  .menu-hero .scoreboard-match-score,
+  .menu-hero .scoreboard-draws {
+    grid-column: span 2;
+  }
+
+  .menu-hero .scoreboard-opener,
+  .menu-hero .scoreboard-next {
+    grid-column: span 3;
   }
 
   .menu-hero h1 {

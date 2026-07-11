@@ -82,6 +82,7 @@ export function BoardScene(props: BoardSceneProps) {
       key={generation}
       camera={CAMERA_CONFIG}
       dpr={[1, 2]}
+      frameloop={props.active ? 'always' : 'never'}
       gl={{ alpha: false, antialias: true }}
       onCreated={({ gl, invalidate }) => {
         cleanupContextListenersRef.current();

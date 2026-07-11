@@ -1,6 +1,12 @@
 import { Text } from '@react-three/drei';
 import { useFrame, useThree } from '@react-three/fiber';
-import { useEffect, useRef, useState } from 'react';
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import * as THREE from 'three';
 import {
   getAnimationCells,
@@ -9,7 +15,10 @@ import {
 } from '../../game/animationEvents';
 import { CameraControls, CameraRig } from './Camera';
 import { Cell } from './Cell';
-import { LayoutMorphProvider } from './LayoutMorphContext';
+import {
+  LayoutMorphProvider,
+  useLayoutMorphProgress,
+} from './LayoutMorphContext';
 import {
   AuthoredLineBeam,
   BoardRails,
@@ -50,6 +59,33 @@ function usePrefersReducedMotion() {
   }, []);
 
   return prefersReducedMotion;
+}
+
+function MorphSensitiveEffects({ children }: { children: ReactNode }) {
+  const group = useRef<THREE.Group>(null);
+  const morphProgress = useLayoutMorphProgress();
+
+  useFrame(() => {
+    if (!group.current) {
+      return;
+    }
+
+    const progress = morphProgress.current;
+
+    // Cell-relative beams and HTML effects use exact endpoint geometry. Hide
+    // them during the brief plane morph so they never detach or teleport
+    // across the moving board, then restore them at the settled endpoint.
+    group.current.visible = progress === 0 || progress === 1;
+  });
+
+  return (
+    <group
+      ref={group}
+      visible={morphProgress.current === 0 || morphProgress.current === 1}
+    >
+      {children}
+    </group>
+  );
 }
 
 export function SceneContent({
@@ -192,7 +228,7 @@ export function SceneContent({
     (winningLine.length === 3 ? winningLine : finalLines[0] ?? []);
   const beamColor = scoredLines[0] ? '#74f0a7' : theme.win;
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const target = layoutMorphTarget(layout);
 
     if (prefersReducedMotion) {
@@ -265,83 +301,92 @@ export function SceneContent({
             </mesh>
           </group>
         ) : null}
-        {theme.winBeam && beamLine.length === 3 ? (
-          <WinBeam color={beamColor} layout={layout} line={beamLine} theme={theme} />
-        ) : null}
-        {hasFinalSixStartEvent ? (
-          <FinalSixChargePulse cells={finalSixPulseCells} layout={layout} />
-        ) : null}
-        {activeCoachHint && activeCoachColor ? (
-          <CoachLinePath
-            color={activeCoachColor}
-            layout={layout}
-            line={activeCoachHint.primaryLine}
-          />
-        ) : null}
-        {animationLineMoments.map((moment) => (
-          <AuthoredLineBeam
-            key={`authored-${moment.eventId}-${moment.sequence}-${moment.line.join('-')}`}
-            color={
-              moment.tone === 'block'
-                ? '#ff6f76'
-                : moment.tone === 'power'
-                  ? '#f8d65a'
-                  : '#74f0a7'
-            }
-            delayMs={moment.delayMs}
-            impactCell={moment.tone === 'block' ? latestPlaceCell : null}
-            isCombo={moment.isCombo}
-            layout={layout}
-            line={moment.line}
-            tone={moment.tone}
-          />
-        ))}
-        {powerTriggerEvents.map((event) => (
-          <PowerBonusFloat
-            key={`power-float-${event.id}`}
-            bonus={event.bonus}
-            cell={event.cell}
-            layout={layout}
-            shieldDenied={event.shieldDenied}
-          />
-        ))}
-        {powerTriggerEvents
-          .filter((event) => event.shieldDenied || event.power === 'shield-cell')
-          .map((event) => (
-            <ShieldImpact
-              key={`shield-impact-${event.id}`}
-              cell={event.cell}
+        <MorphSensitiveEffects>
+          {theme.winBeam && beamLine.length === 3 ? (
+            <WinBeam
+              color={beamColor}
               layout={layout}
+              line={beamLine}
+              theme={theme}
+            />
+          ) : null}
+          {hasFinalSixStartEvent ? (
+            <FinalSixChargePulse cells={finalSixPulseCells} layout={layout} />
+          ) : null}
+          {activeCoachHint && activeCoachColor ? (
+            <CoachLinePath
+              color={activeCoachColor}
+              layout={layout}
+              line={activeCoachHint.primaryLine}
+            />
+          ) : null}
+          {animationLineMoments.map((moment) => (
+            <AuthoredLineBeam
+              key={`authored-${moment.eventId}-${moment.sequence}-${moment.line.join('-')}`}
+              color={
+                moment.tone === 'block'
+                  ? '#ff6f76'
+                  : moment.tone === 'power'
+                    ? '#f8d65a'
+                    : '#74f0a7'
+              }
+              delayMs={moment.delayMs}
+              impactCell={moment.tone === 'block' ? latestPlaceCell : null}
+              isCombo={moment.isCombo}
+              layout={layout}
+              line={moment.line}
+              tone={moment.tone}
             />
           ))}
-        {powerEffects.previewLines.map((preview) => (
-          <CoachLinePath
-            key={`preview-${preview.kind}-${preview.player}-${preview.line.join('-')}`}
-            color={preview.kind === 'surge-line' ? '#74f0a7' : '#ff6f76'}
-            layout={layout}
-            line={preview.line}
-          />
-        ))}
-        {powerEffects.surgeLines.map((choice) =>
-          choice.line ? (
-            <CoachLinePath
-              key={`surge-${choice.player}-${choice.line.join('-')}`}
-              color={choice.triggered ? '#f8d65a' : '#74f0a7'}
+          {powerTriggerEvents.map((event) => (
+            <PowerBonusFloat
+              key={`power-float-${event.id}`}
+              bonus={event.bonus}
+              cell={event.cell}
               layout={layout}
-              line={choice.line}
+              shieldDenied={event.shieldDenied}
             />
-          ) : null,
-        )}
-        {powerEffects.shieldLines.map((choice) =>
-          choice.line ? (
+          ))}
+          {powerTriggerEvents
+            .filter(
+              (event) => event.shieldDenied || event.power === 'shield-cell',
+            )
+            .map((event) => (
+              <ShieldImpact
+                key={`shield-impact-${event.id}`}
+                cell={event.cell}
+                layout={layout}
+              />
+            ))}
+          {powerEffects.previewLines.map((preview) => (
             <CoachLinePath
-              key={`shield-${choice.player}-${choice.line.join('-')}`}
-              color={choice.triggered ? '#f8d65a' : '#ff6f76'}
+              key={`preview-${preview.kind}-${preview.player}-${preview.line.join('-')}`}
+              color={preview.kind === 'surge-line' ? '#74f0a7' : '#ff6f76'}
               layout={layout}
-              line={choice.line}
+              line={preview.line}
             />
-          ) : null,
-        )}
+          ))}
+          {powerEffects.surgeLines.map((choice) =>
+            choice.line ? (
+              <CoachLinePath
+                key={`surge-${choice.player}-${choice.line.join('-')}`}
+                color={choice.triggered ? '#f8d65a' : '#74f0a7'}
+                layout={layout}
+                line={choice.line}
+              />
+            ) : null,
+          )}
+          {powerEffects.shieldLines.map((choice) =>
+            choice.line ? (
+              <CoachLinePath
+                key={`shield-${choice.player}-${choice.line.join('-')}`}
+                color={choice.triggered ? '#f8d65a' : '#ff6f76'}
+                layout={layout}
+                line={choice.line}
+              />
+            ) : null,
+          )}
+        </MorphSensitiveEffects>
         {board.map((value, index) => {
           const isScore = !value && scoreCells.has(index);
           const isBlock = !value && blockCells.has(index);

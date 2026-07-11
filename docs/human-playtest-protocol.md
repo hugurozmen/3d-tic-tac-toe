@@ -1,4 +1,4 @@
-# 3D XOX balance playtest protocol
+# TicTacube balance playtest protocol
 
 Use this protocol for the four balance questions that self-play cannot answer:
 whether center feels compulsory, whether the last six Standard Lines moves stay
@@ -14,7 +14,7 @@ Hard from Smart without labels.
   experienced abstract-strategy players.
 - Allow 45–60 minutes per player. Use Scanner, Lines Mode, and Final Six Powers
   **off** unless a step says otherwise.
-- Record the build SHA, device/viewport, prior 3D XOX experience, session order,
+- Record the build SHA, device/viewport, prior TicTacube experience, session order,
   opener, opening cell, score after move 21, final score, and result for every game.
 - Before sessions, run `npm run ai:selfplay -- --full-openings`. Keep its output
   with the notes so human impressions can be compared with the seat-swapped data.

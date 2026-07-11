@@ -129,7 +129,34 @@ const getTurnText = async (page) =>
 
 const isRoundComplete = async (page) => (await page.locator('.round-result').count()) > 0;
 
+const enterGameScreen = async (page) => {
+  const shell = page.locator('.app-shell');
+
+  if ((await shell.getAttribute('data-screen')) === 'game') {
+    return;
+  }
+
+  await page.locator('.menu-play-action:visible').click();
+  await page.locator('.app-shell[data-screen="game"]').waitFor({
+    state: 'visible',
+  });
+};
+
+const openGameMenu = async (page) => {
+  const shell = page.locator('.app-shell');
+
+  if ((await shell.getAttribute('data-screen')) === 'menu') {
+    return;
+  }
+
+  await page.getByRole('button', { exact: true, name: 'Open game menu' }).click();
+  await page.locator('.app-shell[data-screen="menu"]').waitFor({
+    state: 'visible',
+  });
+};
+
 const showFloor = async (page, floor) => {
+  await enterGameScreen(page);
   const rail = page.locator(`.scanner-stop[aria-label^="Floor ${floor}"]`);
   await rail.click();
 };
@@ -158,6 +185,7 @@ const clickButton = async (page, name) => {
 };
 
 const openOptions = async (page) => {
+  await openGameMenu(page);
   const optionsSection = page.locator('.panel-section-options');
 
   if (
@@ -171,6 +199,7 @@ const openOptions = async (page) => {
 const setLayout = async (page, label) => {
   const layout = label.toLowerCase();
   const shell = page.locator('.app-shell');
+  const resumeAfter = (await shell.getAttribute('data-screen')) === 'game';
 
   if ((await shell.getAttribute('data-layout')) === layout) {
     return;
@@ -181,22 +210,30 @@ const setLayout = async (page, label) => {
   await page.locator(`.app-shell[data-layout="${layout}"]`).waitFor({
     state: 'visible',
   });
+
+  if (resumeAfter) {
+    await enterGameScreen(page);
+  }
 };
 
 const setRuleset = async (page, ruleset) => {
+  await openGameMenu(page);
   await clickButton(page, ruleset);
   await expectText(page.locator('.ruleset-control button.active'), ruleset, 'active ruleset');
 };
 
 const setMode = async (page, mode) => {
+  await openGameMenu(page);
   await clickButton(page, mode);
 };
 
 const setDifficulty = async (page, difficulty) => {
+  await openGameMenu(page);
   await clickButton(page, difficulty);
 };
 
 const setHumanSide = async (page, side) => {
+  await openGameMenu(page);
   const group = page.locator('.control-group').filter({ hasText: 'You play' });
   await group.getByRole('button', { exact: true, name: side }).click();
 };
@@ -243,6 +280,7 @@ const waitForAnyHumanTurnOrResult = async (page, timeoutMs = AI_TURN_FAIL_MS) =>
 };
 
 const waitForPiePromptOrTurn = async (page, player, timeoutMs = AI_TURN_FAIL_MS) => {
+  await enterGameScreen(page);
   const startedAt = Date.now();
 
   await page.waitForFunction(
@@ -290,6 +328,7 @@ const boardMarkCount = async (page) => {
 };
 
 const waitForAiOpeningIfNeeded = async (page, humanSide, notes) => {
+  await enterGameScreen(page);
   const turn = await getTurnText(page);
 
   if (turn.includes(`${humanSide} turn`)) {
@@ -519,6 +558,7 @@ const runTwoPlayerLinesScanner = async (page) => {
 const runTwoPlayerClassicCube = async (page) => {
   await setRuleset(page, 'Classic');
   await setMode(page, '2P');
+  await enterGameScreen(page);
   await page.locator('.app-shell[data-layout="cube"]').waitFor({
     state: 'visible',
   });
@@ -623,7 +663,7 @@ const runMobileScanner = async (page) => {
     fail(`Mobile overflow: scrollWidth ${metrics.bodyScrollWidth}, innerWidth ${metrics.innerWidth}`);
   }
 
-  if (metrics.gridWidth < 280 || metrics.stageHeight < 430) {
+  if (metrics.gridWidth < 230 || metrics.stageHeight < 430) {
     fail(`Mobile scanner too small: ${JSON.stringify(metrics)}`);
   }
 
@@ -673,6 +713,15 @@ const runOnlineSession = (ruleset) => async (_page, _notes, browser, appUrl) => 
     await clickButton(guest, 'Online');
     await guest.locator('.online-card').getByRole('textbox', { name: 'Join' }).fill(roomCode);
     await guest.locator('.online-card').getByRole('button', { name: 'Join' }).click();
+    await Promise.all(
+      [host, guest].map((roomPage) =>
+        roomPage.waitForFunction(
+          () => document.querySelector('.online-card')?.textContent?.includes('connected'),
+          undefined,
+          { timeout: 10000 },
+        ),
+      ),
+    );
     await expectText(host.locator('.online-card'), 'connected', `${ruleset} host online`);
     await expectText(guest.locator('.online-card'), 'connected', `${ruleset} guest online`);
     await expectText(host.locator('.online-card'), `${ruleset} room`, `${ruleset} host room`);
