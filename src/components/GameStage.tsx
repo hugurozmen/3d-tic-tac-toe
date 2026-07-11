@@ -86,7 +86,6 @@ class BoardSceneBoundary extends Component<
   {
     children: ReactNode;
     fallback: ReactNode;
-    resetKey: BoardLayout;
   },
   { hasError: boolean; retryCount: number }
 > {
@@ -112,15 +111,6 @@ class BoardSceneBoundary extends Component<
     }, 300);
   }
 
-  componentDidUpdate(previousProps: { resetKey: BoardLayout }) {
-    if (
-      previousProps.resetKey !== this.props.resetKey &&
-      (this.state.hasError || this.state.retryCount > 0)
-    ) {
-      this.setState({ hasError: false, retryCount: 0 });
-    }
-  }
-
   componentWillUnmount() {
     if (this.retryTimer !== null) {
       window.clearTimeout(this.retryTimer);
@@ -133,7 +123,7 @@ class BoardSceneBoundary extends Component<
     }
 
     return (
-      <Fragment key={`${this.props.resetKey}-${this.state.retryCount}`}>
+      <Fragment key={this.state.retryCount}>
         {this.props.children}
       </Fragment>
     );
@@ -232,7 +222,7 @@ export const GameStage = forwardRef<HTMLElement, GameStageProps>(
             onSelect={onSelect}
           />
         ) : (
-          <BoardSceneBoundary fallback={boardSceneFallback} resetKey={layout}>
+          <BoardSceneBoundary fallback={boardSceneFallback}>
             <Suspense
               fallback={
                 <div className="stage-loading" role="status" aria-live="polite">

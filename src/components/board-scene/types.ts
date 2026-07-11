@@ -40,7 +40,6 @@ export type CellProps = {
   coachMark: 'score' | 'block' | 'both' | 'soft-score' | null;
   coachExplanation: string | null;
   lineMark: 'final' | 'scored' | 'win' | null;
-  layout: BoardLayout;
   powerMark:
     | FinalSixPowerId
     | 'power-charged-empty'

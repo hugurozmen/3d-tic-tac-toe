@@ -60,7 +60,7 @@ export function BoardScene(props: BoardSceneProps) {
   useEffect(() => {
     bornLostRetryCountRef.current = 0;
     setContextFailure(false);
-  }, [props.layout]);
+  }, [generation]);
 
   useEffect(
     () => () => {
@@ -79,7 +79,7 @@ export function BoardScene(props: BoardSceneProps) {
 
   return (
     <Canvas
-      key={`${props.layout}-${generation}`}
+      key={generation}
       camera={CAMERA_CONFIG}
       dpr={[1, 2]}
       gl={{ alpha: false, antialias: true }}

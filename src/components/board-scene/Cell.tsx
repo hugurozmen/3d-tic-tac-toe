@@ -5,10 +5,11 @@ import * as THREE from 'three';
 import { feedback } from '../../game/feedback';
 import {
   cellGeometry,
-  cellPosition,
   dotGeometry,
   jointGeometry,
 } from './geometry';
+import { useLayoutMorphProgress } from './LayoutMorphContext';
+import { morphCellPosition } from './layoutMorph';
 import { Mark } from './Marks';
 import type { CellProps } from './types';
 
@@ -21,7 +22,6 @@ export function Cell({
   eventMark,
   index,
   lineMark,
-  layout,
   powerMark,
   powerText,
   tensionMark,
@@ -33,8 +33,8 @@ export function Cell({
 }: CellProps) {
   const [hovered, setHovered] = useState(false);
   const ref = useRef<THREE.Group>(null);
+  const morphProgress = useLayoutMorphProgress();
   const isPlayable = !value && !disabled;
-  const position = useMemo(() => cellPosition(index, layout), [index, layout]);
   const isGhost = theme.cellStyle === 'ghost';
   const isWire = theme.cellStyle === 'wire';
   const isActive = armed || (hovered && isPlayable);
@@ -77,6 +77,8 @@ export function Cell({
       return;
     }
 
+    ref.current.position.set(...morphCellPosition(index, morphProgress.current));
+
     const pulse = prefersReducedMotion
       ? isActive && isPlayable
         ? 1.04
@@ -105,7 +107,10 @@ export function Cell({
   });
 
   return (
-    <group ref={ref} position={position}>
+    <group
+      ref={ref}
+      position={morphCellPosition(index, morphProgress.current)}
+    >
       <mesh
         geometry={cellGeometry}
         onClick={(event) => {

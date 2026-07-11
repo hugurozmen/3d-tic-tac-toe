@@ -1,6 +1,6 @@
 import { Text } from '@react-three/drei';
-import { useFrame } from '@react-three/fiber';
-import { useRef } from 'react';
+import { useFrame, useThree } from '@react-three/fiber';
+import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import {
   getAnimationCells,
@@ -9,6 +9,7 @@ import {
 } from '../../game/animationEvents';
 import { CameraControls, CameraRig } from './Camera';
 import { Cell } from './Cell';
+import { LayoutMorphProvider } from './LayoutMorphContext';
 import {
   AuthoredLineBeam,
   BoardRails,
@@ -22,7 +23,33 @@ import {
   ShieldImpact,
   WinBeam,
 } from './Environment';
+import {
+  LAYOUT_MORPH_DURATION_MS,
+  interpolateLayoutMorph,
+  layoutMorphTarget,
+} from './layoutMorph';
 import type { SceneContentProps } from './types';
+
+function usePrefersReducedMotion() {
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(() =>
+    typeof window === 'undefined'
+      ? false
+      : window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+  );
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const updatePreference = () =>
+      setPrefersReducedMotion(mediaQuery.matches);
+
+    updatePreference();
+    mediaQuery.addEventListener('change', updatePreference);
+
+    return () => mediaQuery.removeEventListener('change', updatePreference);
+  }, []);
+
+  return prefersReducedMotion;
+}
 
 export function SceneContent({
   armedCell,
@@ -48,6 +75,14 @@ export function SceneContent({
   onSelect,
 }: SceneContentProps) {
   const group = useRef<THREE.Group>(null);
+  const morphProgress = useRef(layoutMorphTarget(layout));
+  const morphAnimation = useRef({
+    elapsedMs: LAYOUT_MORPH_DURATION_MS,
+    from: morphProgress.current,
+    to: morphProgress.current,
+  });
+  const prefersReducedMotion = usePrefersReducedMotion();
+  const { gl } = useThree();
   const classicWinningCells = new Set(winningLine);
   const scoredCells = new Set(scoredLines.flatMap((line) => line));
   const finalCells = new Set(finalLines.flatMap((line) => line));
@@ -156,7 +191,45 @@ export function SceneContent({
     (winningLine.length === 3 ? winningLine : finalLines[0] ?? []);
   const beamColor = scoredLines[0] ? '#74f0a7' : theme.win;
 
-  useFrame(({ clock }) => {
+  useEffect(() => {
+    const target = layoutMorphTarget(layout);
+
+    if (prefersReducedMotion) {
+      morphProgress.current = target;
+      morphAnimation.current = {
+        elapsedMs: LAYOUT_MORPH_DURATION_MS,
+        from: target,
+        to: target,
+      };
+      return;
+    }
+
+    morphAnimation.current = {
+      elapsedMs: 0,
+      from: morphProgress.current,
+      to: target,
+    };
+  }, [layout, prefersReducedMotion]);
+
+  useEffect(() => {
+    gl.domElement.dataset.boardLayout = layout;
+  }, [gl, layout]);
+
+  useFrame(({ clock }, delta) => {
+    const animation = morphAnimation.current;
+
+    if (animation.elapsedMs < LAYOUT_MORPH_DURATION_MS) {
+      animation.elapsedMs = Math.min(
+        LAYOUT_MORPH_DURATION_MS,
+        animation.elapsedMs + delta * 1000,
+      );
+      morphProgress.current = interpolateLayoutMorph(
+        animation.from,
+        animation.to,
+        animation.elapsedMs,
+      );
+    }
+
     if (!group.current) {
       return;
     }
@@ -169,12 +242,11 @@ export function SceneContent({
       <ambientLight intensity={theme.ambient} />
       <directionalLight position={[3, 4, 5]} intensity={theme.directional} />
       <pointLight position={[-4, -3, -2]} color={theme.point} intensity={1.45} />
-      <group ref={group}>
-        <BoardRails layout={layout} theme={theme} />
-        {layout === 'cube' && theme.cubeShell ? (
-          <CubeShell theme={theme} />
-        ) : null}
-        {layout === 'floors' ? <FloorPlates theme={theme} /> : null}
+      <LayoutMorphProvider progress={morphProgress}>
+        <group ref={group}>
+        <BoardRails theme={theme} />
+        {theme.cubeShell ? <CubeShell theme={theme} /> : null}
+        <FloorPlates theme={theme} />
         {theme.coreGlow ? <CoreGlow theme={theme} /> : null}
         {powerEffects.chargedState ? (
           <group>
@@ -363,7 +435,6 @@ export function SceneContent({
                       ? 'scored'
                       : null
               }
-              layout={layout}
               powerMark={cellPowerMark}
               powerText={cellPowerText}
               tensionMark={tensionMark}
@@ -375,8 +446,9 @@ export function SceneContent({
             />
           );
         })}
-      </group>
-      {theme.scanFloor ? <ScanFloor layout={layout} theme={theme} /> : null}
+        </group>
+        {theme.scanFloor ? <ScanFloor theme={theme} /> : null}
+      </LayoutMorphProvider>
       <Text
         anchorX="center"
         anchorY="middle"

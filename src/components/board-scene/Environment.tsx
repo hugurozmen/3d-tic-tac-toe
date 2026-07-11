@@ -15,6 +15,8 @@ import {
   shellBoxGeometry,
   shellGridGeometry,
 } from './geometry';
+import { useLayoutMorphProgress } from './LayoutMorphContext';
+import { floorMorphTransform } from './layoutMorph';
 
 const LINE_STEP_DELAY_MS = 120;
 
@@ -60,12 +62,11 @@ const useLineMetrics = (line: number[], layout: BoardLayout) =>
   }, [layout, line]);
 
 export function BoardRails({
-  layout,
   theme,
 }: {
-  layout: BoardLayout;
   theme: SceneTheme;
 }) {
+  const morphProgress = useLayoutMorphProgress();
   const railMaterial = useMemo(
     () =>
       new THREE.MeshStandardMaterial({
@@ -75,56 +76,28 @@ export function BoardRails({
       }),
     [theme.rail],
   );
-  const rails = useMemo(() => {
-    const positions: Array<{
-      position: [number, number, number];
-      rotation: [number, number, number];
-    }> = [];
-    const range = [-SPACING, 0, SPACING];
+  const depthMaterial = useMemo(
+    () =>
+      new THREE.MeshStandardMaterial({
+        color: theme.rail,
+        metalness: 0.18,
+        roughness: 0.64,
+        transparent: true,
+      }),
+    [theme.rail],
+  );
+  const depthGroup = useRef<THREE.Group>(null);
+  const range = [-SPACING, 0, SPACING];
 
-    if (layout === 'floors') {
-      for (const floorY of [-FLOOR_GAP, 0, FLOOR_GAP]) {
-        for (const z of range) {
-          positions.push({ position: [0, floorY, z], rotation: [0, 0, 0] });
-        }
+  useFrame(() => {
+    const cubeOpacity = 1 - morphProgress.current;
 
-        for (const x of range) {
-          positions.push({
-            position: [x, floorY, 0],
-            rotation: [0, Math.PI / 2, 0],
-          });
-        }
-      }
+    depthMaterial.opacity = cubeOpacity;
 
-      return positions;
+    if (depthGroup.current) {
+      depthGroup.current.visible = cubeOpacity > 0.001;
     }
-
-    for (const y of range) {
-      for (const z of range) {
-        positions.push({ position: [0, y, z], rotation: [0, 0, 0] });
-      }
-    }
-
-    for (const x of range) {
-      for (const z of range) {
-        positions.push({
-          position: [x, 0, z],
-          rotation: [0, 0, Math.PI / 2],
-        });
-      }
-    }
-
-    for (const x of range) {
-      for (const y of range) {
-        positions.push({
-          position: [x, y, 0],
-          rotation: [0, Math.PI / 2, 0],
-        });
-      }
-    }
-
-    return positions;
-  }, [layout]);
+  });
 
   if (theme.railStyle === 'none') {
     return null;
@@ -132,13 +105,77 @@ export function BoardRails({
 
   return (
     <group>
-      {rails.map((rail, index) => (
-        <mesh
-          key={`${rail.position.join('-')}-${index}`}
-          geometry={theme.railStyle === 'bold' ? boldRailGeometry : railGeometry}
+      {[0, 1, 2].map((floorIndex) => (
+        <MorphingFloorRails
+          key={floorIndex}
+          floorIndex={floorIndex}
           material={railMaterial}
-          position={rail.position}
-          rotation={rail.rotation}
+          railStyle={theme.railStyle}
+        />
+      ))}
+      <group ref={depthGroup}>
+        {range.flatMap((x) =>
+          range.map((y) => (
+            <mesh
+              key={`${x}-${y}`}
+              geometry={
+                theme.railStyle === 'bold' ? boldRailGeometry : railGeometry
+              }
+              material={depthMaterial}
+              position={[x, y, 0]}
+              rotation={[0, Math.PI / 2, 0]}
+            />
+          )),
+        )}
+      </group>
+    </group>
+  );
+}
+
+function MorphingFloorRails({
+  floorIndex,
+  material,
+  railStyle,
+}: {
+  floorIndex: number;
+  material: THREE.Material;
+  railStyle: SceneTheme['railStyle'];
+}) {
+  const group = useRef<THREE.Group>(null);
+  const morphProgress = useLayoutMorphProgress();
+  const range = [-SPACING, 0, SPACING];
+
+  useFrame(() => {
+    if (!group.current) {
+      return;
+    }
+
+    const transform = floorMorphTransform(floorIndex, morphProgress.current);
+
+    group.current.position.set(...transform.position);
+    group.current.rotation.x = transform.rotationX;
+  });
+
+  const transform = floorMorphTransform(floorIndex, morphProgress.current);
+  const geometry = railStyle === 'bold' ? boldRailGeometry : railGeometry;
+
+  return (
+    <group position={transform.position} rotation={[transform.rotationX, 0, 0]} ref={group}>
+      {range.map((localY) => (
+        <mesh
+          key={`row-${localY}`}
+          geometry={geometry}
+          material={material}
+          position={[0, localY, 0]}
+        />
+      ))}
+      {range.map((localX) => (
+        <mesh
+          key={`column-${localX}`}
+          geometry={geometry}
+          material={material}
+          position={[localX, 0, 0]}
+          rotation={[0, 0, Math.PI / 2]}
         />
       ))}
     </group>
@@ -146,10 +183,37 @@ export function BoardRails({
 }
 
 export function CubeShell({ theme }: { theme: SceneTheme }) {
+  const group = useRef<THREE.Group>(null);
+  const surfaceMaterial = useRef<THREE.MeshBasicMaterial>(null);
+  const gridMaterial = useRef<THREE.LineBasicMaterial>(null);
+  const edgeMaterial = useRef<THREE.LineBasicMaterial>(null);
+  const morphProgress = useLayoutMorphProgress();
+
+  useFrame(() => {
+    const opacity = 1 - morphProgress.current;
+
+    if (group.current) {
+      group.current.visible = opacity > 0.001;
+    }
+
+    if (surfaceMaterial.current) {
+      surfaceMaterial.current.opacity = theme.cellOpacity * opacity;
+    }
+
+    if (gridMaterial.current) {
+      gridMaterial.current.opacity = 0.38 * opacity;
+    }
+
+    if (edgeMaterial.current) {
+      edgeMaterial.current.opacity = 0.85 * opacity;
+    }
+  });
+
   return (
-    <group>
+    <group ref={group}>
       <mesh geometry={shellBoxGeometry}>
         <meshBasicMaterial
+          ref={surfaceMaterial}
           color={theme.cell}
           depthWrite={false}
           opacity={theme.cellOpacity}
@@ -158,11 +222,21 @@ export function CubeShell({ theme }: { theme: SceneTheme }) {
         />
       </mesh>
       <lineSegments geometry={shellGridGeometry}>
-        <lineBasicMaterial color={theme.edge} opacity={0.38} transparent />
+        <lineBasicMaterial
+          ref={gridMaterial}
+          color={theme.edge}
+          opacity={0.38}
+          transparent
+        />
       </lineSegments>
       <lineSegments>
         <edgesGeometry args={[shellBoxGeometry]} />
-        <lineBasicMaterial color={theme.edge} opacity={0.85} transparent />
+        <lineBasicMaterial
+          ref={edgeMaterial}
+          color={theme.edge}
+          opacity={0.85}
+          transparent
+        />
       </lineSegments>
     </group>
   );
@@ -171,22 +245,66 @@ export function CubeShell({ theme }: { theme: SceneTheme }) {
 export function FloorPlates({ theme }: { theme: SceneTheme }) {
   return (
     <group>
-      {[-FLOOR_GAP, 0, FLOOR_GAP].map((floorY) => (
-        <group key={floorY} position={[0, floorY - 0.55, 0]}>
-          <mesh geometry={plateGeometry}>
-            <meshStandardMaterial
-              color={theme.cell}
-              metalness={0.08}
-              opacity={0.13}
-              roughness={0.5}
-              transparent
-            />
-          </mesh>
-          <lineSegments geometry={plateGridGeometry} position={[0, 0.04, 0]}>
-            <lineBasicMaterial color={theme.edge} opacity={0.5} transparent />
-          </lineSegments>
-        </group>
+      {[0, 1, 2].map((floorIndex) => (
+        <FloorPlate key={floorIndex} floorIndex={floorIndex} theme={theme} />
       ))}
+    </group>
+  );
+}
+
+function FloorPlate({
+  floorIndex,
+  theme,
+}: {
+  floorIndex: number;
+  theme: SceneTheme;
+}) {
+  const group = useRef<THREE.Group>(null);
+  const surfaceMaterial = useRef<THREE.MeshStandardMaterial>(null);
+  const gridMaterial = useRef<THREE.LineBasicMaterial>(null);
+  const morphProgress = useLayoutMorphProgress();
+  const floorY = (floorIndex - 1) * FLOOR_GAP;
+
+  useFrame(() => {
+    const opacity = morphProgress.current;
+
+    if (group.current) {
+      group.current.visible = opacity > 0.001;
+    }
+
+    if (surfaceMaterial.current) {
+      surfaceMaterial.current.opacity = 0.13 * opacity;
+    }
+
+    if (gridMaterial.current) {
+      gridMaterial.current.opacity = 0.5 * opacity;
+    }
+  });
+
+  return (
+    <group
+      ref={group}
+      position={[0, floorY - 0.55, 0]}
+      visible={morphProgress.current > 0.001}
+    >
+      <mesh geometry={plateGeometry}>
+        <meshStandardMaterial
+          ref={surfaceMaterial}
+          color={theme.cell}
+          metalness={0.08}
+          opacity={0.13 * morphProgress.current}
+          roughness={0.5}
+          transparent
+        />
+      </mesh>
+      <lineSegments geometry={plateGridGeometry} position={[0, 0.04, 0]}>
+        <lineBasicMaterial
+          ref={gridMaterial}
+          color={theme.edge}
+          opacity={0.5 * morphProgress.current}
+          transparent
+        />
+      </lineSegments>
     </group>
   );
 }
@@ -210,16 +328,32 @@ export function CoreGlow({ theme }: { theme: SceneTheme }) {
 }
 
 export function ScanFloor({
-  layout,
   theme,
 }: {
-  layout: BoardLayout;
   theme: SceneTheme;
 }) {
+  const grid = useRef<THREE.GridHelper>(null);
+  const morphProgress = useLayoutMorphProgress();
+
+  useFrame(() => {
+    if (grid.current) {
+      grid.current.position.y = THREE.MathUtils.lerp(
+        -2.5,
+        -3.2,
+        morphProgress.current,
+      );
+    }
+  });
+
   return (
     <gridHelper
+      ref={grid}
       args={[11, 22, theme.edge, theme.edge]}
-      position={[0, layout === 'floors' ? -3.2 : -2.5, 0]}
+      position={[
+        0,
+        THREE.MathUtils.lerp(-2.5, -3.2, morphProgress.current),
+        0,
+      ]}
       onUpdate={(grid) => {
         const material = grid.material as THREE.LineBasicMaterial;
 
