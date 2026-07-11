@@ -57,6 +57,7 @@ import {
   type OnlineRoomSettings,
   useOnlineGame,
 } from './game/useOnlineGame';
+import { getOnlineTurnPresentation } from './game/turnPresentation';
 import {
   FINAL_SIX_POWER_LABEL,
   type FinalSixPowerId,
@@ -226,6 +227,7 @@ export function App() {
   const [piePromptOpen, setPiePromptOpen] = useState(false);
   const [pieDecisionDone, setPieDecisionDone] = useState(false);
   const [isAiThinking, setIsAiThinking] = useState(false);
+  const [onlineHandoverId, setOnlineHandoverId] = useState(0);
   const [powerSelection, setPowerSelection] =
     useState<FinalSixPowerId>('charged-cell');
   const [difficultyStreaks, setDifficultyStreaks] = useState(
@@ -679,8 +681,9 @@ export function App() {
           !applyMove(index, player)
         ) {
           restoreOnlineSnapshot(snapshot);
-          return;
         }
+
+        setOnlineHandoverId((current) => current + 1);
       },
       onRemoteRoundReset: (snapshot: OnlineGameSnapshot) => {
         restoreOnlineSnapshot(snapshot);
@@ -724,6 +727,28 @@ export function App() {
     Boolean(result.winner) ||
     result.isDraw ||
     (mode === 'online' && !isOnlineTurn);
+  const onlineTurnPresentation = useMemo(
+    () =>
+      mode === 'online'
+        ? getOnlineTurnPresentation({
+            currentPlayer,
+            isConnected: online.isConnected,
+            isTerminal: Boolean(match.winner || result.winner || result.isDraw),
+            localPlayer: online.localPlayer,
+            pendingAction: Boolean(online.pendingAction),
+          })
+        : null,
+    [
+      currentPlayer,
+      match.winner,
+      mode,
+      online.isConnected,
+      online.localPlayer,
+      online.pendingAction,
+      result.isDraw,
+      result.winner,
+    ],
+  );
 
   useEffect(() => {
     document
@@ -740,6 +765,7 @@ export function App() {
     if (mode !== 'online') {
       online.close();
       setRemoteSignal('');
+      setOnlineHandoverId(0);
     }
   }, [mode, online.close]);
 
@@ -983,8 +1009,10 @@ export function App() {
         return t('status.confirmingOnlineAction');
       }
 
-      if (online.localPlayer !== currentPlayer) {
-        return t('status.playerRemote', { player: currentPlayer });
+      if (onlineTurnPresentation) {
+        return t(onlineTurnPresentation.labelKey, {
+          player: onlineTurnPresentation.turnMark,
+        });
       }
     }
 
@@ -1000,6 +1028,7 @@ export function App() {
     online.localPlayer,
     online.pendingAction,
     online.status,
+    onlineTurnPresentation,
     result.isDraw,
     result.lineScores.O,
     result.lineScores.X,
@@ -1527,10 +1556,12 @@ export function App() {
         coachSoftScoreCells={coachSoftScoreCells}
         currentPlayer={powerPicker ?? currentPlayer}
         disabled={isBoardDisabled}
+        isOnlineWaiting={onlineTurnPresentation?.owner === 'opponent'}
         finalPhase={linesEndgame}
         finalLines={finalLines}
         hud={{
           currentPlayer: powerPicker ?? currentPlayer,
+          handoverId: onlineHandoverId,
           isAiThinking,
           isComplete: Boolean(
             match.winner || result.winner || result.isDraw,
@@ -1541,6 +1572,13 @@ export function App() {
           remainingCells: result.remainingCells,
           ruleset,
           status,
+          onlineTurn:
+            onlineTurnPresentation && online.localPlayer
+              ? {
+                  localPlayer: online.localPlayer,
+                  owner: onlineTurnPresentation.owner,
+                }
+              : null,
         }}
         lastMove={lastMove}
         layout={layout}

@@ -53,6 +53,7 @@ export type GameStageProps = {
   coachSoftScoreCells: number[];
   currentPlayer: Player;
   disabled: boolean;
+  isOnlineWaiting?: boolean;
   finalPhase: LinesEndgameAnalysis | null;
   finalLines: number[][];
   lastMove: number | null;
@@ -150,6 +151,7 @@ export const GameStage = forwardRef<HTMLElement, GameStageProps>(
       coachSoftScoreCells,
       currentPlayer,
       disabled,
+      isOnlineWaiting = false,
       finalPhase,
       finalLines,
       hud,
@@ -201,6 +203,7 @@ export const GameStage = forwardRef<HTMLElement, GameStageProps>(
           'game-stage',
           hasFinalSixStartEvent ? 'final-six-animating' : '',
           hasMatchEndEvent ? 'match-win-animating' : '',
+          isOnlineWaiting ? 'online-waiting' : '',
         ]
           .filter(Boolean)
           .join(' ')}

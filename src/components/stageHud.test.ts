@@ -85,4 +85,34 @@ describe('StageHud', () => {
     expect(markup).toContain('lucide-equal');
     expect(markup).not.toContain('lucide-trophy');
   });
+
+  it('uses the local mark color and local-turn affordance online', () => {
+    const markup = renderHud({
+      ...baseProps,
+      currentPlayer: 'O',
+      handoverId: 2,
+      onlineTurn: { localPlayer: 'O', owner: 'local' },
+      status: 'Your turn · O',
+    });
+
+    expect(markup).toContain('stage-hud-online');
+    expect(markup).toContain('turn-o');
+    expect(markup).toContain('online-turn-local');
+    expect(markup).toContain('online-local-mark-o');
+    expect(markup).toContain('online-turn-handover');
+    expect(markup).toContain('Your turn · O');
+  });
+
+  it('renders a passive opponent-turn state online', () => {
+    const markup = renderHud({
+      ...baseProps,
+      currentPlayer: 'O',
+      onlineTurn: { localPlayer: 'X', owner: 'opponent' },
+      status: "Opponent's turn · O",
+    });
+
+    expect(markup).toContain('online-turn-opponent');
+    expect(markup).toContain('online-local-mark-x');
+    expect(markup).not.toContain('online-turn-handover');
+  });
 });

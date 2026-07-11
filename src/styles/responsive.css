@@ -18,6 +18,8 @@
   .line-score-tile.score-bump,
   .line-score-tile.score-bump::before,
   .stage-hud-thinking,
+  .stage-hud-turn.online-turn-local::after,
+  .stage-hud-turn.online-turn-handover,
   .score-row.match-finished .score-tile,
   .line-score-empty.tension,
   .scanner-board.final-six-animating::before,
@@ -37,6 +39,7 @@
   }
 
   .scanner-cell,
+  .game-stage canvas,
   .scanner-stop,
   .scanner-ghost-layer,
   .stage-actions button,

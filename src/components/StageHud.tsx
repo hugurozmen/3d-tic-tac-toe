@@ -4,6 +4,7 @@ import { useI18n } from '../i18n';
 
 export type StageHudProps = {
   currentPlayer: Player;
+  handoverId?: number;
   isAiThinking: boolean;
   isComplete: boolean;
   isDraw: boolean;
@@ -12,6 +13,10 @@ export type StageHudProps = {
   remainingCells: number;
   ruleset: GameRuleset;
   status: string;
+  onlineTurn?: {
+    localPlayer: Player;
+    owner: 'local' | 'opponent';
+  } | null;
 };
 
 const markIcon = (player: Player) =>
@@ -23,6 +28,7 @@ const markIcon = (player: Player) =>
 
 export function StageHud({
   currentPlayer,
+  handoverId = 0,
   isAiThinking,
   isComplete,
   isDraw,
@@ -31,6 +37,7 @@ export function StageHud({
   remainingCells,
   ruleset,
   status,
+  onlineTurn = null,
 }: StageHudProps) {
   const { t } = useI18n();
 
@@ -38,11 +45,22 @@ export function StageHud({
     <div
       className={`stage-hud stage-hud-ruleset-${ruleset} ${
         isComplete ? 'stage-hud-terminal' : ''
-      } ${isDraw ? 'stage-hud-draw' : ''}`}
+      } ${isDraw ? 'stage-hud-draw' : ''} ${
+        onlineTurn ? 'stage-hud-online' : ''
+      }`}
       aria-label={t('aria.stageHud')}
     >
       <div
-        className={`stage-hud-turn turn-${currentPlayer.toLowerCase()}`}
+        key={onlineTurn ? `online-handover-${handoverId}` : 'local-turn'}
+        className={`stage-hud-turn turn-${currentPlayer.toLowerCase()} ${
+          onlineTurn
+            ? `online-turn-${onlineTurn.owner} online-local-mark-${onlineTurn.localPlayer.toLowerCase()} ${
+                onlineTurn.owner === 'local' && handoverId > 0
+                  ? 'online-turn-handover'
+                  : ''
+              }`
+            : ''
+        }`}
         aria-live="polite"
         role="status"
       >
