@@ -195,11 +195,7 @@ export function ScannerBoard({
   );
   const hintsByCell = new Map(coachHints.map((hint) => [hint.cell, hint]));
   const winningFloors = new Set(Array.from(highlightedCells).map(floorOf));
-  const floorAccents = (
-    theme as SceneTheme & {
-      floorAccents?: readonly [string, string, string];
-    }
-  ).floorAccents ?? [theme.edge, theme.point, theme.title];
+  const floorAccents = theme.floorAccents;
   const style: ThemeStyle = {
     '--scan-win': theme.win,
     '--scanner-floor-1': floorAccents[0],

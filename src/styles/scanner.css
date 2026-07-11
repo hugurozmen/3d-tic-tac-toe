@@ -8,6 +8,7 @@
   justify-items: center;
   gap: clamp(10px, 2.5vw, 30px);
   padding: clamp(16px, 4vw, 48px);
+  container-type: size;
 }
 
 .scanner-overview {
