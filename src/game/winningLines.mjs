@@ -81,5 +81,5 @@ if (
       ),
   )
 ) {
-  throw new Error('3D XOX requires exactly 49 unique 3-cell lines.');
+  throw new Error('TicTacube requires exactly 49 unique 3-cell lines.');
 }

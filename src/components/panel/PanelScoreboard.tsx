@@ -58,7 +58,7 @@ export function PanelScoreboard({
       <header className="panel-header">
         <div>
           <p className="eyebrow">3x3x3</p>
-          <h1>3D XOX</h1>
+          <h1>TicTacube</h1>
         </div>
         <div className="header-side">
           <div

@@ -24,7 +24,7 @@ const boardFromString = (cells: string): Board =>
     return null;
   });
 
-describe('3D XOX rules engine', () => {
+describe('TicTacube rules engine', () => {
   it('defines exactly 49 unique lines from the canonical model', () => {
     const lines = getAllLines();
     const keys = new Set(lines.map(lineKey));

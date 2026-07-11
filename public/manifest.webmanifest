@@ -1,7 +1,7 @@
 {
-  "name": "3D XOX",
-  "short_name": "3D XOX",
-  "description": "A mobile-friendly 3D XOX strategy game played on a 3x3x3 board.",
+  "name": "TicTacube",
+  "short_name": "TicTacube",
+  "description": "A mobile-friendly TicTacube strategy game played on a 3x3x3 board.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#101317",

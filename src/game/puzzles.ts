@@ -191,7 +191,7 @@ const createBestLinesPuzzle = (
     puzzleKey: createPuzzleKey(dateKey, 'best-lines'),
     prompt: 'Find the best Lines move',
     ruleset: 'lines',
-    shareText: `3D XOX Daily #${id} \u2014 solved in 1`,
+    shareText: `TicTacube Daily #${id} \u2014 solved in 1`,
     title: 'Best Lines move',
   };
 };
@@ -227,7 +227,7 @@ const createMaxLinesPuzzle = (
     puzzleKey: createPuzzleKey(dateKey, 'max-lines'),
     prompt: 'Score the most lines',
     ruleset: 'lines',
-    shareText: `3D XOX Daily #${id} \u2014 solved in 1`,
+    shareText: `TicTacube Daily #${id} \u2014 solved in 1`,
     title: 'Most lines',
   };
 };
@@ -255,7 +255,7 @@ const createClassicWinPuzzle = (
     puzzleKey: createPuzzleKey(dateKey, 'classic-win'),
     prompt: 'Find the Classic win',
     ruleset: 'classic',
-    shareText: `3D XOX Daily #${id} \u2014 solved in 1`,
+    shareText: `TicTacube Daily #${id} \u2014 solved in 1`,
     title: 'Classic finish',
   };
 };
@@ -283,7 +283,7 @@ const createClassicWinInTwoPuzzle = (
     puzzleKey: createPuzzleKey(dateKey, 'classic-win-two'),
     prompt: 'Find the Classic win in two',
     ruleset: 'classic',
-    shareText: `3D XOX Daily #${id} \u2014 solved in 1`,
+    shareText: `TicTacube Daily #${id} \u2014 solved in 1`,
     title: 'Win in two',
   };
 };

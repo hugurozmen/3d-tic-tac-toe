@@ -385,7 +385,7 @@ export function SceneContent({
         position={[0, -2.48, 0]}
         rotation={[-0.3, 0, 0]}
       >
-        3D XOX
+        TicTacube
       </Text>
       <CameraRig layout={layout} />
       <CameraControls command={viewCommand} layout={layout} />

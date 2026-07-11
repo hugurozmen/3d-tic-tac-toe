@@ -51,7 +51,7 @@ describe('daily puzzle selection', () => {
     expect(result.bestMove).toBe(puzzle.bestMove);
     expect(result.move).toBe(puzzle.bestMove);
     expect(result.explanation).toContain('is right');
-    expect(result.shareText).toBe('3D XOX Daily #2 — solved in 1');
+    expect(result.shareText).toBe('TicTacube Daily #2 — solved in 1');
   });
 
   it('keeps a missed answer explanatory', () => {

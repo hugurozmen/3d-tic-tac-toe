@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">3D XOX</string>
-    <string name="title_activity_main">3D XOX</string>
+    <string name="app_name">TicTacube</string>
+    <string name="title_activity_main">TicTacube</string>
     <string name="package_name">com.hugurozmen.xox3d</string>
     <string name="custom_url_scheme">com.hugurozmen.xox3d</string>
 </resources>
