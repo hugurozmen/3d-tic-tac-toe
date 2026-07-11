@@ -10,44 +10,79 @@
   padding: clamp(16px, 4vw, 48px);
 }
 
-.scanner-ghost {
-  position: relative;
-  width: clamp(110px, 15vw, 170px);
-  height: clamp(160px, 24vw, 240px);
-  perspective: 700px;
-}
-
-.scanner-ghost-inner {
-  position: absolute;
-  inset: 0;
-  transform: rotateX(58deg) rotateZ(-37deg);
-  transform-style: preserve-3d;
-}
-
-.scanner-ghost-layer {
-  position: absolute;
-  width: 82%;
-  height: 82%;
-  left: 9%;
-  top: 9%;
+.scanner-overview {
+  width: clamp(112px, 14vw, 156px);
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 5px;
-  padding: 8px;
-  border: 1.5px dashed var(--app-stage-line);
-  border-radius: var(--radius-s);
-  background: color-mix(in srgb, var(--app-panel-strong) 42%, transparent);
+  gap: clamp(9px, 1.6vw, 14px);
+}
+
+.scanner-floor-thumbnail {
+  width: 100%;
+  display: grid;
+  gap: 7px;
+  padding: 9px;
+  border: 1px solid
+    color-mix(in srgb, var(--scanner-floor-accent) 62%, var(--app-border));
+  border-radius: 14px;
+  color: var(--app-text);
+  background:
+    linear-gradient(
+      145deg,
+      color-mix(in srgb, var(--scanner-floor-accent) 13%, transparent),
+      transparent 68%
+    ),
+    color-mix(in srgb, var(--app-panel-strong) 72%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--app-text) 6%, transparent),
+    0 12px 30px rgba(0, 0, 0, 0.16);
   cursor: pointer;
   transition:
     border-color 200ms ease,
-    background-color 200ms ease;
+    background-color 200ms ease,
+    transform 140ms ease;
 }
 
-.scanner-ghost-layer.active {
-  border-style: solid;
-  border-color: var(--app-primary);
-  background: color-mix(in srgb, var(--app-primary) 20%, transparent);
-  box-shadow: 0 0 24px color-mix(in srgb, var(--app-primary) 22%, transparent);
+.scanner-floor-thumbnail:hover {
+  border-color: var(--scanner-floor-accent);
+  background-color: color-mix(
+    in srgb,
+    var(--scanner-floor-accent) 12%,
+    var(--app-panel-strong)
+  );
+}
+
+.scanner-floor-thumbnail:active {
+  transform: scale(0.97);
+}
+
+.scanner-floor-thumbnail:focus-visible {
+  outline: 2px solid var(--app-focus);
+  outline-offset: 3px;
+}
+
+.scanner-thumbnail-label {
+  color: color-mix(
+    in srgb,
+    var(--scanner-floor-accent) 78%,
+    var(--app-text)
+  );
+  font-size: 0.64rem;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+  text-align: left;
+  text-transform: uppercase;
+}
+
+.scanner-thumbnail-grid {
+  aspect-ratio: 1;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  padding: 6px;
+  border: 1px solid
+    color-mix(in srgb, var(--scanner-floor-accent) 30%, var(--app-border));
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--app-tile) 68%, transparent);
 }
 
 .scanner-dot {
@@ -65,6 +100,14 @@
   border-color: transparent;
   background: var(--mark-o);
   box-shadow: 0 0 6px color-mix(in srgb, var(--mark-o) 60%, transparent);
+}
+
+.scanner-dot.dot-completed-cross-floor {
+  outline: 2px solid color-mix(in srgb, var(--line-scored) 88%, transparent);
+  outline-offset: 1px;
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--line-scored) 17%, transparent),
+    0 0 10px color-mix(in srgb, var(--line-scored) 42%, transparent);
 }
 
 .scanner-dot.dot-hint-score,
@@ -127,10 +170,49 @@
 }
 
 .scanner-center {
+  position: relative;
   width: 100%;
   display: grid;
   gap: 12px;
   justify-items: center;
+}
+
+.scanner-first-use-hint {
+  width: min(100%, 56vmin);
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 8px 7px 12px;
+  border: 1px solid color-mix(in srgb, var(--app-primary) 42%, var(--app-border));
+  border-radius: 999px;
+  color: var(--app-text);
+  background: color-mix(in srgb, var(--app-panel-strong) 88%, transparent);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.2);
+  font-size: 0.72rem;
+  font-weight: 760;
+  line-height: 1.25;
+}
+
+.scanner-first-use-hint button {
+  min-height: 26px;
+  flex: none;
+  padding: 4px 9px;
+  border: 1px solid color-mix(in srgb, var(--app-primary) 48%, transparent);
+  border-radius: 999px;
+  color: var(--app-primary-text);
+  background: var(--app-primary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.66rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.scanner-first-use-hint button:focus-visible {
+  outline: 2px solid var(--app-focus);
+  outline-offset: 2px;
 }
 
 .scanner-grid {
@@ -140,9 +222,16 @@
   grid-template-columns: repeat(3, 1fr);
   gap: 10px;
   padding: 13px;
-  border: 1px solid var(--app-border);
+  border: 1px solid
+    color-mix(in srgb, var(--scanner-floor-accent) 54%, var(--app-border));
   border-radius: 20px;
-  background: color-mix(in srgb, var(--app-panel-strong) 50%, transparent);
+  background:
+    radial-gradient(
+      circle at 50% 4%,
+      color-mix(in srgb, var(--scanner-floor-accent) 12%, transparent),
+      transparent 46%
+    ),
+    color-mix(in srgb, var(--app-panel-strong) 50%, transparent);
   box-shadow:
     0 26px 60px rgba(0, 0, 0, 0.25),
     inset 0 1px 0 color-mix(in srgb, var(--app-text) 6%, transparent);
@@ -209,6 +298,25 @@
   box-shadow:
     inset 0 0 0 2px color-mix(in srgb, var(--line-scored) 76%, transparent),
     0 0 24px color-mix(in srgb, var(--line-scored) 36%, transparent);
+}
+
+.scanner-cell.cross-floor-scored:not(.final-line) {
+  border-color: color-mix(in srgb, var(--line-scored) 50%, var(--app-border));
+}
+
+.scanner-cross-floor-marker {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  width: 17px;
+  height: 8px;
+  border-top: 2px solid var(--line-scored);
+  border-bottom: 2px solid
+    color-mix(in srgb, var(--line-scored) 58%, transparent);
+  border-radius: 50%;
+  opacity: 0.9;
+  pointer-events: none;
+  transform: rotate(-38deg);
 }
 
 .scanner-cell.final-line {
@@ -305,7 +413,7 @@
   animation: final-six-board-charge 1180ms ease-out both;
 }
 
-.scanner-board.final-six-animating .scanner-ghost-layer {
+.scanner-board.final-six-animating .scanner-floor-thumbnail {
   animation: final-six-layer-charge 900ms ease-out both;
 }
 
@@ -987,7 +1095,8 @@
   z-index: 1;
   width: 42px;
   height: 42px;
-  border: 1px solid var(--app-border);
+  border: 1px solid
+    color-mix(in srgb, var(--scanner-floor-accent) 52%, var(--app-border));
   border-radius: 50%;
   color: var(--app-text);
   background: var(--app-panel-strong);
@@ -1006,10 +1115,15 @@
 }
 
 .scanner-stop.active {
-  border-color: transparent;
-  color: var(--app-primary-text);
-  background: var(--app-primary);
-  box-shadow: 0 0 0 5px color-mix(in srgb, var(--app-primary) 25%, transparent);
+  border-color: var(--scanner-floor-accent);
+  color: var(--app-text);
+  background: color-mix(
+    in srgb,
+    var(--scanner-floor-accent) 28%,
+    var(--app-panel-strong)
+  );
+  box-shadow: 0 0 0 5px
+    color-mix(in srgb, var(--scanner-floor-accent) 20%, transparent);
 }
 
 .scanner-stop.win:not(.active) {

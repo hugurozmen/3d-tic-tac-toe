@@ -16,6 +16,11 @@ import {
 } from '../i18n';
 import type { LinesEndgameAnalysis } from '../game/linesTension';
 import { SceneTheme, ThemeStyle } from '../theme';
+import { useLocalStorageState } from '../useLocalStorageState';
+import {
+  getCompletedCrossFloorCells,
+  getInactiveScannerFloors,
+} from './scannerPresentation';
 
 type ScannerBoardProps = {
   animationEvents: GameAnimationEvent[];
@@ -24,6 +29,7 @@ type ScannerBoardProps = {
   coachHints: CoachHint[];
   coachScoreCells: number[];
   coachSoftScoreCells: number[];
+  completedLines?: number[][];
   currentPlayer: Player;
   disabled: boolean;
   finalPhase: LinesEndgameAnalysis | null;
@@ -38,8 +44,8 @@ type ScannerBoardProps = {
   onSelect: (index: number) => void;
 };
 
-const FLOOR_LAYERS = [0, 1, 2];
 const RAIL_LAYERS = [2, 1, 0];
+const SCANNER_HINT_STATES = ['pending', 'done'] as const;
 
 const floorOf = (index: number) => Math.floor(index / 9);
 
@@ -50,6 +56,7 @@ export function ScannerBoard({
   coachHints,
   coachScoreCells,
   coachSoftScoreCells,
+  completedLines = [],
   currentPlayer,
   disabled,
   finalPhase,
@@ -65,12 +72,18 @@ export function ScannerBoard({
 }: ScannerBoardProps) {
   const i18n = useI18n();
   const { t } = i18n;
+  const [scannerHintState, setScannerHintState] = useLocalStorageState(
+    '3dxox-scanner-hint',
+    'pending',
+    SCANNER_HINT_STATES,
+  );
   const gridRef = useRef<HTMLDivElement | null>(null);
   const rival = getOtherPlayer(currentPlayer);
   const lastMoveFloor = lastMove === null ? null : floorOf(lastMove);
   const classicWinningCells = new Set(winningLine);
   const scoredCells = new Set(scoredLines.flatMap((line) => line));
   const finalCells = new Set(finalLines.flatMap((line) => line));
+  const completedCrossFloorCells = getCompletedCrossFloorCells(completedLines);
   const highlightedCells = new Set([
     ...classicWinningCells,
     ...scoredCells,
@@ -182,7 +195,18 @@ export function ScannerBoard({
   );
   const hintsByCell = new Map(coachHints.map((hint) => [hint.cell, hint]));
   const winningFloors = new Set(Array.from(highlightedCells).map(floorOf));
-  const style: ThemeStyle = { '--scan-win': theme.win };
+  const floorAccents = (
+    theme as SceneTheme & {
+      floorAccents?: readonly [string, string, string];
+    }
+  ).floorAccents ?? [theme.edge, theme.point, theme.title];
+  const style: ThemeStyle = {
+    '--scan-win': theme.win,
+    '--scanner-floor-1': floorAccents[0],
+    '--scanner-floor-2': floorAccents[1],
+    '--scanner-floor-3': floorAccents[2],
+  };
+  const inactiveFloors = getInactiveScannerFloors(floor);
 
   const mergeHintKind = (
     current: CoachHintKind | null,
@@ -410,22 +434,37 @@ export function ScannerBoard({
         'scanner-board',
         powerEffects.chargedState ? 'power-charged' : '',
         hasFinalSixStartEvent ? 'final-six-animating' : '',
+        scannerHintState === 'pending' ? 'first-use-hint-visible' : '',
       ]
         .filter(Boolean)
         .join(' ')}
       style={style}
     >
-      <div className="scanner-ghost">
-        <div className="scanner-ghost-inner">
-          {FLOOR_LAYERS.map((layer) => (
-            <button
-              key={layer}
-              aria-label={t('cell.showFloor', { floor: layer + 1 })}
-              className={`scanner-ghost-layer ${layer === floor ? 'active' : ''}`}
-              style={{ transform: `translateZ(${(layer - 1) * 44}px)` }}
-              type="button"
-              onClick={() => onFloorChange(layer)}
-            >
+      <div
+        aria-label={t('aria.floorSelector')}
+        className="scanner-overview"
+        data-testid="scanner-overview"
+        role="group"
+      >
+        {inactiveFloors.map((layer) => (
+          <button
+            key={layer}
+            aria-label={t('cell.showFloor', { floor: layer + 1 })}
+            className="scanner-floor-thumbnail"
+            data-floor={layer + 1}
+            data-testid={`scanner-floor-thumbnail-${layer + 1}`}
+            style={
+              {
+                '--scanner-floor-accent': floorAccents[layer],
+              } as ThemeStyle
+            }
+            type="button"
+            onClick={() => onFloorChange(layer)}
+          >
+            <span className="scanner-thumbnail-label">
+              {t('cell.floor', { floor: layer + 1 })}
+            </span>
+            <span aria-hidden="true" className="scanner-thumbnail-grid">
               {Array.from({ length: 9 }, (_, cell) => {
                 const index = layer * 9 + cell;
                 const value = board[index];
@@ -435,16 +474,41 @@ export function ScannerBoard({
                     key={cell}
                     className={`scanner-dot ${
                       value === 'X' ? 'dot-x' : value === 'O' ? 'dot-o' : ''
-                    } ${hintClassForDot(index)}`}
+                    } ${hintClassForDot(index)} ${
+                      completedCrossFloorCells.has(index)
+                        ? 'dot-completed-cross-floor'
+                        : ''
+                    }`}
+                    data-cell-index={index}
+                    data-cross-floor-scored={
+                      completedCrossFloorCells.has(index) || undefined
+                    }
                   />
                 );
               })}
-            </button>
-          ))}
-        </div>
+            </span>
+          </button>
+        ))}
       </div>
 
       <div className="scanner-center">
+        {scannerHintState === 'pending' ? (
+          <div
+            className="scanner-first-use-hint"
+            data-testid="scanner-first-use-hint"
+            role="status"
+          >
+            <span>{t('scanner.firstUseHint', { floor: floor + 1 })}</span>
+            <button
+              aria-label={t('action.gotIt')}
+              data-testid="scanner-hint-dismiss"
+              type="button"
+              onClick={() => setScannerHintState('done')}
+            >
+              {t('action.gotIt')}
+            </button>
+          </div>
+        ) : null}
         <div
           ref={gridRef}
           aria-label={
@@ -453,7 +517,14 @@ export function ScannerBoard({
               : `Floor ${floor + 1} board. Use arrow keys to move, Page Up and Page Down to change floors.`
           }
           className="scanner-grid"
+          data-active-floor={floor + 1}
+          data-testid="scanner-grid"
           role="group"
+          style={
+            {
+              '--scanner-floor-accent': floorAccents[floor],
+            } as ThemeStyle
+          }
         >
           {Array.from({ length: 9 }, (_, cell) => floor * 9 + cell).map(
             (index) => {
@@ -461,6 +532,7 @@ export function ScannerBoard({
               const isClassicWinning = classicWinningCells.has(index);
               const isScoredLine = scoredCells.has(index);
               const isFinalLine = finalCells.has(index);
+              const isCompletedCrossFloor = completedCrossFloorCells.has(index);
               const isWinning = highlightedCells.has(index);
               const isCoachScore = !value && scoreCells.has(index);
               const isCoachBlock = !value && blockCells.has(index);
@@ -536,6 +608,7 @@ export function ScannerBoard({
                 value === 'X' ? 'mark-x' : value === 'O' ? 'mark-o' : '',
                 isWinning ? 'win' : '',
                 isScoredLine ? 'scored-line' : '',
+                isCompletedCrossFloor ? 'cross-floor-scored' : '',
                 isFinalLine || isClassicWinning ? 'final-line' : '',
                 isCoachScore ? 'coach-score' : '',
                 isCoachBlock ? 'coach-block' : '',
@@ -579,7 +652,9 @@ export function ScannerBoard({
                   ? `, ${t('cell.finalLine')}`
                   : isScoredLine
                     ? `, ${t('cell.lineScored')}`
-                    : '';
+                    : isCompletedCrossFloor
+                      ? `, ${t('cell.lineScored')}`
+                      : '';
               const coachLabel = isCoachBoth
                 ? `, ${
                     localizedCoachHint?.accessibleLabel ??
@@ -679,6 +754,7 @@ export function ScannerBoard({
                   data-line-sequence={lineMoment?.sequence}
                   data-line-step={lineMoment?.step}
                   data-cell-index={index}
+                  data-cross-floor-scored={isCompletedCrossFloor || undefined}
                   disabled={!isPlayable}
                   style={cellStyle}
                   title={localizedCoachHint?.explanation ?? coachHint?.explanation}
@@ -743,6 +819,12 @@ export function ScannerBoard({
                       className={`scanner-connector connector-${connectorKind}`}
                     />
                   ) : null}
+                  {isCompletedCrossFloor ? (
+                    <span
+                      aria-hidden="true"
+                      className="scanner-cross-floor-marker"
+                    />
+                  ) : null}
                   <span aria-hidden="true" className="scanner-cell-num">
                     {index + 1}
                   </span>
@@ -772,6 +854,12 @@ export function ScannerBoard({
                 : t('cell.floor', { floor: layer + 1 })
             }${hintLabelForFloor(layer)}`}
             className={stopClass(layer)}
+            data-floor={layer + 1}
+            style={
+              {
+                '--scanner-floor-accent': floorAccents[layer],
+              } as ThemeStyle
+            }
             type="button"
             onClick={() => onFloorChange(layer)}
           >
