@@ -51,6 +51,7 @@ export type GameStageProps = {
   coachHints: CoachHint[];
   coachScoreCells: number[];
   coachSoftScoreCells: number[];
+  completedLines: number[][];
   currentPlayer: Player;
   disabled: boolean;
   isOnlineWaiting?: boolean;
@@ -139,6 +140,7 @@ export const GameStage = forwardRef<HTMLElement, GameStageProps>(
       coachHints,
       coachScoreCells,
       coachSoftScoreCells,
+      completedLines,
       currentPlayer,
       disabled,
       isOnlineWaiting = false,
@@ -211,6 +213,7 @@ export const GameStage = forwardRef<HTMLElement, GameStageProps>(
             coachHints={coachHints}
             coachScoreCells={coachScoreCells}
             coachSoftScoreCells={coachSoftScoreCells}
+            completedLines={completedLines}
             finalLines={finalLines}
             finalPhase={finalPhase}
             lastMove={lastMove}

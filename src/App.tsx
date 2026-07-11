@@ -342,6 +342,10 @@ export function App() {
     [board, finalSixPowers, powerPicker, powerSelection],
   );
   const scoredLines = ruleset === 'lines' ? recentLines : [];
+  const completedLines =
+    ruleset === 'lines'
+      ? [...result.completedLines.X, ...result.completedLines.O]
+      : [];
   const finalLines: number[][] =
     ruleset === 'lines' && result.winner && 'winningLines' in result
       ? (result.winningLines as number[][])
@@ -1689,6 +1693,7 @@ export function App() {
             coachHints={coachHints}
             coachScoreCells={coachScoreCells}
             coachSoftScoreCells={coachSoftScoreCells}
+            completedLines={completedLines}
             currentPlayer={powerPicker ?? currentPlayer}
             disabled={isBoardDisabled}
             isOnlineWaiting={onlineTurnPresentation?.owner === 'opponent'}
