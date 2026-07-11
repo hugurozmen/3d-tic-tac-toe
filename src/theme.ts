@@ -16,6 +16,7 @@ export type SceneTheme = {
   cubeShell: boolean;
   directional: number;
   edge: string;
+  floorAccents: readonly [string, string, string];
   fog: string;
   hover: string;
   labelBackground: string;
@@ -74,6 +75,7 @@ export const THEMES: Record<ThemeId, Theme> = {
       cubeShell: true,
       directional: 1.8,
       edge: '#7aa2ff',
+      floorAccents: ['#5f7fff', '#62c6ff', '#ad8cff'],
       fog: '#0a1124',
       hover: '#ff8a7a',
       labelBackground: 'rgba(10, 17, 36, 0.68)',
@@ -121,6 +123,7 @@ export const THEMES: Record<ThemeId, Theme> = {
       cubeShell: true,
       directional: 1.6,
       edge: '#22d3ee',
+      floorAccents: ['#22d3ee', '#68f7c4', '#f471b5'],
       fog: '#04070d',
       hover: '#f471b5',
       labelBackground: 'rgba(4, 7, 13, 0.7)',
@@ -168,6 +171,7 @@ export const THEMES: Record<ThemeId, Theme> = {
       cubeShell: true,
       directional: 1.7,
       edge: '#8295b8',
+      floorAccents: ['#5576b3', '#458d83', '#b76d52'],
       fog: '#e9eef7',
       hover: '#d83a36',
       labelBackground: 'rgba(255, 255, 255, 0.72)',
@@ -215,6 +219,7 @@ export const THEMES: Record<ThemeId, Theme> = {
       cubeShell: true,
       directional: 1.7,
       edge: '#8f7bd8',
+      floorAccents: ['#8066d6', '#4fcbbb', '#c66bd4'],
       fog: '#0a0714',
       hover: '#ff8d7a',
       labelBackground: 'rgba(10, 7, 20, 0.66)',
@@ -262,6 +267,7 @@ export const THEMES: Record<ThemeId, Theme> = {
       cubeShell: false,
       directional: 1.9,
       edge: '#94a3b8',
+      floorAccents: ['#668cff', '#94a3b8', '#d1a85f'],
       fog: '#0b0f18',
       hover: '#ff635d',
       labelBackground: 'rgba(11, 15, 24, 0.66)',
@@ -323,6 +329,9 @@ export const themeToCssVariables = (theme: Theme): ThemeStyle => ({
   '--app-tile': theme.ui.tile,
   '--app-glow': theme.scene.point,
   '--app-win': theme.scene.win,
+  '--floor-1': theme.scene.floorAccents[0],
+  '--floor-2': theme.scene.floorAccents[1],
+  '--floor-3': theme.scene.floorAccents[2],
   '--mark-o': theme.scene.o,
   '--mark-x': theme.scene.x,
 });

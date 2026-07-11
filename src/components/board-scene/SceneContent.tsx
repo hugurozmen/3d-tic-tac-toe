@@ -17,6 +17,7 @@ import {
   CoreGlow,
   CubeShell,
   FinalSixChargePulse,
+  FloorIdentity,
   FloorPlates,
   PowerBonusFloat,
   ScanFloor,
@@ -245,6 +246,7 @@ export function SceneContent({
       <LayoutMorphProvider progress={morphProgress}>
         <group ref={group}>
         <BoardRails theme={theme} />
+        <FloorIdentity theme={theme} />
         {theme.cubeShell ? <CubeShell theme={theme} /> : null}
         <FloorPlates theme={theme} />
         {theme.coreGlow ? <CoreGlow theme={theme} /> : null}

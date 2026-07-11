@@ -36,6 +36,45 @@ export const jointGeometry = new THREE.SphereGeometry(0.085, 16, 12);
 export const dotGeometry = new THREE.SphereGeometry(0.05, 12, 10);
 export const diamondGeometry = new THREE.OctahedronGeometry(0.3);
 export const plateGeometry = new THREE.BoxGeometry(3.5, 0.05, 3.5);
+export const floorIdentityPlaneGeometry = new THREE.PlaneGeometry(3.42, 3.42);
+
+export const floorIdentityEdgeGeometry = (() => {
+  const h = 1.71;
+  const points = [
+    -h,
+    -h,
+    0,
+    h,
+    -h,
+    0,
+    h,
+    -h,
+    0,
+    h,
+    h,
+    0,
+    h,
+    h,
+    0,
+    -h,
+    h,
+    0,
+    -h,
+    h,
+    0,
+    -h,
+    -h,
+    0,
+  ];
+  const geometry = new THREE.BufferGeometry();
+
+  geometry.setAttribute(
+    'position',
+    new THREE.Float32BufferAttribute(points, 3),
+  );
+
+  return geometry;
+})();
 
 export const plateGridGeometry = (() => {
   const points: number[] = [];

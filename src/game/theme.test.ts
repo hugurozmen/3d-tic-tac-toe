@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { THEME_ORDER, THEMES } from '../theme';
+import { THEME_ORDER, THEMES, themeToCssVariables } from '../theme';
 
 const hexToRgb = (hex: string) => {
   const value = hex.replace('#', '');
@@ -54,6 +54,19 @@ describe('theme readability', () => {
         .toBeGreaterThanOrEqual(3);
       expect(contrastRatio(theme.scene.win, theme.scene.background), theme.label)
         .toBeGreaterThanOrEqual(3);
+    }
+  });
+
+  it('defines three stable, distinct floor accents for every theme', () => {
+    for (const themeId of THEME_ORDER) {
+      const theme = THEMES[themeId];
+      const variables = themeToCssVariables(theme);
+
+      expect(theme.scene.floorAccents, theme.label).toHaveLength(3);
+      expect(new Set(theme.scene.floorAccents).size, theme.label).toBe(3);
+      expect(variables['--floor-1']).toBe(theme.scene.floorAccents[0]);
+      expect(variables['--floor-2']).toBe(theme.scene.floorAccents[1]);
+      expect(variables['--floor-3']).toBe(theme.scene.floorAccents[2]);
     }
   });
 });

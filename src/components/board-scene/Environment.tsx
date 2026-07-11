@@ -1,4 +1,4 @@
-import { Html } from '@react-three/drei';
+import { Html, Text } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
 import { useMemo, useRef } from 'react';
 import * as THREE from 'three';
@@ -9,6 +9,8 @@ import {
   SPACING,
   boldRailGeometry,
   cellPosition,
+  floorIdentityEdgeGeometry,
+  floorIdentityPlaneGeometry,
   plateGeometry,
   plateGridGeometry,
   railGeometry,
@@ -252,6 +254,95 @@ export function FloorPlates({ theme }: { theme: SceneTheme }) {
   );
 }
 
+export function FloorIdentity({ theme }: { theme: SceneTheme }) {
+  return (
+    <group>
+      {theme.floorAccents.map((accent, floorIndex) => (
+        <FloorIdentityPlane
+          key={floorIndex}
+          accent={accent}
+          floorIndex={floorIndex}
+        />
+      ))}
+    </group>
+  );
+}
+
+function FloorIdentityPlane({
+  accent,
+  floorIndex,
+}: {
+  accent: string;
+  floorIndex: number;
+}) {
+  const group = useRef<THREE.Group>(null);
+  const surfaceMaterial = useRef<THREE.MeshBasicMaterial>(null);
+  const edgeMaterial = useRef<THREE.LineBasicMaterial>(null);
+  const morphProgress = useLayoutMorphProgress();
+
+  useFrame(() => {
+    if (!group.current) {
+      return;
+    }
+
+    const progress = morphProgress.current;
+    const transform = floorMorphTransform(floorIndex, progress);
+
+    group.current.position.set(...transform.position);
+    group.current.rotation.x = transform.rotationX;
+
+    if (surfaceMaterial.current) {
+      surfaceMaterial.current.opacity = THREE.MathUtils.lerp(
+        0.012,
+        0.026,
+        progress,
+      );
+    }
+
+    if (edgeMaterial.current) {
+      edgeMaterial.current.opacity = THREE.MathUtils.lerp(0.34, 0.58, progress);
+    }
+  });
+
+  const transform = floorMorphTransform(floorIndex, morphProgress.current);
+
+  return (
+    <group
+      ref={group}
+      position={transform.position}
+      rotation={[transform.rotationX, 0, 0]}
+    >
+      <mesh geometry={floorIdentityPlaneGeometry}>
+        <meshBasicMaterial
+          ref={surfaceMaterial}
+          color={accent}
+          depthWrite={false}
+          opacity={0.012}
+          side={THREE.DoubleSide}
+          transparent
+        />
+      </mesh>
+      <lineSegments geometry={floorIdentityEdgeGeometry}>
+        <lineBasicMaterial
+          ref={edgeMaterial}
+          color={accent}
+          opacity={0.34}
+          transparent
+        />
+      </lineSegments>
+      <Text
+        anchorX="left"
+        anchorY="top"
+        color={accent}
+        fontSize={0.16}
+        position={[-1.63, 1.63, 0.025]}
+      >
+        {floorIndex + 1}
+      </Text>
+    </group>
+  );
+}
+
 function FloorPlate({
   floorIndex,
   theme,
@@ -290,7 +381,7 @@ function FloorPlate({
       <mesh geometry={plateGeometry}>
         <meshStandardMaterial
           ref={surfaceMaterial}
-          color={theme.cell}
+          color={theme.floorAccents[floorIndex]}
           metalness={0.08}
           opacity={0.13 * morphProgress.current}
           roughness={0.5}
@@ -300,7 +391,7 @@ function FloorPlate({
       <lineSegments geometry={plateGridGeometry} position={[0, 0.04, 0]}>
         <lineBasicMaterial
           ref={gridMaterial}
-          color={theme.edge}
+          color={theme.floorAccents[floorIndex]}
           opacity={0.5 * morphProgress.current}
           transparent
         />
