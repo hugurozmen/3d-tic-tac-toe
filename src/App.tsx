@@ -117,10 +117,15 @@ type StageNotice = {
   tone: 'block' | 'score' | 'system';
 };
 
-type AppScreen = 'game' | 'menu';
+const APP_SCREENS = ['menu', 'game'] as const;
+type AppScreen = (typeof APP_SCREENS)[number];
 
 export function App() {
-  const [appScreen, setAppScreen] = useState<AppScreen>('menu');
+  const [appScreen, setAppScreen] = useLocalStorageState<AppScreen>(
+    '3dxox-screen',
+    'menu',
+    APP_SCREENS,
+  );
   const [ruleset, setRuleset] = useLocalStorageState<GameRuleset>(
     '3dxox-ruleset',
     'lines',
@@ -1663,7 +1668,7 @@ export function App() {
         >
           <GameMenu
             {...panelProps}
-            canResume={false}
+            canResume={matchHasProgress || onlineRoomActive}
             onOpenGuide={() => setGuideOpen(true)}
             onPlay={() => setAppScreen('game')}
           />
