@@ -7,9 +7,8 @@ import {
 } from 'react';
 import { GameDialogs, PendingConfirm } from './components/GameDialogs';
 import { GameMenu } from './components/GameMenu';
-import { GamePanel } from './components/GamePanel';
+import { GameScreenChrome } from './components/GameScreenChrome';
 import { GameStage, preloadBoardScene } from './components/GameStage';
-import { ViewSelector } from './components/ViewSelector';
 import type {
   BoardLayout,
   BoardViewAction,
@@ -1731,13 +1730,11 @@ export function App() {
             onViewCommand={sendViewCommand}
           />
 
-          <ViewSelector
-            className="mobile-view-selector"
+          <GameScreenChrome
             layout={layout}
-            onChange={handleLayoutChange}
+            onLayoutChange={handleLayoutChange}
+            onOpenMenu={() => setAppScreen('menu')}
           />
-
-          <GamePanel {...panelProps} />
         </div>
 
         <GameDialogs
