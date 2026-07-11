@@ -64,4 +64,15 @@ describe('i18n', () => {
     expect(copy.detail).toContain('Akıllı');
     expect(copy.valueText).toBe('1/3 Akıllı');
   });
+
+  it('localizes the full tutorial flow in Turkish', () => {
+    const i18n = createI18n('tr');
+
+    expect(i18n.t('tutorial.board.title')).toBe('Tek küp, üç kat');
+    expect(i18n.t('tutorial.crossFloor.body')).toContain('1, 14 ve 27');
+    expect(i18n.t('tutorial.touch.body')).toContain('tekrar dokun');
+    expect(i18n.t('tutorial.progress', { current: 3, total: 5 })).toBe(
+      'Adım 3 / 5',
+    );
+  });
 });

@@ -34,7 +34,9 @@
   .scanner-cell.power-trigger,
   .scanner-cell.power-cell,
   .scanner-cell.power-preview-charged-cell,
-  .scanner-power-float {
+  .scanner-power-float,
+  .tutorial-visual *,
+  .tutorial-tap-badge {
     animation: none !important;
   }
 
@@ -48,7 +50,8 @@
   .segmented-control button,
   .wildcard-option,
   .wildcard-player-row button,
-  .power-option {
+  .power-option,
+  .tutorial-progress li {
     transition-duration: 0.01ms;
   }
 }

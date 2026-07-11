@@ -1,5 +1,12 @@
-import { KeyboardEvent, useEffect, useRef } from 'react';
+import { KeyboardEvent, useEffect, useRef, useState } from 'react';
 import { useI18n } from '../i18n';
+import { TutorialVisual } from './tutorial/TutorialVisual';
+import {
+  getNextTutorialStep,
+  getPreviousTutorialStep,
+  TUTORIAL_STEP_COUNT,
+  TUTORIAL_STEPS,
+} from './tutorial/tutorial';
 
 export type PendingConfirm = {
   message: string;
@@ -29,6 +36,7 @@ export function GameDialogs({
   onSwapPie,
 }: GameDialogsProps) {
   const { t } = useI18n();
+  const [tutorialStep, setTutorialStep] = useState(0);
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const activeDialog = pendingConfirm
@@ -46,19 +54,35 @@ export function GameDialogs({
 
     previousFocusRef.current = document.activeElement as HTMLElement | null;
 
-    window.requestAnimationFrame(() => {
-      const firstButton = dialogRef.current?.querySelector<HTMLButtonElement>(
-        'button:not(:disabled)',
-      );
+    const focusFrame = window.requestAnimationFrame(() => {
+      const firstButton =
+        dialogRef.current?.querySelector<HTMLButtonElement>(
+          '[data-dialog-autofocus]:not(:disabled)',
+        ) ??
+        dialogRef.current?.querySelector<HTMLButtonElement>(
+          'button:not(:disabled)',
+        );
 
       firstButton?.focus();
     });
 
     return () => {
+      window.cancelAnimationFrame(focusFrame);
       previousFocusRef.current?.focus?.();
       previousFocusRef.current = null;
     };
   }, [activeDialog]);
+
+  useEffect(() => {
+    if (!guideOpen) {
+      setTutorialStep(0);
+    }
+  }, [guideOpen]);
+
+  const closeTutorial = () => {
+    setTutorialStep(0);
+    onCloseGuide();
+  };
 
   const getFocusableElements = () =>
     Array.from(
@@ -69,15 +93,12 @@ export function GameDialogs({
 
   const handleDialogKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key === 'Escape') {
-      if (pendingConfirm) {
+      if (activeDialog === 'confirm') {
         event.preventDefault();
         onCancelConfirm();
-        return;
-      }
-
-      if (guideOpen) {
+      } else if (activeDialog === 'guide') {
         event.preventDefault();
-        onCloseGuide();
+        closeTutorial();
       }
 
       return;
@@ -108,139 +129,167 @@ export function GameDialogs({
     }
   };
 
-  return (
-    <>
-      {pendingConfirm ? (
+  if (activeDialog === 'confirm' && pendingConfirm) {
+    return (
+      <div
+        className="confirm-overlay"
+        role="dialog"
+        aria-modal="true"
+        aria-label={pendingConfirm.title}
+        onKeyDown={handleDialogKeyDown}
+        onClick={onCancelConfirm}
+      >
         <div
-          className="confirm-overlay"
-          role="dialog"
-          aria-modal="true"
-          aria-label={pendingConfirm.title}
-          onKeyDown={handleDialogKeyDown}
-          onClick={onCancelConfirm}
+          ref={dialogRef}
+          className="confirm-card"
+          onClick={(event) => event.stopPropagation()}
         >
-          <div
-            ref={dialogRef}
-            className="confirm-card"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <strong>{pendingConfirm.title}</strong>
-            <p>{pendingConfirm.message}</p>
-            <div className="confirm-actions">
-              <button
-                className="secondary-action"
-                type="button"
-                onClick={onCancelConfirm}
-              >
-                {t('action.keepPlaying')}
-              </button>
-              <button
-                className="primary-action"
-                type="button"
-                onClick={onConfirmPending}
-              >
-                {t('action.switch')}
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      {piePromptOpen ? (
-        <div
-          className="confirm-overlay"
-          role="dialog"
-          aria-modal="true"
-          aria-label={t('aria.pieDecision')}
-          onKeyDown={handleDialogKeyDown}
-        >
-          <div ref={dialogRef} className="confirm-card">
-            <strong>{t('dialog.pieRule')}</strong>
-            <p>{t('dialog.pieBody')}</p>
-            <div className="confirm-actions">
-              <button
-                className="secondary-action"
-                type="button"
-                onClick={onKeepPie}
-              >
-                {t('dialog.keepSides')}
-              </button>
-              <button
-                className="primary-action"
-                type="button"
-                onClick={onSwapPie}
-              >
-                {t('dialog.swapSides')}
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      {guideOpen ? (
-        <div
-          className="confirm-overlay"
-          role="dialog"
-          aria-modal="true"
-          aria-label={t('aria.howToPlay')}
-          onKeyDown={handleDialogKeyDown}
-          onClick={onCloseGuide}
-        >
-          <div
-            ref={dialogRef}
-            className="confirm-card guide-card"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <strong>{t('dialog.howToPlay')}</strong>
-            <svg
-              aria-hidden="true"
-              className="guide-diagram"
-              viewBox="0 0 200 96"
+          <strong>{pendingConfirm.title}</strong>
+          <p>{pendingConfirm.message}</p>
+          <div className="confirm-actions">
+            <button
+              className="secondary-action"
+              type="button"
+              onClick={onCancelConfirm}
             >
-              <g fill="none" stroke="currentColor" opacity="0.4">
-                <g transform="translate(46 4) skewX(-24)">
-                  <rect width="116" height="24" rx="5" />
-                </g>
-                <g transform="translate(36 36) skewX(-24)">
-                  <rect width="116" height="24" rx="5" />
-                </g>
-                <g transform="translate(26 68) skewX(-24)">
-                  <rect width="116" height="24" rx="5" />
-                </g>
-              </g>
-              <path
-                d="M66 16 L86 48 L106 80"
-                fill="none"
-                stroke="var(--mark-x)"
-                strokeDasharray="3 6"
-                strokeLinecap="round"
-                strokeWidth="2.5"
-              />
-              <circle cx="66" cy="16" r="5.5" fill="var(--mark-x)" />
-              <circle cx="86" cy="48" r="5.5" fill="var(--mark-x)" />
-              <circle cx="106" cy="80" r="5.5" fill="var(--mark-x)" />
-              <g className="guide-cell-labels">
-                <text x="66" y="30">1</text>
-                <text x="86" y="62">14</text>
-                <text x="106" y="94">27</text>
-              </g>
-            </svg>
-            <ul className="guide-list">
-              <li>
-                <strong>{t('dialog.guideLine1Title')}</strong>{' '}
-                {t('dialog.guideLine1Body')}
-              </li>
-              <li>
-                <strong>{t('dialog.guideLine2Title')}</strong>{' '}
-                {t('dialog.guideLine2Body')}
-              </li>
-            </ul>
-            <button className="primary-action" type="button" onClick={onCloseGuide}>
-              {t('action.gotIt')}
+              {t('action.keepPlaying')}
+            </button>
+            <button
+              className="primary-action"
+              type="button"
+              onClick={onConfirmPending}
+            >
+              {t('action.switch')}
             </button>
           </div>
         </div>
-      ) : null}
-    </>
-  );
+      </div>
+    );
+  }
+
+  if (activeDialog === 'pie') {
+    return (
+      <div
+        className="confirm-overlay"
+        role="dialog"
+        aria-modal="true"
+        aria-label={t('aria.pieDecision')}
+        onKeyDown={handleDialogKeyDown}
+      >
+        <div ref={dialogRef} className="confirm-card">
+          <strong>{t('dialog.pieRule')}</strong>
+          <p>{t('dialog.pieBody')}</p>
+          <div className="confirm-actions">
+            <button
+              className="secondary-action"
+              type="button"
+              onClick={onKeepPie}
+            >
+              {t('dialog.keepSides')}
+            </button>
+            <button
+              className="primary-action"
+              type="button"
+              onClick={onSwapPie}
+            >
+              {t('dialog.swapSides')}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (activeDialog === 'guide') {
+    const step = TUTORIAL_STEPS[tutorialStep];
+    const isLastStep = tutorialStep === TUTORIAL_STEP_COUNT - 1;
+    const progressText = t('tutorial.progress', {
+      current: tutorialStep + 1,
+      total: TUTORIAL_STEP_COUNT,
+    });
+
+    return (
+      <div
+        className="confirm-overlay tutorial-overlay"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="tutorial-title"
+        aria-describedby="tutorial-copy"
+        onKeyDown={handleDialogKeyDown}
+        onClick={closeTutorial}
+      >
+        <div
+          ref={dialogRef}
+          className="confirm-card guide-card tutorial-card"
+          data-step={tutorialStep + 1}
+          onClick={(event) => event.stopPropagation()}
+        >
+          <div className="tutorial-header">
+            <span>{progressText}</span>
+            <button
+              className="tutorial-skip"
+              type="button"
+              onClick={closeTutorial}
+            >
+              {t('action.skip')}
+            </button>
+          </div>
+
+          <div className="tutorial-copy tutorial-step" aria-live="polite">
+            <h2 id="tutorial-title">{t(step.titleKey)}</h2>
+            <p id="tutorial-copy">{t(step.bodyKey)}</p>
+          </div>
+
+          <TutorialVisual step={step.id} />
+
+          <ol className="tutorial-progress" aria-label={progressText}>
+            {TUTORIAL_STEPS.map(({ id }, index) => (
+              <li
+                key={id}
+                className={`tutorial-progress-dot${index === tutorialStep ? ' active' : ''}`}
+                aria-current={index === tutorialStep ? 'step' : undefined}
+              >
+                <span className="sr-only">
+                  {t('tutorial.progress', {
+                    current: index + 1,
+                    total: TUTORIAL_STEP_COUNT,
+                  })}
+                </span>
+              </li>
+            ))}
+          </ol>
+
+          <div className="tutorial-actions">
+            <button
+              className="secondary-action"
+              type="button"
+              disabled={tutorialStep === 0}
+              onClick={() =>
+                setTutorialStep((current) => getPreviousTutorialStep(current))
+              }
+            >
+              {t('action.back')}
+            </button>
+            <button
+              className="primary-action"
+              data-dialog-autofocus
+              type="button"
+              onClick={() => {
+                if (isLastStep) {
+                  closeTutorial();
+                  return;
+                }
+
+                setTutorialStep((current) => getNextTutorialStep(current));
+              }}
+            >
+              {t(isLastStep ? 'action.startPlaying' : 'action.next')}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return null;
 }
