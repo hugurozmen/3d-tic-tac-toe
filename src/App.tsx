@@ -6,6 +6,7 @@ import {
   useState,
 } from 'react';
 import { GameDialogs, PendingConfirm } from './components/GameDialogs';
+import { GameMenu } from './components/GameMenu';
 import { GamePanel } from './components/GamePanel';
 import { GameStage, preloadBoardScene } from './components/GameStage';
 import { ViewSelector } from './components/ViewSelector';
@@ -117,7 +118,10 @@ type StageNotice = {
   tone: 'block' | 'score' | 'system';
 };
 
+type AppScreen = 'game' | 'menu';
+
 export function App() {
+  const [appScreen, setAppScreen] = useState<AppScreen>('menu');
   const [ruleset, setRuleset] = useLocalStorageState<GameRuleset>(
     '3dxox-ruleset',
     'lines',
@@ -1537,187 +1541,215 @@ export function App() {
     });
   }, [humanSide, match.score, match.winner, matchWinnerText, mode, t]);
 
+  const panelProps = {
+    actions: {
+      resetMatchDisabled:
+        mode === 'online' &&
+        (!match.isComplete || Boolean(online.pendingAction)),
+      resetRoundDisabled:
+        mode === 'online' &&
+        (!result.isComplete || Boolean(online.pendingAction)),
+      onResetMatch: handleResetMatch,
+      onResetRound: handleResetRound,
+    },
+    dailyProgress: {
+      dailyPuzzle,
+      dailyPuzzleResult,
+      dailyPuzzleShareCopied,
+      difficultyStreaks,
+      lastMove,
+      lifetimeScore,
+      retentionStats,
+      showDailyNudge,
+      themeUnlockProgress,
+      onDailyPuzzleMove: handleDailyPuzzleMove,
+      onDismissDailyNudge: () => setDailyNudgeState('done'),
+      onShareDailyPuzzle: handleShareDailyPuzzle,
+    },
+    matchPanel: {
+      canHumanChoosePower,
+      canShowPowerPanel,
+      coachDisabledOnline: mode === 'online',
+      coachEnabled,
+      finalSixPowers,
+      linesBonusScores,
+      mode,
+      powerPicker,
+      powerSelection,
+      showCoachPrompt,
+      showFinalSixNudge,
+      onCoachSettingChange: setCoachSetting,
+      onDismissFinalSixNudge: () => setFinalSixNudgeState('done'),
+      onPowerSelectionChange: setPowerSelection,
+      onTryCoach: handleTryCoach,
+    },
+    options: {
+      coachDisabledOnline: mode === 'online',
+      coachEnabled,
+      coachSetting,
+      language,
+      layout,
+      soundSetting,
+      themeId,
+      onCoachSettingChange: setCoachSetting,
+      onLanguageChange: setLanguage,
+      onLayoutChange: handleLayoutChange,
+      onThemeChange: setThemeId,
+      onToggleSound: () =>
+        setSoundSetting(soundSetting === 'on' ? 'off' : 'on'),
+    },
+    scoreboard: {
+      animationEvents,
+      baseLineScores,
+      currentPlayer,
+      isAiThinking,
+      isPowerScoreMode,
+      lastMove,
+      lineScores: result.lineScores,
+      linesBonusScores,
+      linesEndgameText: formatLinesEndgameText(i18n, linesEndgame),
+      lifetimeScore,
+      match,
+      matchScoreText,
+      mode,
+      nextOpenerText,
+      openerText,
+      recentBlockCount,
+      recentLineCount,
+      recentLinePlayer: recentImpact?.player ?? null,
+      remainingCells: result.remainingCells,
+      result,
+      ruleset,
+      status,
+      onOpenGuide: () => setGuideOpen(true),
+    },
+    setup: {
+      copiedSignal,
+      difficulty,
+      humanSide,
+      linesEndgameMode,
+      mode,
+      online,
+      onlineRulesLocked: onlineRoomActive,
+      remoteSignal,
+      ruleset,
+      onCopySignal: handleCopySignal,
+      onDifficultyChange: handleDifficultyChange,
+      onEndgameModeChange: handleEndgameModeChange,
+      onHostOnline: handleHostOnline,
+      onModeChange: handleModeChange,
+      onOnlineSignal: handleOnlineSignal,
+      onRemoteSignalChange: setRemoteSignal,
+      onRulesetChange: handleRulesetChange,
+      onSideChange: handleSideChange,
+    },
+  };
+
   return (
     <I18nProvider value={i18n}>
       <main
         className="app-shell"
         data-layout={layout}
+        data-screen={appScreen}
         data-theme={themeId}
         lang={language}
         style={themeStyle}
       >
-      <GameStage
-        ref={stageRef}
-        board={board}
-        animationEvents={animationEvents}
-        coachBlockCells={coachBlockCells}
-        coachHints={coachHints}
-        coachScoreCells={coachScoreCells}
-        coachSoftScoreCells={coachSoftScoreCells}
-        currentPlayer={powerPicker ?? currentPlayer}
-        disabled={isBoardDisabled}
-        isOnlineWaiting={onlineTurnPresentation?.owner === 'opponent'}
-        finalPhase={linesEndgame}
-        finalLines={finalLines}
-        hud={{
-          currentPlayer: powerPicker ?? currentPlayer,
-          handoverId: onlineHandoverId,
-          isAiThinking,
-          isComplete: Boolean(
-            match.winner || result.winner || result.isDraw,
-          ),
-          isDraw: result.isDraw,
-          lineScores: result.lineScores,
-          matchScoreText,
-          remainingCells: result.remainingCells,
-          ruleset,
-          status,
-          onlineTurn:
-            onlineTurnPresentation && online.localPlayer
-              ? {
-                  localPlayer: online.localPlayer,
-                  owner: onlineTurnPresentation.owner,
-                }
-              : null,
-        }}
-        lastMove={lastMove}
-        layout={layout}
-        matchResultLabel={matchResultLabel}
-        openedText={openedText}
-        powerEffects={powerEffects}
-        result={result}
-        resultLabel={resultLabel}
-        scannerFloor={scannerFloor}
-        scoredLines={scoredLines}
-        stageNotice={stageNotice}
-        theme={theme.scene}
-        viewCommand={viewCommand}
-        onFloorChange={setScannerFloor}
-        onResetMatch={handleResetMatch}
-        onResetRound={handleResetRound}
-        onSelect={handleSelect}
-        onUseScanner={() => handleLayoutChange('scanner')}
-        onViewCommand={sendViewCommand}
-      />
+        <div
+          aria-hidden={appScreen !== 'menu'}
+          className={`app-screen-layer menu-screen-layer ${
+            appScreen === 'menu' ? 'is-active' : 'is-hidden'
+          }`}
+          inert={appScreen !== 'menu' ? true : undefined}
+        >
+          <GameMenu
+            {...panelProps}
+            canResume={false}
+            onOpenGuide={() => setGuideOpen(true)}
+            onPlay={() => setAppScreen('game')}
+          />
+        </div>
 
-      <ViewSelector
-        className="mobile-view-selector"
-        layout={layout}
-        onChange={handleLayoutChange}
-      />
+        <div
+          aria-hidden={appScreen !== 'game'}
+          className={`app-screen-layer play-screen ${
+            appScreen === 'game' ? 'is-active' : 'is-hidden'
+          }`}
+          inert={appScreen !== 'game' ? true : undefined}
+        >
+          <GameStage
+            ref={stageRef}
+            board={board}
+            animationEvents={animationEvents}
+            coachBlockCells={coachBlockCells}
+            coachHints={coachHints}
+            coachScoreCells={coachScoreCells}
+            coachSoftScoreCells={coachSoftScoreCells}
+            currentPlayer={powerPicker ?? currentPlayer}
+            disabled={isBoardDisabled}
+            isOnlineWaiting={onlineTurnPresentation?.owner === 'opponent'}
+            finalPhase={linesEndgame}
+            finalLines={finalLines}
+            hud={{
+              currentPlayer: powerPicker ?? currentPlayer,
+              handoverId: onlineHandoverId,
+              isAiThinking,
+              isComplete: Boolean(
+                match.winner || result.winner || result.isDraw,
+              ),
+              isDraw: result.isDraw,
+              lineScores: result.lineScores,
+              matchScoreText,
+              remainingCells: result.remainingCells,
+              ruleset,
+              status,
+              onlineTurn:
+                onlineTurnPresentation && online.localPlayer
+                  ? {
+                      localPlayer: online.localPlayer,
+                      owner: onlineTurnPresentation.owner,
+                    }
+                  : null,
+            }}
+            lastMove={lastMove}
+            layout={layout}
+            matchResultLabel={matchResultLabel}
+            openedText={openedText}
+            powerEffects={powerEffects}
+            result={result}
+            resultLabel={resultLabel}
+            scannerFloor={scannerFloor}
+            scoredLines={scoredLines}
+            stageNotice={stageNotice}
+            theme={theme.scene}
+            viewCommand={viewCommand}
+            onFloorChange={setScannerFloor}
+            onResetMatch={handleResetMatch}
+            onResetRound={handleResetRound}
+            onSelect={handleSelect}
+            onUseScanner={() => handleLayoutChange('scanner')}
+            onViewCommand={sendViewCommand}
+          />
 
-      <GamePanel
-        actions={{
-          resetMatchDisabled:
-            mode === 'online' && (!match.isComplete || Boolean(online.pendingAction)),
-          resetRoundDisabled:
-            mode === 'online' && (!result.isComplete || Boolean(online.pendingAction)),
-          onResetMatch: handleResetMatch,
-          onResetRound: handleResetRound,
-        }}
-        dailyProgress={{
-          dailyPuzzle,
-          dailyPuzzleResult,
-          dailyPuzzleShareCopied,
-          difficultyStreaks,
-          lastMove,
-          lifetimeScore,
-          retentionStats,
-          showDailyNudge,
-          themeUnlockProgress,
-          onDailyPuzzleMove: handleDailyPuzzleMove,
-          onDismissDailyNudge: () => setDailyNudgeState('done'),
-          onShareDailyPuzzle: handleShareDailyPuzzle,
-        }}
-        matchPanel={{
-          canHumanChoosePower,
-          canShowPowerPanel,
-          coachDisabledOnline: mode === 'online',
-          coachEnabled,
-          finalSixPowers,
-          linesBonusScores,
-          mode,
-          powerPicker,
-          powerSelection,
-          showCoachPrompt,
-          showFinalSixNudge,
-          onCoachSettingChange: setCoachSetting,
-          onDismissFinalSixNudge: () => setFinalSixNudgeState('done'),
-          onPowerSelectionChange: setPowerSelection,
-          onTryCoach: handleTryCoach,
-        }}
-        options={{
-          coachDisabledOnline: mode === 'online',
-          coachEnabled,
-          coachSetting,
-          language,
-          layout,
-          soundSetting,
-          themeId,
-          onCoachSettingChange: setCoachSetting,
-          onLanguageChange: setLanguage,
-          onLayoutChange: handleLayoutChange,
-          onThemeChange: setThemeId,
-          onToggleSound: () =>
-            setSoundSetting(soundSetting === 'on' ? 'off' : 'on'),
-        }}
-        scoreboard={{
-          animationEvents,
-          baseLineScores,
-          currentPlayer,
-          isAiThinking,
-          isPowerScoreMode,
-          lastMove,
-          lineScores: result.lineScores,
-          linesBonusScores,
-          linesEndgameText: formatLinesEndgameText(i18n, linesEndgame),
-          lifetimeScore,
-          match,
-          matchScoreText,
-          mode,
-          nextOpenerText,
-          openerText,
-          recentBlockCount,
-          recentLineCount,
-          recentLinePlayer: recentImpact?.player ?? null,
-          remainingCells: result.remainingCells,
-          result,
-          ruleset,
-          status,
-          onOpenGuide: () => setGuideOpen(true),
-        }}
-        setup={{
-          copiedSignal,
-          difficulty,
-          humanSide,
-          linesEndgameMode,
-          mode,
-          online,
-          onlineRulesLocked: onlineRoomActive,
-          remoteSignal,
-          ruleset,
-          onCopySignal: handleCopySignal,
-          onDifficultyChange: handleDifficultyChange,
-          onEndgameModeChange: handleEndgameModeChange,
-          onHostOnline: handleHostOnline,
-          onModeChange: handleModeChange,
-          onOnlineSignal: handleOnlineSignal,
-          onRemoteSignalChange: setRemoteSignal,
-          onRulesetChange: handleRulesetChange,
-          onSideChange: handleSideChange,
-        }}
-      />
+          <ViewSelector
+            className="mobile-view-selector"
+            layout={layout}
+            onChange={handleLayoutChange}
+          />
 
-      <GameDialogs
-        guideOpen={guideOpen}
-        pendingConfirm={pendingConfirm}
-        piePromptOpen={piePromptOpen}
-        onCancelConfirm={() => setPendingConfirm(null)}
-        onCloseGuide={closeGuide}
-        onConfirmPending={confirmPending}
-        onKeepPie={() => resolvePieDecision(false)}
-        onSwapPie={() => resolvePieDecision(true)}
-      />
+          <GamePanel {...panelProps} />
+        </div>
+
+        <GameDialogs
+          guideOpen={guideOpen}
+          pendingConfirm={pendingConfirm}
+          piePromptOpen={piePromptOpen}
+          onCancelConfirm={() => setPendingConfirm(null)}
+          onCloseGuide={closeGuide}
+          onConfirmPending={confirmPending}
+          onKeepPie={() => resolvePieDecision(false)}
+          onSwapPie={() => resolvePieDecision(true)}
+        />
       </main>
     </I18nProvider>
   );
