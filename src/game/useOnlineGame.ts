@@ -1,26 +1,75 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { GameRuleset, Player } from './rules';
+import type { MatchState } from './match';
+import type { Board, GameRuleset, Player } from './rules';
 
 type OnlineRole = 'guest' | 'host';
 export type OnlineStatus =
   | 'idle'
   | 'connecting'
   | 'waiting'
+  | 'peer-waiting'
   | 'connected'
   | 'disconnected'
   | 'reconnecting'
   | 'error';
 
-type PeerMessage =
+export type OnlineActionType = 'move' | 'reset-match' | 'reset-round';
+
+export type OnlineGameSnapshot = {
+  board: Board;
+  currentPlayer: Player;
+  lastMove: number | null;
+  match: MatchState;
+  result: {
+    isComplete: boolean;
+    isDraw: boolean;
+    lineScores: Record<Player, number>;
+    winner: Player | null;
+  };
+  sequence: number;
+  version: 1;
+};
+
+export type OnlineSnapshotReason =
+  | 'peer-joined'
+  | 'rejected'
+  | 'resync'
+  | 'room-created'
+  | 'room-joined'
+  | 'room-rejoined';
+
+export type PendingOnlineAction = {
+  actionId: string;
+  index?: number;
+  player?: Player;
+  type: OnlineActionType;
+};
+
+export type OnlineActionRejection = {
+  actionId: string | null;
+  code: string;
+  message: string;
+};
+
+type RemoteActionMessage =
   | {
+      actionId: string;
       index: number;
       player: Player;
+      sequence: number;
+      snapshot: OnlineGameSnapshot;
       type: 'move';
     }
   | {
+      actionId: string;
+      sequence: number;
+      snapshot: OnlineGameSnapshot;
       type: 'reset-round';
     }
   | {
+      actionId: string;
+      sequence: number;
+      snapshot: OnlineGameSnapshot;
       type: 'reset-match';
     };
 
@@ -34,8 +83,8 @@ type RoomMessage = {
   roomId: string;
   sessionId: string;
   settings: OnlineRoomSettings;
-  type: 'room-created' | 'room-joined';
-};
+  snapshot: OnlineGameSnapshot;
+} & ({ type: 'room-created' } | { type: 'room-joined' });
 
 type RejoinedMessage = {
   peerConnected: boolean;
@@ -43,6 +92,7 @@ type RejoinedMessage = {
   roomId: string;
   sessionId: string;
   settings: OnlineRoomSettings;
+  snapshot: OnlineGameSnapshot;
   type: 'room-rejoined';
 };
 
@@ -51,25 +101,57 @@ type ServerMessage =
   | RejoinedMessage
   | {
       settings?: OnlineRoomSettings;
+      snapshot: OnlineGameSnapshot;
       type: 'peer-joined';
     }
   | {
+      snapshot?: OnlineGameSnapshot;
       type: 'peer-left';
+    }
+  | {
+      action: OnlineActionType;
+      actionId: string;
+      sequence: number;
+      snapshot: OnlineGameSnapshot;
+      type: 'action-ack';
+    }
+  | {
+      actionId: string | null;
+      code: string;
+      message: string;
+      snapshot: OnlineGameSnapshot;
+      type: 'action-rejected';
     }
   | {
       message: string;
       type: 'error';
     }
-  | PeerMessage;
+  | RemoteActionMessage;
 
-type OnlineHandlers = {
-  onRemoteMatchReset: () => void;
-  onRemoteMove: (index: number, player: Player) => void;
-  onRemoteRoundReset: () => void;
+export type OnlineHandlers = {
+  onAuthoritativeSnapshot?: (
+    snapshot: OnlineGameSnapshot,
+    reason: OnlineSnapshotReason,
+  ) => void;
+  onLocalMatchResetAcknowledged?: (snapshot: OnlineGameSnapshot) => void;
+  onLocalMoveAcknowledged?: (
+    index: number,
+    player: Player,
+    snapshot: OnlineGameSnapshot,
+  ) => void;
+  onLocalRoundResetAcknowledged?: (snapshot: OnlineGameSnapshot) => void;
+  onRemoteMatchReset: (snapshot: OnlineGameSnapshot) => void;
+  onRemoteMove: (
+    index: number,
+    player: Player,
+    snapshot: OnlineGameSnapshot,
+  ) => void;
+  onRemoteRoundReset: (snapshot: OnlineGameSnapshot) => void;
   onRoomSettings: (settings: OnlineRoomSettings) => void;
 };
 
 const DEFAULT_SERVER_PORT = '8787';
+const ACTION_ACK_TIMEOUT_MS = 8000;
 const LOCAL_HOSTS = new Set(['127.0.0.1', '::1', 'localhost']);
 const ONLINE_SERVER_MISSING =
   'Online server is not configured. Set VITE_ONLINE_SERVER_URL to a wss:// room server before publishing Online mode.';
@@ -176,6 +258,9 @@ const isPlayer = (value: unknown): value is Player =>
 const isRuleset = (value: unknown): value is GameRuleset =>
   value === 'lines' || value === 'classic';
 
+const isNonNegativeInteger = (value: unknown): value is number =>
+  Number.isInteger(value) && Number(value) >= 0;
+
 const isRoomSettings = (value: unknown): value is OnlineRoomSettings => {
   if (!value || typeof value !== 'object') {
     return false;
@@ -185,7 +270,7 @@ const isRoomSettings = (value: unknown): value is OnlineRoomSettings => {
 
   return (
     isRuleset(settings.ruleset) &&
-    typeof settings.classicPieRule === 'boolean'
+    settings.classicPieRule === false
   );
 };
 
@@ -195,12 +280,105 @@ const roleForPlayer = (player: Player): OnlineRole =>
 const playerForRole = (role: OnlineRole): Player =>
   role === 'host' ? 'X' : 'O';
 
-const isPeerMessage = (value: unknown): value is PeerMessage => {
+const isScore = (value: unknown) => {
   if (!value || typeof value !== 'object') {
     return false;
   }
 
-  const message = value as PeerMessage;
+  const score = value as Partial<MatchState['score']>;
+
+  return (
+    isNonNegativeInteger(score.X) &&
+    isNonNegativeInteger(score.O) &&
+    isNonNegativeInteger(score.draws)
+  );
+};
+
+const isLineScores = (value: unknown) => {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const scores = value as Partial<Record<Player, number>>;
+
+  return isNonNegativeInteger(scores.X) && isNonNegativeInteger(scores.O);
+};
+
+const isMatchSnapshot = (value: unknown): value is MatchState => {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const match = value as Partial<MatchState>;
+
+  return (
+    typeof match.isComplete === 'boolean' &&
+    isPlayer(match.nextOpener) &&
+    isPlayer(match.opener) &&
+    isNonNegativeInteger(match.roundNumber) &&
+    Number(match.roundNumber) >= 1 &&
+    isScore(match.score) &&
+    isNonNegativeInteger(match.targetWins) &&
+    Number(match.targetWins) >= 1 &&
+    (match.winner === null || isPlayer(match.winner))
+  );
+};
+
+export const isOnlineGameSnapshot = (
+  value: unknown,
+): value is OnlineGameSnapshot => {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const snapshot = value as Partial<OnlineGameSnapshot>;
+  const result = snapshot.result as
+    | Partial<OnlineGameSnapshot['result']>
+    | undefined;
+
+  return (
+    snapshot.version === 1 &&
+    isNonNegativeInteger(snapshot.sequence) &&
+    Array.isArray(snapshot.board) &&
+    snapshot.board.length === 27 &&
+    snapshot.board.every((cell) => cell === null || isPlayer(cell)) &&
+    isPlayer(snapshot.currentPlayer) &&
+    (snapshot.lastMove === null ||
+      (Number.isInteger(snapshot.lastMove) &&
+        Number(snapshot.lastMove) >= 0 &&
+        Number(snapshot.lastMove) < 27)) &&
+    isMatchSnapshot(snapshot.match) &&
+    Boolean(result) &&
+    typeof result?.isComplete === 'boolean' &&
+    typeof result.isDraw === 'boolean' &&
+    (result.winner === null || isPlayer(result.winner)) &&
+    isLineScores(result.lineScores)
+  );
+};
+
+const isActionType = (value: unknown): value is OnlineActionType =>
+  value === 'move' || value === 'reset-round' || value === 'reset-match';
+
+const hasAuthoritativeActionEnvelope = (message: {
+  [key: string]: unknown;
+}) =>
+  typeof message.actionId === 'string' &&
+  isNonNegativeInteger(message.sequence) &&
+  isOnlineGameSnapshot(message.snapshot) &&
+  message.sequence === message.snapshot.sequence;
+
+const isRemoteActionMessage = (
+  value: unknown,
+): value is RemoteActionMessage => {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const message = value as { [key: string]: unknown };
+
+  if (!hasAuthoritativeActionEnvelope(message)) {
+    return false;
+  }
 
   if (message.type === 'reset-round' || message.type === 'reset-match') {
     return true;
@@ -208,6 +386,7 @@ const isPeerMessage = (value: unknown): value is PeerMessage => {
 
   return (
     message.type === 'move' &&
+    typeof message.index === 'number' &&
     Number.isInteger(message.index) &&
     message.index >= 0 &&
     message.index < 27 &&
@@ -222,9 +401,12 @@ const isRoomMessage = (message: {
   typeof message.roomId === 'string' &&
   typeof message.sessionId === 'string' &&
   isRoomSettings(message.settings) &&
+  isOnlineGameSnapshot(message.snapshot) &&
   isPlayer(message.player);
 
-const parseServerMessage = (data: string): ServerMessage | null => {
+export const parseOnlineServerMessage = (
+  data: string,
+): ServerMessage | null => {
   try {
     const message = JSON.parse(data);
 
@@ -232,7 +414,7 @@ const parseServerMessage = (data: string): ServerMessage | null => {
       return null;
     }
 
-    if (isPeerMessage(message)) {
+    if (isRemoteActionMessage(message)) {
       return message;
     }
 
@@ -246,6 +428,7 @@ const parseServerMessage = (data: string): ServerMessage | null => {
       typeof message.sessionId === 'string' &&
       typeof message.peerConnected === 'boolean' &&
       isRoomSettings(message.settings) &&
+      isOnlineGameSnapshot(message.snapshot) &&
       isPlayer(message.player)
     ) {
       return message;
@@ -253,12 +436,34 @@ const parseServerMessage = (data: string): ServerMessage | null => {
 
     if (
       message.type === 'peer-joined' &&
-      (message.settings === undefined || isRoomSettings(message.settings))
+      (message.settings === undefined || isRoomSettings(message.settings)) &&
+      isOnlineGameSnapshot(message.snapshot)
     ) {
       return message;
     }
 
-    if (message.type === 'peer-left') {
+    if (
+      message.type === 'peer-left' &&
+      (message.snapshot === undefined || isOnlineGameSnapshot(message.snapshot))
+    ) {
+      return message;
+    }
+
+    if (
+      message.type === 'action-ack' &&
+      isActionType(message.action) &&
+      hasAuthoritativeActionEnvelope(message)
+    ) {
+      return message;
+    }
+
+    if (
+      message.type === 'action-rejected' &&
+      (message.actionId === null || typeof message.actionId === 'string') &&
+      typeof message.code === 'string' &&
+      typeof message.message === 'string' &&
+      isOnlineGameSnapshot(message.snapshot)
+    ) {
       return message;
     }
 
@@ -275,6 +480,9 @@ const parseServerMessage = (data: string): ServerMessage | null => {
 export function useOnlineGame(handlers: OnlineHandlers) {
   const handlersRef = useRef(handlers);
   const socketRef = useRef<WebSocket | null>(null);
+  const snapshotRef = useRef<OnlineGameSnapshot | null>(null);
+  const pendingActionRef = useRef<PendingOnlineAction | null>(null);
+  const actionCounterRef = useRef(0);
   const serverConfig = useMemo(
     () =>
       resolveOnlineServerConfig({
@@ -285,7 +493,13 @@ export function useOnlineGame(handlers: OnlineHandlers) {
     [],
   );
   const serverUrl = serverConfig.url ?? '';
+  const [authoritativeSnapshot, setAuthoritativeSnapshot] =
+    useState<OnlineGameSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [lastRejection, setLastRejection] =
+    useState<OnlineActionRejection | null>(null);
+  const [pendingAction, setPendingAction] =
+    useState<PendingOnlineAction | null>(null);
   const [role, setRole] = useState<OnlineRole | null>(null);
   const [roomId, setRoomId] = useState('');
   const [sessionId, setSessionId] = useState('');
@@ -295,6 +509,27 @@ export function useOnlineGame(handlers: OnlineHandlers) {
   useEffect(() => {
     handlersRef.current = handlers;
   }, [handlers]);
+
+  const storeSnapshot = useCallback((snapshot: OnlineGameSnapshot) => {
+    snapshotRef.current = snapshot;
+    setAuthoritativeSnapshot(snapshot);
+  }, []);
+
+  const reconcileSnapshot = useCallback(
+    (snapshot: OnlineGameSnapshot, reason: OnlineSnapshotReason) => {
+      storeSnapshot(snapshot);
+      handlersRef.current.onAuthoritativeSnapshot?.(snapshot, reason);
+    },
+    [storeSnapshot],
+  );
+
+  const rememberPendingAction = useCallback(
+    (next: PendingOnlineAction | null) => {
+      pendingActionRef.current = next;
+      setPendingAction(next);
+    },
+    [],
+  );
 
   const disconnectCurrentSocket = useCallback(() => {
     const socket = socketRef.current;
@@ -317,6 +552,29 @@ export function useOnlineGame(handlers: OnlineHandlers) {
     }
   }, []);
 
+  useEffect(() => {
+    if (!pendingAction) {
+      return;
+    }
+
+    const actionId = pendingAction.actionId;
+    const timeout = window.setTimeout(() => {
+      if (pendingActionRef.current?.actionId !== actionId) {
+        return;
+      }
+
+      const message = 'Room confirmation timed out. Reconnect before playing.';
+
+      rememberPendingAction(null);
+      setLastRejection({ actionId, code: 'ack-timeout', message });
+      setError(message);
+      setStatus('disconnected');
+      disconnectCurrentSocket();
+    }, ACTION_ACK_TIMEOUT_MS);
+
+    return () => window.clearTimeout(timeout);
+  }, [disconnectCurrentSocket, pendingAction, rememberPendingAction]);
+
   const rememberSession = useCallback(
     (
       message: Pick<
@@ -338,6 +596,11 @@ export function useOnlineGame(handlers: OnlineHandlers) {
     setRoomId('');
     setSessionId('');
     setSettings(null);
+    snapshotRef.current = null;
+    pendingActionRef.current = null;
+    setAuthoritativeSnapshot(null);
+    setPendingAction(null);
+    setLastRejection(null);
   }, []);
 
   const close = useCallback(() => {
@@ -359,8 +622,12 @@ export function useOnlineGame(handlers: OnlineHandlers) {
       return false;
     }
 
-    socketRef.current.send(JSON.stringify(message));
-    return true;
+    try {
+      socketRef.current.send(JSON.stringify(message));
+      return true;
+    } catch {
+      return false;
+    }
   }, []);
 
   const attachSocket = useCallback(
@@ -368,7 +635,7 @@ export function useOnlineGame(handlers: OnlineHandlers) {
       socketRef.current = socket;
 
       socket.onmessage = (event) => {
-        const message = parseServerMessage(String(event.data));
+        const message = parseOnlineServerMessage(String(event.data));
 
         if (!message) {
           return;
@@ -376,22 +643,31 @@ export function useOnlineGame(handlers: OnlineHandlers) {
 
         if (message.type === 'room-created') {
           rememberSession(message);
+          rememberPendingAction(null);
+          reconcileSnapshot(message.snapshot, 'room-created');
           setError(null);
+          setLastRejection(null);
           setStatus('waiting');
           return;
         }
 
         if (message.type === 'room-joined') {
           rememberSession(message);
+          rememberPendingAction(null);
+          reconcileSnapshot(message.snapshot, 'room-joined');
           setError(null);
+          setLastRejection(null);
           setStatus('connected');
           return;
         }
 
         if (message.type === 'room-rejoined') {
           rememberSession(message);
+          rememberPendingAction(null);
+          reconcileSnapshot(message.snapshot, 'room-rejoined');
           setError(null);
-          setStatus(message.peerConnected ? 'connected' : 'waiting');
+          setLastRejection(null);
+          setStatus(message.peerConnected ? 'connected' : 'peer-waiting');
           return;
         }
 
@@ -401,13 +677,102 @@ export function useOnlineGame(handlers: OnlineHandlers) {
             handlersRef.current.onRoomSettings(message.settings);
           }
 
+          reconcileSnapshot(message.snapshot, 'peer-joined');
           setError(null);
+          setLastRejection(null);
           setStatus('connected');
           return;
         }
 
         if (message.type === 'peer-left') {
-          setStatus('disconnected');
+          if (
+            message.snapshot &&
+            message.snapshot.sequence !== snapshotRef.current?.sequence
+          ) {
+            reconcileSnapshot(message.snapshot, 'resync');
+          } else if (message.snapshot) {
+            storeSnapshot(message.snapshot);
+          }
+
+          rememberPendingAction(null);
+
+          // This socket is still healthy; only the peer left. Keep the room
+          // open and wait for its reserved session to rejoin.
+          setStatus('peer-waiting');
+          return;
+        }
+
+        if (message.type === 'action-rejected') {
+          if (
+            !pendingActionRef.current ||
+            message.actionId === null ||
+            pendingActionRef.current.actionId === message.actionId
+          ) {
+            rememberPendingAction(null);
+          }
+
+          setLastRejection({
+            actionId: message.actionId,
+            code: message.code,
+            message: message.message,
+          });
+          setError(message.message);
+          reconcileSnapshot(message.snapshot, 'rejected');
+
+          if (message.code === 'peer-unavailable') {
+            setStatus('disconnected');
+          }
+
+          return;
+        }
+
+        if (message.type === 'action-ack') {
+          const previous = snapshotRef.current;
+          const pending = pendingActionRef.current;
+
+          if (!pending || pending.actionId !== message.actionId) {
+            if (!previous || message.sequence > previous.sequence) {
+              reconcileSnapshot(message.snapshot, 'resync');
+            }
+
+            return;
+          }
+
+          rememberPendingAction(null);
+          setError(null);
+          setLastRejection(null);
+
+          if (
+            message.action !== pending.type ||
+            !previous ||
+            message.sequence !== previous.sequence + 1
+          ) {
+            reconcileSnapshot(message.snapshot, 'resync');
+            return;
+          }
+
+          storeSnapshot(message.snapshot);
+
+          if (
+            message.action === 'move' &&
+            pending.index !== undefined &&
+            pending.player
+          ) {
+            handlersRef.current.onLocalMoveAcknowledged?.(
+              pending.index,
+              pending.player,
+              message.snapshot,
+            );
+          } else if (message.action === 'reset-round') {
+            handlersRef.current.onLocalRoundResetAcknowledged?.(
+              message.snapshot,
+            );
+          } else if (message.action === 'reset-match') {
+            handlersRef.current.onLocalMatchResetAcknowledged?.(
+              message.snapshot,
+            );
+          }
+
           return;
         }
 
@@ -417,16 +782,34 @@ export function useOnlineGame(handlers: OnlineHandlers) {
           return;
         }
 
+        const previous = snapshotRef.current;
+
+        if (!previous || message.sequence !== previous.sequence + 1) {
+          if (!previous || message.sequence > previous.sequence) {
+            reconcileSnapshot(message.snapshot, 'resync');
+          }
+
+          return;
+        }
+
+        storeSnapshot(message.snapshot);
+        setError(null);
+        setLastRejection(null);
+
         if (message.type === 'move') {
-          handlersRef.current.onRemoteMove(message.index, message.player);
+          handlersRef.current.onRemoteMove(
+            message.index,
+            message.player,
+            message.snapshot,
+          );
         }
 
         if (message.type === 'reset-round') {
-          handlersRef.current.onRemoteRoundReset();
+          handlersRef.current.onRemoteRoundReset(message.snapshot);
         }
 
         if (message.type === 'reset-match') {
-          handlersRef.current.onRemoteMatchReset();
+          handlersRef.current.onRemoteMatchReset(message.snapshot);
         }
       };
 
@@ -443,7 +826,13 @@ export function useOnlineGame(handlers: OnlineHandlers) {
         setStatus('error');
       };
     },
-    [rememberSession, serverUrl],
+    [
+      reconcileSnapshot,
+      rememberPendingAction,
+      rememberSession,
+      serverUrl,
+      storeSnapshot,
+    ],
   );
 
   const openSocket = useCallback(
@@ -547,6 +936,7 @@ export function useOnlineGame(handlers: OnlineHandlers) {
 
     disconnectCurrentSocket();
     setError(null);
+    setLastRejection(null);
     setStatus('reconnecting');
 
     try {
@@ -576,18 +966,53 @@ export function useOnlineGame(handlers: OnlineHandlers) {
     sessionId,
   ]);
 
-  const send = useCallback(
-    (message: PeerMessage) => {
-      const delivered = sendRaw(message);
+  const createActionId = useCallback(() => {
+    actionCounterRef.current += 1;
+    const randomPart = globalThis.crypto?.randomUUID
+      ? globalThis.crypto.randomUUID().replace(/-/g, '')
+      : `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`;
+
+    return `${randomPart}-${actionCounterRef.current.toString(36)}`.slice(0, 80);
+  }, []);
+
+  const sendAction = useCallback(
+    (action: Omit<PendingOnlineAction, 'actionId'>) => {
+      if (pendingActionRef.current) {
+        setError('Waiting for the server to confirm the previous action.');
+        return false;
+      }
+
+      const snapshot = snapshotRef.current;
+
+      if (!snapshot) {
+        setError('Room state is not ready. Reconnect before playing.');
+        return false;
+      }
+
+      const nextPending: PendingOnlineAction = {
+        ...action,
+        actionId: createActionId(),
+      };
+      const delivered = sendRaw({
+        ...nextPending,
+        expectedSequence: snapshot.sequence,
+      });
 
       if (!delivered && status !== 'idle') {
         setError('Connection is offline. Reconnect the room to keep playing.');
         setStatus('disconnected');
       }
 
-      return delivered;
+      if (!delivered) {
+        return false;
+      }
+
+      rememberPendingAction(nextPending);
+      setError(null);
+      setLastRejection(null);
+      return true;
     },
-    [sendRaw, status],
+    [createActionId, rememberPendingAction, sendRaw, status],
   );
 
   const localPlayer: Player | null =
@@ -596,22 +1021,25 @@ export function useOnlineGame(handlers: OnlineHandlers) {
     role === 'host' ? 'O' : role === 'guest' ? 'X' : null;
 
   return {
+    authoritativeSnapshot,
     canReconnect: Boolean(role && roomId && sessionId),
     close,
     configurationError: serverConfig.error,
     error,
     isConnected: status === 'connected',
     isConfigured: serverConfig.isConfigured,
+    lastRejection,
     joinOffer,
     localPlayer,
     localSignal: roomId,
+    pendingAction,
     reconnect,
     remotePlayer,
     role,
-    sendMatchReset: () => send({ type: 'reset-match' }),
+    sendMatchReset: () => sendAction({ type: 'reset-match' }),
     sendMove: (index: number, player: Player) =>
-      send({ index, player, type: 'move' }),
-    sendRoundReset: () => send({ type: 'reset-round' }),
+      sendAction({ index, player, type: 'move' }),
+    sendRoundReset: () => sendAction({ type: 'reset-round' }),
     serverUrl,
     serverUrlSource: serverConfig.source,
     startHost,

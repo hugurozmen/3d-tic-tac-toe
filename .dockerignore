@@ -6,6 +6,11 @@ android
 test-results
 public
 src
+!src/
+src/*
+!src/game/
+src/game/*
+!src/game/winningLines.mjs
 tests
 scripts
 docs

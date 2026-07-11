@@ -4,7 +4,12 @@ import {
   DIFFICULTY_OPTIONS,
   RULESET_OPTIONS,
 } from './options';
-import { Board, createBoard } from './rules';
+import {
+  Board,
+  createBoard,
+  getAvailableMoves,
+  getNewCompletedLines,
+} from './rules';
 
 const randomSequence = (values: number[]) => {
   let index = 0;
@@ -43,6 +48,50 @@ describe('Lines Mode AI scoring feel', () => {
     }
 
     expect(chooseAiMove(board, 'O', 'master', 'lines')).toBe(13);
+  });
+
+  it('keeps the defensive center instead of forcing a tactically losing score', () => {
+    const board = createBoard();
+
+    // Reproduced position uses the player-facing 1-based cells from the board UI.
+    for (const cell of [1, 3, 7, 9, 19, 21, 25, 27]) {
+      board[cell - 1] = 'X';
+    }
+
+    for (const cell of [2, 4, 5, 6, 10, 11, 12]) {
+      board[cell - 1] = 'O';
+    }
+
+    const bestReplyGainAfter = (move: number) => {
+      const afterMove = [...board];
+      afterMove[move] = 'O';
+
+      return getAvailableMoves(afterMove).reduce((best, reply) => {
+        const afterReply = [...afterMove];
+        afterReply[reply] = 'X';
+        return Math.max(
+          best,
+          getNewCompletedLines(afterMove, afterReply, 'X').length,
+        );
+      }, 0);
+    };
+
+    const unsafeScoringCell = 8 - 1;
+    const defensiveCenter = 14 - 1;
+
+    expect(bestReplyGainAfter(unsafeScoringCell)).toBe(4);
+
+    for (const difficulty of ['balanced', 'hard', 'master'] as const) {
+      const move = chooseAiMove(board, 'O', difficulty, 'lines', {
+        random: () => 0,
+      });
+
+      expect(move).toBe(defensiveCenter);
+      expect(move).not.toBe(unsafeScoringCell);
+      expect(bestReplyGainAfter(move as number)).toBeLessThan(
+        bestReplyGainAfter(unsafeScoringCell),
+      );
+    }
   });
 
   it('keeps Casual line-aware without making it purely deterministic', () => {

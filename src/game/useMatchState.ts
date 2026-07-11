@@ -7,6 +7,7 @@ import {
   advanceMatchRound,
   createMatchState,
   recordMatchRound,
+  remapMatchForSideSwap,
 } from './match';
 import {
   Board,
@@ -33,6 +34,7 @@ import {
   createFinalSixPowerState,
   pickFinalSixPower as pickFinalSixPowerState,
 } from './finalSixPowers';
+import type { OnlineGameSnapshot } from './useOnlineGame';
 
 export type MoveImpact = {
   bonusPoints: number;
@@ -47,6 +49,11 @@ export type MoveImpact = {
   shieldValue: boolean;
   shieldDenied: boolean;
 };
+
+export type OnlineMatchHydration = Pick<
+  OnlineGameSnapshot,
+  'board' | 'currentPlayer' | 'lastMove' | 'match' | 'result'
+>;
 
 const isFinalSixPowerMode = (
   mode: LinesEndgameMode,
@@ -109,6 +116,11 @@ const loadScore = (): Score => {
   return { X: 0, O: 0, draws: 0 };
 };
 
+const recordLifetimeResult = (score: Score, winner: Player | null): Score =>
+  winner
+    ? { ...score, [winner]: score[winner] + 1 }
+    : { ...score, draws: score.draws + 1 };
+
 export function useMatchState(
   ruleset: GameRuleset,
   linesEndgameMode: LinesEndgameMode = 'standard',
@@ -135,6 +147,7 @@ export function useMatchState(
   const finalSixAnnouncedRef = useRef(false);
   const recentLinesTimeoutRef = useRef<number | null>(null);
   const moveImpactIdRef = useRef(0);
+  const countedLifetimeRoundRef = useRef<string | null>(null);
   const {
     animationEvents,
     clearAnimationEvents,
@@ -320,6 +333,7 @@ export function useMatchState(
     currentPlayerRef.current = nextMatch.opener;
     finalSixPowersRef.current = nextFinalSixPowers;
     finalSixAnnouncedRef.current = false;
+    countedLifetimeRoundRef.current = null;
     setMatch(nextMatch);
     setBoard(nextBoard);
     setCurrentPlayer(nextMatch.opener);
@@ -330,6 +344,70 @@ export function useMatchState(
     clearAnimationEvents();
     clearRecentLines();
   }, [clearAnimationEvents, clearRecentLines]);
+
+  const restoreOnlineSnapshot = useCallback(
+    (snapshot: OnlineMatchHydration) => {
+      const nextBoard = [...snapshot.board];
+      const nextMatch = {
+        ...snapshot.match,
+        score: { ...snapshot.match.score },
+      };
+      const nextFinalSixPowers = createFinalSixPowerState(
+        isFinalSixPowerMode(linesEndgameModeRef.current)
+          ? linesEndgameModeRef.current
+          : 'powers-v3',
+      );
+      const signature = nextBoard.map((cell) => cell ?? '-').join('');
+      const remainingCells = nextBoard.filter((cell) => cell === null).length;
+      const lifetimeRoundKey = `${nextMatch.roundNumber}:${signature}`;
+
+      if (
+        !snapshot.result.isComplete &&
+        remainingCells === nextBoard.length &&
+        nextMatch.roundNumber === 1 &&
+        nextMatch.score.X === 0 &&
+        nextMatch.score.O === 0 &&
+        nextMatch.score.draws === 0
+      ) {
+        countedLifetimeRoundRef.current = null;
+      }
+
+      boardRef.current = nextBoard;
+      currentPlayerRef.current = snapshot.currentPlayer;
+      matchRef.current = nextMatch;
+      finalSixPowersRef.current = nextFinalSixPowers;
+      finalSixAnnouncedRef.current = remainingCells <= 6;
+      setBoard(nextBoard);
+      setCurrentPlayer(snapshot.currentPlayer);
+      setLastMove(snapshot.lastMove);
+      setMatch(nextMatch);
+      setFinalSixPowers(nextFinalSixPowers);
+      if (
+        snapshot.result.isComplete &&
+        countedLifetimeRoundRef.current !== lifetimeRoundKey
+      ) {
+        countedLifetimeRoundRef.current = lifetimeRoundKey;
+        setLifetimeScore((previous) =>
+          recordLifetimeResult(previous, snapshot.result.winner),
+        );
+      }
+
+      setScoredRound(snapshot.result.isComplete ? signature : null);
+      setRecentImpact(null);
+      clearAnimationEvents();
+      clearRecentLines();
+    },
+    [clearAnimationEvents, clearRecentLines],
+  );
+
+  const remapMatchAfterSideSwap = useCallback(() => {
+    setMatch((previous) => {
+      const next = remapMatchForSideSwap(previous);
+
+      matchRef.current = next;
+      return next;
+    });
+  }, []);
 
   const applyMove = useCallback((index: number, player?: Player) => {
     const activeBoard = boardRef.current;
@@ -344,6 +422,10 @@ export function useMatchState(
     const movePlayer = player ?? currentPlayerRef.current;
 
     if (
+      !Number.isInteger(index) ||
+      index < 0 ||
+      index >= activeBoard.length ||
+      movePlayer !== currentPlayerRef.current ||
       activeBoard[index] ||
       activeResult.winner ||
       activeResult.isDraw ||
@@ -578,19 +660,10 @@ export function useMatchState(
       winner: result.winner,
     });
 
-    setLifetimeScore((previous) => {
-      if (result.winner) {
-        return {
-          ...previous,
-          [result.winner]: previous[result.winner] + 1,
-        };
-      }
-
-      return {
-        ...previous,
-        draws: previous.draws + 1,
-      };
-    });
+    countedLifetimeRoundRef.current = `${matchRef.current.roundNumber}:${boardSignature}`;
+    setLifetimeScore((previous) =>
+      recordLifetimeResult(previous, result.winner),
+    );
     setMatch((previous) => {
       const next = recordMatchRound(previous, result.winner, result.isDraw);
 
@@ -629,10 +702,12 @@ export function useMatchState(
     pickFinalSixPower,
     resetMatch,
     resetRound,
+    remapMatchAfterSideSwap,
     result,
     xMoves,
     opener,
     recentLines,
     recentImpact,
+    restoreOnlineSnapshot,
   };
 }

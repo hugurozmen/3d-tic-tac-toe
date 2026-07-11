@@ -54,7 +54,9 @@ export function PanelMatch({
     <section className="panel-section panel-section-match" aria-label={t('aria.match')}>
       <div className="panel-section-heading">
         <span>{t('match.match')}</span>
-        <small>{t('finalSix.title')}</small>
+        <small>
+          {canShowPowerPanel ? t('finalSix.title') : t('options.coach')}
+        </small>
       </div>
 
       <div className="panel-section-body">

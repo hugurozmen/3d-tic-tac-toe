@@ -17,6 +17,7 @@
   .stage-loading-cube i,
   .line-score-tile.score-bump,
   .line-score-tile.score-bump::before,
+  .stage-hud-thinking,
   .score-row.match-finished .score-tile,
   .line-score-empty.tension,
   .scanner-board.final-six-animating::before,
@@ -117,6 +118,14 @@
     min-height: 460px;
   }
 
+  .stage-hud {
+    display: grid;
+  }
+
+  .game-stage:has(.stage-hud) .stage-toast {
+    top: 70px;
+  }
+
   .mobile-view-selector {
     position: relative;
     z-index: 2;
@@ -215,6 +224,14 @@
   .game-stage {
     height: auto;
     min-height: 560px;
+  }
+
+  .stage-hud {
+    display: grid;
+  }
+
+  .game-stage:has(.stage-hud) .stage-toast {
+    top: 76px;
   }
 
   .mobile-view-selector {
@@ -340,6 +357,36 @@
 
   .game-stage {
     min-height: 430px;
+  }
+
+  .stage-hud {
+    top: 9px;
+    width: calc(100% - 18px);
+    grid-template-columns: minmax(0, 1.28fr) 0.68fr minmax(0, 1.12fr) 0.66fr;
+    padding: 4px;
+  }
+
+  .stage-hud-ruleset-classic {
+    width: min(360px, calc(100% - 18px));
+    grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  }
+
+  .stage-hud > div {
+    min-height: 42px;
+  }
+
+  .stage-hud-turn {
+    gap: 5px;
+    padding-inline: 7px;
+  }
+
+  .stage-hud small {
+    font-size: 0.5rem;
+    letter-spacing: 0.07em;
+  }
+
+  .stage-hud strong {
+    font-size: 0.7rem;
   }
 
   .game-panel {
@@ -494,5 +541,25 @@
 
   .scanner-grid {
     width: min(100%, 78vmin);
+  }
+}
+
+@media (max-width: 680px) {
+  .daily-puzzle-header,
+  .daily-puzzle-instructions {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .daily-puzzle-board {
+    grid-template-columns: 1fr;
+  }
+
+  .daily-puzzle-floor {
+    width: 100%;
+  }
+
+  .daily-puzzle-grid {
+    width: min(100%, 210px);
   }
 }

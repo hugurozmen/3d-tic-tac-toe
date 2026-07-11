@@ -113,6 +113,36 @@ async function winClassicRoundForX(page: Page, opener: 'X' | 'O') {
   await place(page, 'X', 12);
 }
 
+async function winClassicRoundForO(page: Page, opener: 'X' | 'O') {
+  if (opener === 'X') {
+    await showFloor(page, 1);
+    await place(page, 'X', 1);
+    await keepPieIfVisible(page);
+    await showFloor(page, 2);
+    await place(page, 'O', 10);
+    await showFloor(page, 1);
+    await place(page, 'X', 2);
+    await showFloor(page, 2);
+    await place(page, 'O', 11);
+    await showFloor(page, 1);
+    await place(page, 'X', 4);
+    await showFloor(page, 2);
+    await place(page, 'O', 12);
+    return;
+  }
+
+  await showFloor(page, 2);
+  await place(page, 'O', 10);
+  await showFloor(page, 1);
+  await place(page, 'X', 1);
+  await showFloor(page, 2);
+  await place(page, 'O', 11);
+  await showFloor(page, 1);
+  await place(page, 'X', 2);
+  await showFloor(page, 2);
+  await place(page, 'O', 12);
+}
+
 async function expectCanvasHasPixels(page: Page) {
   let lastMetrics: {
     colorBuckets: number;
@@ -378,14 +408,22 @@ test('mobile first run starts on the playable scanner board', async ({ page }) =
 
   await expect(page.locator('.scanner-grid')).toBeVisible();
   await expect(page.locator('.stage-actions')).toHaveCount(0);
+  await expect(page.locator('.stage-hud')).toBeVisible();
+  await expect(page.locator('.stage-hud-turn')).toContainText('X turn');
+  await expect(page.locator('.stage-hud-lines')).toContainText('0–0');
+  await expect(page.locator('.stage-hud-match')).toContainText('You 0 · AI 0');
+  await expect(page.locator('.stage-hud-remaining')).toContainText('27');
 
   const metrics = await page.evaluate(() => {
     const stage = document.querySelector('.game-stage')?.getBoundingClientRect();
     const grid = document.querySelector('.scanner-grid')?.getBoundingClientRect();
+    const hud = document.querySelector('.stage-hud')?.getBoundingClientRect();
 
     return {
       bodyScrollWidth: document.body.scrollWidth,
+      gridTop: grid?.top ?? 0,
       gridWidth: grid?.width ?? 0,
+      hudBottom: hud?.bottom ?? 0,
       innerWidth: window.innerWidth,
       stageHeight: stage?.height ?? 0,
     };
@@ -394,6 +432,7 @@ test('mobile first run starts on the playable scanner board', async ({ page }) =
   expect(metrics.bodyScrollWidth).toBeLessThanOrEqual(metrics.innerWidth);
   expect(metrics.stageHeight).toBeGreaterThanOrEqual(430);
   expect(metrics.gridWidth).toBeGreaterThanOrEqual(280);
+  expect(metrics.hudBottom).toBeLessThanOrEqual(metrics.gridTop);
 
   await page.evaluate(() => {
     document.querySelector('.game-panel')?.scrollIntoView();
@@ -645,6 +684,7 @@ test('compact desktop gives Cube and Floors the full stage width', async ({
     viewport: { height: 720, width: 1000 },
   });
   await openOptions(page);
+  await expect(page.locator('.stage-hud')).toBeVisible();
 
   for (const view of ['Cube', 'Floors']) {
     await page.getByRole('button', { name: view }).click();
@@ -743,7 +783,49 @@ test('solo panel shows local progress and the daily puzzle', async ({ page }) =>
     await expect(page.locator('.daily-puzzle-card')).toContainText(
       /Find the|Score the/,
     );
+    await expect(page.locator('.daily-puzzle-instructions')).toContainText(
+      'X to move',
+    );
+    await expect(page.locator('.daily-puzzle-floor')).toHaveCount(3);
     await expect(page.locator('.daily-cell')).toHaveCount(27);
+    await expect(page.getByLabel('Puzzle floor 1')).toContainText('Floor 1');
+
+    const puzzleBoardLayout = await page.locator('.daily-puzzle-board').evaluate(
+      (board) => {
+        const floors = Array.from(
+          board.querySelectorAll<HTMLElement>('.daily-puzzle-floor'),
+        );
+        const cells = Array.from(
+          board.querySelectorAll<HTMLElement>('.daily-cell'),
+        );
+        const firstGrid = board.querySelector<HTMLElement>('.daily-puzzle-grid');
+        const floorRects = floors.map((floor) => floor.getBoundingClientRect());
+
+        return {
+          gridColumnCount: firstGrid
+            ? getComputedStyle(firstGrid).gridTemplateColumns.split(' ').length
+            : 0,
+          minCellHeight: Math.min(
+            ...cells.map((cell) => cell.getBoundingClientRect().height),
+          ),
+          minCellWidth: Math.min(
+            ...cells.map((cell) => cell.getBoundingClientRect().width),
+          ),
+          stacked:
+            floorRects.length > 1 &&
+            floorRects[1].top >= floorRects[0].bottom - 1,
+        };
+      },
+    );
+
+    expect(puzzleBoardLayout.gridColumnCount).toBe(3);
+    expect(puzzleBoardLayout.minCellHeight).toBeGreaterThanOrEqual(44);
+    expect(puzzleBoardLayout.minCellWidth).toBeGreaterThanOrEqual(44);
+    expect(puzzleBoardLayout.stacked).toBe(viewport.width <= 680);
+    await page.locator('.daily-cell:not(:disabled)').first().click();
+    await expect(
+      page.locator('.daily-result-announcement[role="status"]'),
+    ).toBeVisible();
     await page.getByRole('button', { name: 'Close' }).click();
   }
 });
@@ -846,13 +928,17 @@ test('best-of-5 match alternates openers and ends at 3 wins', async ({
   await chooseTwoPlayer(page);
 
   await expect(page.locator('.panel-scoreboard')).toContainText('Round');
-  await expect(page.locator('.scoreboard-match-score strong')).toHaveText('0-0');
+  await expect(page.locator('.scoreboard-match-score strong')).toHaveText(
+    'X 0 · O 0',
+  );
   await expect(page.locator('.scoreboard-opener')).toContainText('X opens');
 
   await winClassicRoundForX(page, 'X');
   await expect(page.getByText('Round 1: X wins the round')).toBeVisible();
   await expect(page.getByText('X opened - O opens next')).toBeVisible();
-  await expect(page.locator('.scoreboard-match-score strong')).toHaveText('1-0');
+  await expect(page.locator('.scoreboard-match-score strong')).toHaveText(
+    'X 1 · O 0',
+  );
 
   await page.getByRole('button', { name: 'Play again' }).click();
   await expect(page.locator('.scoreboard-opener')).toContainText('O opens');
@@ -860,7 +946,9 @@ test('best-of-5 match alternates openers and ends at 3 wins', async ({
   await winClassicRoundForX(page, 'O');
   await expect(page.getByText('Round 2: X wins the round')).toBeVisible();
   await expect(page.getByText('O opened - X opens next')).toBeVisible();
-  await expect(page.locator('.scoreboard-match-score strong')).toHaveText('2-0');
+  await expect(page.locator('.scoreboard-match-score strong')).toHaveText(
+    'X 2 · O 0',
+  );
 
   await page.getByRole('button', { name: 'Play again' }).click();
   await expect(page.locator('.scoreboard-opener')).toContainText('X opens');
@@ -869,13 +957,137 @@ test('best-of-5 match alternates openers and ends at 3 wins', async ({
   await expect(page.getByText('Round 3: X wins the round')).toBeVisible();
   await expect(page.getByText('X wins the match, 3–0')).toBeVisible();
   await expect(page.getByRole('button', { name: 'New match' })).toBeVisible();
-  await expect(page.locator('.scoreboard-match-score strong')).toHaveText('X');
+  await expect(page.locator('.scoreboard-match-score strong')).toHaveText(
+    'X 3 · O 0',
+  );
 
   await page.getByRole('button', { name: 'New match' }).click();
-  await expect(page.locator('.scoreboard-match-score strong')).toHaveText('0-0');
+  await expect(page.locator('.scoreboard-match-score strong')).toHaveText(
+    'X 0 · O 0',
+  );
   await page.getByRole('button', { name: /Progress/ }).click();
   await expect(page.locator('.progress-card')).toContainText('Lifetime');
   await expect(page.locator('.progress-card')).toContainText('3-0');
+});
+
+test('an O match victory reports the winner-first score', async ({ page }) => {
+  await openGame(page, { layout: 'scanner' });
+  await chooseRuleset(page, 'Classic');
+  await chooseTwoPlayer(page);
+
+  await winClassicRoundForO(page, 'X');
+  await page.getByRole('button', { name: 'Play again' }).click();
+  await winClassicRoundForO(page, 'O');
+  await page.getByRole('button', { name: 'Play again' }).click();
+  await winClassicRoundForO(page, 'X');
+
+  await expect(page.getByText('O wins the match, 3–0')).toBeVisible();
+  await expect(page.locator('.scoreboard-match-score span')).toHaveText('Match');
+  await expect(page.locator('.scoreboard-match-score strong')).toHaveText(
+    'X 0 · O 3',
+  );
+});
+
+test('changing participants resets match identity instead of reassigning wins', async ({
+  page,
+}) => {
+  await openGame(page, { layout: 'scanner' });
+  await chooseRuleset(page, 'Classic');
+  await chooseTwoPlayer(page);
+  await winClassicRoundForX(page, 'X');
+
+  await expect(page.locator('.scoreboard-match-score strong')).toHaveText(
+    'X 1 · O 0',
+  );
+
+  await page.getByRole('button', { name: 'AI', exact: true }).click();
+  const modeReset = page.getByRole('dialog', {
+    name: 'Reset the active match?',
+  });
+  await expect(modeReset).toContainText(
+    'Switching to AI mode resets the active best of 5.',
+  );
+  await modeReset.getByRole('button', { name: 'Switch' }).click();
+  await expect(page.locator('.scoreboard-match-score strong')).toHaveText(
+    'You 0 · AI 0',
+  );
+
+  await chooseRuleset(page, 'Lines');
+  await showFloor(page, 2);
+  await place(page, 'X', 10);
+  await expect(page.locator('.turn-badge')).toContainText('X turn', {
+    timeout: 3000,
+  });
+
+  const sideGroup = page.locator('.control-group').filter({ hasText: 'You play' });
+  await sideGroup.getByRole('button', { name: 'O', exact: true }).click();
+  const sideReset = page.getByRole('dialog', {
+    name: 'Reset the active match?',
+  });
+  await expect(sideReset).toContainText(
+    'Switching sides resets the active best of 5.',
+  );
+  await sideReset.getByRole('button', { name: 'Switch' }).click();
+
+  await expect(page.locator('.scoreboard-match-score strong')).toHaveText(
+    'You 0 · AI 0',
+  );
+  await expect(page.locator('.scoreboard-opener')).toContainText('AI opens');
+});
+
+test('changing AI difficulty can be cancelled or starts a clean match', async ({
+  page,
+}) => {
+  await openGame(page, { layout: 'scanner' });
+  await showFloor(page, 2);
+  await place(page, 'X', 10);
+  await expect(page.locator('.turn-badge')).toContainText('X turn', {
+    timeout: 3000,
+  });
+
+  const difficulty = page.locator('.difficulty-control');
+  await difficulty.getByRole('button', { name: 'Hard', exact: true }).click();
+  const resetDialog = page.getByRole('dialog', {
+    name: 'Reset the active match?',
+  });
+  await expect(resetDialog).toContainText(
+    'Changing AI difficulty resets the active best of 5.',
+  );
+  await resetDialog.getByRole('button', { name: 'Keep playing' }).click();
+  await expect(
+    difficulty.getByRole('button', { name: 'Smart', exact: true }),
+  ).toHaveClass(/active/);
+  await expect(page.getByRole('button', { name: /Cell 10, X/ })).toBeVisible();
+
+  await difficulty.getByRole('button', { name: 'Hard', exact: true }).click();
+  await resetDialog.getByRole('button', { name: 'Switch' }).click();
+  await expect(
+    difficulty.getByRole('button', { name: 'Hard', exact: true }),
+  ).toHaveClass(/active/);
+  await expect(
+    page.getByRole('button', { name: /Place X at cell 10/ }),
+  ).toBeVisible();
+  await expect(page.locator('.scoreboard-match-score strong')).toHaveText(
+    'You 0 · AI 0',
+  );
+});
+
+test('Classic Pie swap preserves participant opener identity', async ({
+  page,
+}) => {
+  await openGame(page, { layout: 'scanner' });
+  await chooseRuleset(page, 'Classic');
+  await showFloor(page, 2);
+  await place(page, 'X', 14);
+
+  await expect(page.locator('.stage-toast')).toContainText('AI swapped sides');
+  const sideGroup = page.locator('.control-group').filter({ hasText: 'You play' });
+  await expect(
+    sideGroup.getByRole('button', { name: 'O', exact: true }),
+  ).toHaveClass(/active/);
+  await expect(page.locator('.scoreboard-opener')).toContainText('You open');
+  await expect(page.locator('.scoreboard-next')).toContainText('AI opens');
+  await expect(page.locator('.turn-badge')).toContainText('O turn');
 });
 
 test('lines mode scores completed lines without ending the round', async ({
@@ -1106,6 +1318,29 @@ test('lines final result explains the score and filled board', async ({ page }) 
   ).toBeVisible();
 });
 
+test('an O Lines victory reports the winner-first score', async ({ page }) => {
+  await openGame(page, { layout: 'scanner' });
+  await chooseTwoPlayer(page);
+
+  const xCells = [4, 5, 6, 7, 8, 9, 10, 12, 13, 15, 16, 19, 25, 26];
+  const oCells = [1, 2, 3, 11, 14, 17, 18, 20, 21, 22, 23, 24, 27];
+
+  for (let turn = 0; turn < xCells.length; turn += 1) {
+    const xCell = xCells[turn];
+    await showFloor(page, Math.ceil(xCell / 9) as 1 | 2 | 3);
+    await place(page, 'X', xCell);
+
+    const oCell = oCells[turn];
+    if (oCell !== undefined) {
+      await showFloor(page, Math.ceil(oCell / 9) as 1 | 2 | 3);
+      await place(page, 'O', oCell);
+    }
+  }
+
+  await expect(page.getByText('O wins by lines, 7–5')).toBeVisible();
+  await expect(page.locator('.stage-hud')).toContainText('O wins 7–5');
+});
+
 test('local Lines Final Six Powers choose board targets and add bonus score', async ({
   page,
 }) => {
@@ -1254,10 +1489,29 @@ test('online host and guest can join and relay a scanner move', async ({
     await expect(
       guest.locator('.ruleset-control').getByRole('button', { name: 'Classic' }),
     ).toBeDisabled();
+    await expect(
+      host.getByRole('button', { name: 'New round', exact: true }),
+    ).toBeDisabled();
+    await expect(
+      host.getByRole('button', { name: 'Reset match', exact: true }),
+    ).toBeDisabled();
 
     await place(host, 'X', 10);
     await expect(guest.getByRole('button', { name: /Cell 10, X/ }))
       .toBeVisible();
+
+    await host.getByRole('button', { name: 'AI', exact: true }).click();
+    const leaveRoomDialog = host.getByRole('dialog', {
+      name: 'Reset the active match?',
+    });
+    await leaveRoomDialog.getByRole('button', { name: 'Switch' }).click();
+    await expect(
+      host.getByRole('button', { name: 'AI', exact: true }),
+    ).toHaveClass(/active/);
+    await expect(guest.locator('.online-card')).toContainText('peer away');
+    await expect(guest.locator('.online-card')).toContainText(
+      'waiting for the other player to return',
+    );
   } finally {
     await guestContext.close();
   }

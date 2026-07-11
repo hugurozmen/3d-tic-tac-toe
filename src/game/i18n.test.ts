@@ -22,6 +22,8 @@ describe('i18n', () => {
     );
     expect(labelDifficulty(i18n, 'balanced')).toBe('Akıllı');
     expect(labelPower(i18n, 'charged-cell')).toBe('Yüklü Hücre');
+    expect(i18n.t('puzzle.floor', { floor: 2 })).toBe('Kat 2');
+    expect(i18n.t('puzzle.toMove', { player: 'X' })).toBe("Sıra X'de");
   });
 
   it('localizes known online and power messages at the UI boundary', () => {

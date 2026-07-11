@@ -18,6 +18,131 @@
   );
 }
 
+.stage-hud {
+  position: absolute;
+  z-index: 3;
+  top: clamp(10px, 2vw, 18px);
+  left: 50%;
+  width: min(620px, calc(100% - 28px));
+  display: none;
+  grid-template-columns: minmax(0, 1.3fr) 0.7fr minmax(0, 1.15fr) 0.7fr;
+  gap: 4px;
+  padding: 5px;
+  border: 1px solid color-mix(in srgb, var(--app-text) 14%, var(--app-border));
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--app-panel) 84%, transparent);
+  box-shadow:
+    0 16px 36px rgba(0, 0, 0, 0.26),
+    inset 0 1px 0 color-mix(in srgb, var(--app-text) 9%, transparent);
+  backdrop-filter: blur(18px);
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+
+.stage-hud-ruleset-classic {
+  width: min(390px, calc(100% - 28px));
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+}
+
+.stage-hud > div {
+  min-width: 0;
+  min-height: 44px;
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--app-panel-strong) 62%, transparent);
+}
+
+.stage-hud-turn {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 9px;
+  border: 1px solid var(--app-border);
+}
+
+.stage-hud-turn.turn-x {
+  border-color: color-mix(in srgb, var(--mark-x) 46%, transparent);
+}
+
+.stage-hud-turn.turn-o {
+  border-color: color-mix(in srgb, var(--mark-o) 46%, transparent);
+}
+
+.stage-hud-turn.turn-x > svg {
+  color: var(--mark-x);
+}
+
+.stage-hud-turn.turn-o > svg {
+  color: var(--mark-o);
+}
+
+.stage-hud-terminal .stage-hud-turn {
+  border-color: color-mix(in srgb, var(--app-primary) 48%, transparent);
+}
+
+.stage-hud-terminal .stage-hud-turn > svg {
+  color: var(--app-primary);
+}
+
+.stage-hud-draw .stage-hud-turn > svg {
+  color: var(--app-muted);
+}
+
+.stage-hud-turn > span,
+.stage-hud-stat {
+  min-width: 0;
+  display: grid;
+  align-content: center;
+  gap: 2px;
+}
+
+.stage-hud small {
+  color: var(--app-muted);
+  font-size: 0.56rem;
+  font-weight: 850;
+  letter-spacing: 0.1em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.stage-hud strong {
+  min-width: 0;
+  color: var(--app-text);
+  font-family: var(--font-display);
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.stage-hud-turn strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stage-hud-stat {
+  justify-items: center;
+  padding: 6px 5px;
+  text-align: center;
+}
+
+.stage-hud-lines strong {
+  color: color-mix(in srgb, var(--line-scored) 64%, var(--app-text));
+}
+
+.stage-hud-remaining.tense {
+  background: color-mix(in srgb, var(--app-primary) 11%, var(--app-panel-strong));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--app-primary) 32%, transparent);
+}
+
+.stage-hud-remaining.tense strong {
+  color: var(--app-primary);
+}
+
+.stage-hud-thinking {
+  animation: spinner-turn 760ms linear infinite;
+}
+
 .game-stage.final-six-animating::before {
   position: absolute;
   inset: 0;

@@ -4,6 +4,7 @@ import { useI18n } from '../i18n';
 export type PendingConfirm = {
   message: string;
   run: () => void;
+  title: string;
 };
 
 type GameDialogsProps = {
@@ -114,7 +115,7 @@ export function GameDialogs({
           className="confirm-overlay"
           role="dialog"
           aria-modal="true"
-          aria-label={t('confirm.abandon')}
+          aria-label={pendingConfirm.title}
           onKeyDown={handleDialogKeyDown}
           onClick={onCancelConfirm}
         >
@@ -123,7 +124,7 @@ export function GameDialogs({
             className="confirm-card"
             onClick={(event) => event.stopPropagation()}
           >
-            <strong>{t('confirm.abandon')}</strong>
+            <strong>{pendingConfirm.title}</strong>
             <p>{pendingConfirm.message}</p>
             <div className="confirm-actions">
               <button

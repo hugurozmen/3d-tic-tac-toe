@@ -54,7 +54,7 @@ export type PanelScoreboardProps = {
   linesEndgameText: string | null;
   lifetimeScore: Score;
   match: MatchState;
-  matchWinnerText: string | null;
+  matchScoreText: string;
   mode: GameMode;
   nextOpenerText: string;
   openerText: string;
@@ -139,6 +139,8 @@ export type PanelDailyProgressProps = {
 };
 
 export type PanelActionsProps = {
+  resetMatchDisabled: boolean;
+  resetRoundDisabled: boolean;
   onResetMatch: () => void;
   onResetRound: () => void;
 };

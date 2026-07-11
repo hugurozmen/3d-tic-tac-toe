@@ -3,6 +3,7 @@ import {
   advanceMatchRound,
   createMatchState,
   recordMatchRound,
+  remapMatchForSideSwap,
 } from './match';
 
 describe('best-of-5 match state', () => {
@@ -38,6 +39,20 @@ describe('best-of-5 match state', () => {
     match = advanceMatchRound(match);
 
     expect(match.roundNumber).toBe(2);
+    expect(match.opener).toBe('O');
+    expect(match.nextOpener).toBe('X');
+  });
+
+  it('keeps accumulated wins with participants when Pie swaps their marks', () => {
+    let match = createMatchState('X');
+
+    match = recordMatchRound(match, 'X', false);
+    match = advanceMatchRound(match);
+    match = recordMatchRound(match, 'X', false);
+    match = advanceMatchRound(match);
+    match = remapMatchForSideSwap(match);
+
+    expect(match.score).toEqual({ X: 0, O: 2, draws: 0 });
     expect(match.opener).toBe('O');
     expect(match.nextOpener).toBe('X');
   });

@@ -9,6 +9,7 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 
 COPY server ./server
+COPY src/game/winningLines.mjs ./src/game/
 
 EXPOSE 8787
 CMD ["node", "server/online-server.mjs"]

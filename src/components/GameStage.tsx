@@ -31,6 +31,7 @@ import type { Board, GameResult, Player } from '../game/rules';
 import { formatLinesEndgameText, useI18n } from '../i18n';
 import type { SceneTheme } from '../theme';
 import { ScannerBoard } from './ScannerBoard';
+import { StageHud, type StageHudProps } from './StageHud';
 
 const loadBoardScene = () =>
   import('./BoardScene').then((module) => ({
@@ -43,7 +44,7 @@ export const preloadBoardScene = () => {
   void loadBoardScene();
 };
 
-type GameStageProps = {
+export type GameStageProps = {
   animationEvents: GameAnimationEvent[];
   board: Board;
   coachBlockCells: number[];
@@ -71,6 +72,7 @@ type GameStageProps = {
   } | null;
   theme: SceneTheme;
   viewCommand: BoardViewCommand | null;
+  hud?: StageHudProps;
   onFloorChange: (floor: number) => void;
   onResetMatch: () => void;
   onResetRound: () => void;
@@ -150,6 +152,7 @@ export const GameStage = forwardRef<HTMLElement, GameStageProps>(
       disabled,
       finalPhase,
       finalLines,
+      hud,
       lastMove,
       layout,
       matchResultLabel,
@@ -203,6 +206,7 @@ export const GameStage = forwardRef<HTMLElement, GameStageProps>(
           .join(' ')}
         aria-label={t('aria.board')}
       >
+        {hud ? <StageHud {...hud} /> : null}
         {layout === 'scanner' ? (
           <ScannerBoard
             board={board}

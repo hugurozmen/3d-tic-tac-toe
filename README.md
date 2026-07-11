@@ -16,8 +16,8 @@ chips are surfaced in the UI so the round reads as a score race.
 ### Classic
 
 Classic is the familiar variant: the first completed line wins the round. Local
-Classic games can use the Pie Rule opening flow, while online Classic rooms use
-the room settings agreed by the host and guest.
+Classic games can use the Pie Rule opening flow. Online Classic currently keeps
+Pie off until a synchronized side-swap action is added to the room protocol.
 
 ### Best-of-5 Match
 
@@ -40,9 +40,10 @@ best Lines margin, Master wins, and theme accent unlock progress on the device.
 
 ### Online Rooms
 
-Online mode uses a lightweight WebSocket room server. The host defines room
-settings, including ruleset and Classic Pie Rule setting. Guests receive those
-settings, the ruleset controls lock after connection, resets preserve agreed
+Online mode uses a lightweight WebSocket room server. The host defines the
+ruleset; guests receive it and ruleset controls lock after connection. Classic
+rooms explicitly advertise Pie off, and the server rejects unsupported Pie-on
+settings rather than letting clients silently diverge. Resets preserve agreed
 settings, and reconnects restore the room state.
 
 ## Run Locally
@@ -110,6 +111,16 @@ Run AI self-play balance checks:
 npm run ai:selfplay
 ```
 
+Validate and summarize completed human playtest responses:
+
+```bash
+npm run playtest:test
+npm run playtest:analyze -- path/to/responses.csv
+```
+
+Start with `docs/human-playtest-responses.csv` and follow
+`docs/human-playtest-protocol.md`.
+
 Run the product final pass:
 
 ```bash
@@ -148,6 +159,12 @@ Run online protocol tests:
 npm run online:test
 ```
 
+Run human playtest analyzer tests:
+
+```bash
+npm run playtest:test
+```
+
 Run browser interaction tests:
 
 ```bash
@@ -173,7 +190,7 @@ npm run test
 ```
 
 `npm run test` runs `npm run build`, `npm run test:unit`,
-`npm run online:test`, and `npm run test:e2e`.
+`npm run playtest:test`, `npm run online:test`, and `npm run test:e2e`.
 
 The optional deeper manual release gate is:
 

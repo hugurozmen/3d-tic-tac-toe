@@ -3,6 +3,7 @@ dist/
 .claude/
 playwright-report/
 test-results/
+playtest-data/
 *.tsbuildinfo
 vite.config.d.ts
 vite.config.js

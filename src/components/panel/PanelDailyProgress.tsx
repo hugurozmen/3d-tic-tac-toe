@@ -1,8 +1,7 @@
 import { Clipboard, Sparkles } from 'lucide-react';
 import { useState } from 'react';
-import {
-  DIFFICULTY_OPTIONS,
-} from '../../game/options';
+import { DIFFICULTY_OPTIONS } from '../../game/options';
+import type { DailyPuzzle, DailyPuzzleResult } from '../../game/puzzles';
 import {
   formatMoveCell,
   getDailyPuzzlePrompt,
@@ -17,6 +16,72 @@ import type { PanelDailyProgressProps } from './types';
 import { PanelModal } from './PanelModal';
 
 const DAILY_FLOORS = [0, 1, 2] as const;
+
+type DailyPuzzleBoardProps = {
+  dailyPuzzle: DailyPuzzle;
+  dailyPuzzleResult: DailyPuzzleResult | null;
+  onMove: (move: number) => void;
+};
+
+export function DailyPuzzleBoard({
+  dailyPuzzle,
+  dailyPuzzleResult,
+  onMove,
+}: DailyPuzzleBoardProps) {
+  const { t } = useI18n();
+
+  return (
+    <div className="daily-puzzle-board">
+      {DAILY_FLOORS.map((floor) => (
+        <section
+          key={floor}
+          className="daily-puzzle-floor"
+          aria-label={t('puzzle.floorBoard', { floor: floor + 1 })}
+        >
+          <span className="daily-puzzle-floor-label">
+            {t('puzzle.floor', { floor: floor + 1 })}
+          </span>
+          <div className="daily-puzzle-grid">
+            {Array.from({ length: 9 }, (_, cell) => {
+              const index = floor * 9 + cell;
+              const row = Math.floor(cell / 3) + 1;
+              const column = (cell % 3) + 1;
+              const value = dailyPuzzle.board[index];
+              const isPicked = dailyPuzzleResult?.move === index;
+              const isBest = dailyPuzzleResult?.bestMove === index;
+
+              return (
+                <button
+                  key={index}
+                  aria-label={t('puzzle.cellLabel', {
+                    cell: index + 1,
+                    column,
+                    floor: floor + 1,
+                    row,
+                    value: value ?? t('cell.empty'),
+                  })}
+                  className={[
+                    'daily-cell',
+                    value ? `occupied mark-${value.toLowerCase()}` : '',
+                    isPicked ? 'picked' : '',
+                    isBest ? 'best' : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')}
+                  disabled={Boolean(value) || Boolean(dailyPuzzleResult)}
+                  type="button"
+                  onClick={() => onMove(index)}
+                >
+                  {value ?? index + 1}
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      ))}
+    </div>
+  );
+}
 
 export function PanelDailyProgress({
   dailyPuzzle,
@@ -108,70 +173,50 @@ export function PanelDailyProgress({
               </div>
               <span>{labelRuleset(i18n, dailyPuzzle.ruleset)}</span>
             </div>
-            <p>{dailyPrompt}</p>
-            <div className="daily-puzzle-board">
-              {DAILY_FLOORS.map((floor) => (
-                <div key={floor} className="daily-puzzle-floor">
-                  <span>Floor {floor + 1}</span>
-                  <div className="daily-puzzle-grid">
-                    {Array.from({ length: 9 }, (_, cell) => {
-                      const index = floor * 9 + cell;
-                      const value = dailyPuzzle.board[index];
-                      const isPicked = dailyPuzzleResult?.move === index;
-                      const isBest = dailyPuzzleResult?.bestMove === index;
-
-                      return (
-                        <button
-                          key={index}
-                          aria-label={t('puzzle.cellEmpty', {
-                            cell: index + 1,
-                            value: value ?? t('cell.empty'),
-                          })}
-                          className={[
-                            'daily-cell',
-                            value ? `occupied mark-${value.toLowerCase()}` : '',
-                            isPicked ? 'picked' : '',
-                            isBest ? 'best' : '',
-                          ]
-                            .filter(Boolean)
-                            .join(' ')}
-                          disabled={Boolean(value) || Boolean(dailyPuzzleResult)}
-                          type="button"
-                          onClick={() => onDailyPuzzleMove(index)}
-                        >
-                          {value ?? index + 1}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
+            <div className="daily-puzzle-instructions">
+              <p>{dailyPrompt}</p>
+              <span
+                className={`daily-puzzle-turn mark-${dailyPuzzle.player.toLowerCase()}`}
+              >
+                {t('puzzle.toMove', { player: dailyPuzzle.player })}
+              </span>
             </div>
+            <DailyPuzzleBoard
+              dailyPuzzle={dailyPuzzle}
+              dailyPuzzleResult={dailyPuzzleResult}
+              onMove={onDailyPuzzleMove}
+            />
             {dailyPuzzleResult ? (
               <div
                 className={`daily-puzzle-result ${
                   dailyPuzzleResult.solved ? 'solved' : 'missed'
                 }`}
               >
-                <div className="daily-result-moves">
-                  <span>
-                    {t('puzzle.bestMove', {
-                      cell: formatMoveCell(dailyPuzzleResult.bestMove),
-                    })}
-                  </span>
-                  <span>
-                    {t('puzzle.yourMove', {
-                      cell: formatMoveCell(dailyPuzzleResult.move),
-                    })}
-                  </span>
+                <div
+                  className="daily-result-announcement"
+                  aria-live="polite"
+                  role="status"
+                >
+                  <div className="daily-result-moves">
+                    <span>
+                      {t('puzzle.bestMove', {
+                        cell: formatMoveCell(dailyPuzzleResult.bestMove),
+                      })}
+                    </span>
+                    <span>
+                      {t('puzzle.yourMove', {
+                        cell: formatMoveCell(dailyPuzzleResult.move),
+                      })}
+                    </span>
+                  </div>
+                  <p>
+                    {getDailyPuzzleResultExplanation(
+                      i18n,
+                      dailyPuzzle,
+                      dailyPuzzleResult,
+                    )}
+                  </p>
                 </div>
-                <p>
-                  {getDailyPuzzleResultExplanation(
-                    i18n,
-                    dailyPuzzle,
-                    dailyPuzzleResult,
-                  )}
-                </p>
                 {dailyPuzzleResult.solved ? (
                   <button
                     className="daily-share"

@@ -67,3 +67,21 @@ export const advanceMatchRound = (
   opener,
   roundNumber: match.roundNumber + 1,
 });
+
+/**
+ * The match engine records wins by mark, while Solo presents them by
+ * participant. When the Classic Pie Rule swaps who controls X and O, remap
+ * score and opener mark buckets so earlier wins and alternation stay with the
+ * same people.
+ */
+export const remapMatchForSideSwap = (match: MatchState): MatchState => ({
+  ...match,
+  nextOpener: getOtherPlayer(match.nextOpener),
+  opener: getOtherPlayer(match.opener),
+  score: {
+    X: match.score.O,
+    O: match.score.X,
+    draws: match.score.draws,
+  },
+  winner: match.winner ? getOtherPlayer(match.winner) : null,
+});

@@ -659,7 +659,7 @@ const isTacticallyAcceptableLinesMove = (
   next[candidate.move] = player;
   const candidateReplyRisk = getBestImmediateLineGain(next, rival);
 
-  return candidateReplyRisk <= Math.max(1, best.replyRisk);
+  return candidateReplyRisk <= best.replyRisk;
 };
 
 const getForcedLinesMove = (
@@ -684,7 +684,9 @@ const getForcedLinesMove = (
   if (
     bestScoringMove &&
     bestScoringMove.analysis.immediateLines > 0 &&
-    best.analysis.immediateLines === 0
+    best.analysis.immediateLines === 0 &&
+    bestScoringMove.score >= best.score - 220 &&
+    isTacticallyAcceptableLinesMove(board, player, bestScoringMove, best)
   ) {
     return bestScoringMove.move;
   }

@@ -288,6 +288,11 @@ export function PanelSetup({
                 {t('online.waiting')}
               </p>
             ) : null}
+            {online.status === 'peer-waiting' ? (
+              <p className="online-hint">
+                {t('online.peerWaiting')}
+              </p>
+            ) : null}
             <div className="online-actions">
               <button
                 disabled={!online.isConfigured || online.status === 'connecting'}

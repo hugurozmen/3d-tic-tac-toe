@@ -28,6 +28,7 @@ export type DailyPuzzle = {
   id: number;
   kind: DailyPuzzleKind;
   player: Player;
+  puzzleKey: string;
   prompt: string;
   ruleset: GameRuleset;
   shareText: string;
@@ -38,11 +39,13 @@ export type DailyPuzzleResult = {
   dateKey: string;
   explanation: string;
   move: number | null;
+  puzzleKey: string;
   shareText: string;
   solved: boolean;
 };
 
 const DAILY_RESULT_KEY = '3dxox-daily-puzzle-result';
+const DAILY_PUZZLE_REVISION = 2;
 const DAILY_EPOCH = Date.UTC(2026, 0, 1);
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -101,28 +104,42 @@ export const findBestScoringMove = (
   return { move, score: move === null ? 0 : scoreDeltaAfterMove(board, player, move) };
 };
 
-export const findClassicWinInTwo = (board: Board, player: Player) => {
-  const immediate = findClassicWinningMove(board, player);
+export const findClassicWinInTwoMoves = (board: Board, player: Player) => {
+  const immediate = getAvailableMoves(board).filter((move) => {
+    const next = [...board];
+    next[move] = player;
+    return evaluateClassicBoard(next).winner === player;
+  });
 
-  if (immediate !== null) {
+  if (immediate.length > 0) {
     return immediate;
   }
 
   const rival = getOtherPlayer(player);
 
-  return (
-    getAvailableMoves(board).find((move) => {
-      const next = [...board];
-      next[move] = player;
+  return getAvailableMoves(board).filter((move) => {
+    const next = [...board];
+    next[move] = player;
+    const rivalMoves = getAvailableMoves(next);
 
-      return getAvailableMoves(next).every((rivalMove) => {
+    return (
+      rivalMoves.length > 0 &&
+      rivalMoves.every((rivalMove) => {
         const reply = [...next];
         reply[rivalMove] = rival;
+
+        if (evaluateClassicBoard(reply).isComplete) {
+          return false;
+        }
+
         return findClassicWinningMove(reply, player) !== null;
-      });
-    }) ?? null
-  );
+      })
+    );
+  });
 };
+
+export const findClassicWinInTwo = (board: Board, player: Player) =>
+  findClassicWinInTwoMoves(board, player)[0] ?? null;
 
 const boardWithMarks = (marks: Array<[number, Player]>) => {
   const board = createBoard();
@@ -135,6 +152,8 @@ const boardWithMarks = (marks: Array<[number, Player]>) => {
 };
 
 const formatCell = (move: number | null) => (move === null ? '-' : `${move + 1}`);
+const createPuzzleKey = (dateKey: string, kind: DailyPuzzleKind) =>
+  `${dateKey}:${kind}:v${DAILY_PUZZLE_REVISION}`;
 
 const createDateSeed = (date: Date) => {
   const year = date.getFullYear();
@@ -169,6 +188,7 @@ const createBestLinesPuzzle = (
     id,
     kind: 'best-lines',
     player: 'X',
+    puzzleKey: createPuzzleKey(dateKey, 'best-lines'),
     prompt: 'Find the best Lines move',
     ruleset: 'lines',
     shareText: `3D XOX Daily #${id} \u2014 solved in 1`,
@@ -204,6 +224,7 @@ const createMaxLinesPuzzle = (
     id,
     kind: 'max-lines',
     player: 'X',
+    puzzleKey: createPuzzleKey(dateKey, 'max-lines'),
     prompt: 'Score the most lines',
     ruleset: 'lines',
     shareText: `3D XOX Daily #${id} \u2014 solved in 1`,
@@ -231,6 +252,7 @@ const createClassicWinPuzzle = (
     id,
     kind: 'classic-win',
     player: 'X',
+    puzzleKey: createPuzzleKey(dateKey, 'classic-win'),
     prompt: 'Find the Classic win',
     ruleset: 'classic',
     shareText: `3D XOX Daily #${id} \u2014 solved in 1`,
@@ -243,10 +265,10 @@ const createClassicWinInTwoPuzzle = (
   id: number,
 ): DailyPuzzle => {
   const board = boardWithMarks([
-    [0, 'X'],
-    [2, 'X'],
-    [1, 'O'],
-    [10, 'O'],
+    [4, 'X'],
+    [15, 'X'],
+    [12, 'O'],
+    [18, 'O'],
   ]);
   const bestMove = findClassicWinInTwo(board, 'X');
 
@@ -258,6 +280,7 @@ const createClassicWinInTwoPuzzle = (
     id,
     kind: 'classic-win-two',
     player: 'X',
+    puzzleKey: createPuzzleKey(dateKey, 'classic-win-two'),
     prompt: 'Find the Classic win in two',
     ruleset: 'classic',
     shareText: `3D XOX Daily #${id} \u2014 solved in 1`,
@@ -295,13 +318,14 @@ export const evaluateDailyPuzzleMove = (
     dateKey: puzzle.dateKey,
     explanation,
     move,
+    puzzleKey: puzzle.puzzleKey,
     shareText: puzzle.shareText,
     solved,
   };
 };
 
 export const loadDailyPuzzleResult = (
-  dateKey: string,
+  puzzle: Pick<DailyPuzzle, 'bestMove' | 'dateKey' | 'puzzleKey'>,
 ): DailyPuzzleResult | null => {
   try {
     const raw = window.localStorage.getItem(DAILY_RESULT_KEY);
@@ -313,10 +337,13 @@ export const loadDailyPuzzleResult = (
     const parsed = JSON.parse(raw) as DailyPuzzleResult;
 
     if (
-      parsed?.dateKey === dateKey &&
+      parsed?.dateKey === puzzle.dateKey &&
+      parsed?.puzzleKey === puzzle.puzzleKey &&
+      parsed?.bestMove === puzzle.bestMove &&
       (typeof parsed.move === 'number' || parsed.move === null) &&
       (typeof parsed.bestMove === 'number' || parsed.bestMove === null) &&
       typeof parsed.explanation === 'string' &&
+      typeof parsed.puzzleKey === 'string' &&
       typeof parsed.shareText === 'string' &&
       typeof parsed.solved === 'boolean'
     ) {

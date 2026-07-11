@@ -1,3 +1,9 @@
+import {
+  BOARD_SIZE,
+  CELL_COUNT,
+  WINNING_LINES,
+} from './winningLines.mjs';
+
 export type Player = 'X' | 'O';
 export type CellValue = Player | null;
 export type Board = CellValue[];
@@ -11,8 +17,7 @@ export type GameMode = 'solo' | 'duo' | 'online';
 export type GameRuleset = 'lines' | 'classic';
 export type Difficulty = 'easy' | 'balanced' | 'hard' | 'master';
 
-export const BOARD_SIZE = 3;
-export const CELL_COUNT = BOARD_SIZE ** 3;
+export { BOARD_SIZE, CELL_COUNT };
 export const PLAYERS: Player[] = ['X', 'O'];
 
 export type LineScores = Record<Player, number>;
@@ -38,14 +43,6 @@ export type LinesResult = GameResult & {
   winningLines: number[][];
 };
 
-const inBounds = ({ x, y, z }: Coordinate) =>
-  x >= 0 &&
-  y >= 0 &&
-  z >= 0 &&
-  x < BOARD_SIZE &&
-  y < BOARD_SIZE &&
-  z < BOARD_SIZE;
-
 export const toIndex = ({ x, y, z }: Coordinate) =>
   z * BOARD_SIZE * BOARD_SIZE + y * BOARD_SIZE + x;
 
@@ -58,67 +55,8 @@ export const toCoordinate = (index: number): Coordinate => {
   return { x, y, z };
 };
 
-const directions: Coordinate[] = [];
-
-for (let x = -1; x <= 1; x += 1) {
-  for (let y = -1; y <= 1; y += 1) {
-    for (let z = -1; z <= 1; z += 1) {
-      if (x === 0 && y === 0 && z === 0) {
-        continue;
-      }
-
-      const vector = [x, y, z];
-      const firstNonZero = vector.find((value) => value !== 0);
-
-      if (firstNonZero === 1) {
-        directions.push({ x, y, z });
-      }
-    }
-  }
-}
-
-const createWinningLines = () =>
-  Array.from({ length: CELL_COUNT }, (_, index) =>
-    toCoordinate(index),
-  ).flatMap((start) =>
-    directions.flatMap((direction) => {
-      const previous = {
-        x: start.x - direction.x,
-        y: start.y - direction.y,
-        z: start.z - direction.z,
-      };
-
-      if (inBounds(previous)) {
-        return [];
-      }
-
-      const line = Array.from({ length: BOARD_SIZE }, (_, step) => ({
-        x: start.x + direction.x * step,
-        y: start.y + direction.y * step,
-        z: start.z + direction.z * step,
-      }));
-
-      return line.every(inBounds) ? [line.map(toIndex)] : [];
-    }),
-  );
-
 const lineKey = (line: number[]) => [...line].sort((a, b) => a - b).join('-');
-
-const assertWinningLines = (lines: number[][]) => {
-  const unique = new Set(lines.map(lineKey));
-
-  if (
-    lines.length !== 49 ||
-    unique.size !== 49 ||
-    lines.some((line) => line.length !== BOARD_SIZE)
-  ) {
-    throw new Error('3D XOX requires exactly 49 unique 3-cell lines.');
-  }
-};
-
-export const WINNING_LINES = createWinningLines();
-
-assertWinningLines(WINNING_LINES);
+export { WINNING_LINES };
 
 export const getAllLines = () => WINNING_LINES.map((line) => [...line]);
 

@@ -1,4 +1,4 @@
-import { Circle, HelpCircle, Trophy, X } from 'lucide-react';
+import { Circle, Equal, HelpCircle, Trophy, X } from 'lucide-react';
 import type { Player } from '../../game/rules';
 import { useI18n } from '../../i18n';
 import type { PanelScoreboardProps } from './types';
@@ -16,7 +16,7 @@ export function PanelScoreboard({
   linesBonusScores,
   linesEndgameText,
   match,
-  matchWinnerText,
+  matchScoreText,
   nextOpenerText,
   openerText,
   recentBlockCount,
@@ -63,7 +63,9 @@ export function PanelScoreboard({
         <div className="header-side">
           <div
             className={`turn-badge ${
-              result.winner
+              result.isDraw
+                ? 'turn-draw'
+                : result.winner
                 ? 'turn-win'
                 : currentPlayer === 'X'
                   ? 'turn-x'
@@ -71,10 +73,12 @@ export function PanelScoreboard({
             } ${isAiThinking ? 'thinking' : ''}`}
             aria-label={status}
           >
-            {isAiThinking ? (
-              <span className="thinking-spinner" aria-hidden="true" />
+            {result.isDraw ? (
+              <Equal aria-hidden="true" size={20} />
             ) : result.winner ? (
-              <Trophy size={20} />
+              <Trophy aria-hidden="true" size={20} />
+            ) : isAiThinking ? (
+              <span className="thinking-spinner" aria-hidden="true" />
             ) : (
               markIcon(currentPlayer)
             )}
@@ -98,10 +102,8 @@ export function PanelScoreboard({
             <strong>{match.roundNumber}</strong>
           </div>
           <div className="scoreboard-match-score">
-            <span>{match.winner ? t('match.winner') : t('match.match')}</span>
-            <strong>
-              {matchWinnerText ?? `${match.score.X}-${match.score.O}`}
-            </strong>
+            <span>{t('match.match')}</span>
+            <strong>{matchScoreText}</strong>
           </div>
           <div className="scoreboard-draws">
             <span>{t('match.draws')}</span>

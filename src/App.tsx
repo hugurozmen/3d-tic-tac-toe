@@ -52,7 +52,11 @@ import {
   updateRetentionStats,
 } from './game/retention';
 import { useMatchState } from './game/useMatchState';
-import { type OnlineRoomSettings, useOnlineGame } from './game/useOnlineGame';
+import {
+  type OnlineGameSnapshot,
+  type OnlineRoomSettings,
+  useOnlineGame,
+} from './game/useOnlineGame';
 import {
   FINAL_SIX_POWER_LABEL,
   type FinalSixPowerId,
@@ -143,6 +147,8 @@ export function App() {
     pickFinalSixPower,
     resetMatch,
     resetRound,
+    remapMatchAfterSideSwap,
+    restoreOnlineSnapshot,
     result,
     xMoves,
     opener,
@@ -229,10 +235,11 @@ export function App() {
   const [themeUnlockHooks, setThemeUnlockHooks] = useState(
     loadThemeUnlockHooks,
   );
-  const dailyPuzzle = useMemo(() => getDailyPuzzle(), []);
+  const [dailyPuzzle, setDailyPuzzle] = useState(() => getDailyPuzzle());
   const [dailyPuzzleResult, setDailyPuzzleResult] = useState(() =>
-    loadDailyPuzzleResult(dailyPuzzle.dateKey),
+    loadDailyPuzzleResult(dailyPuzzle),
   );
+  const dailyPuzzleKeyRef = useRef(dailyPuzzle.puzzleKey);
   const [dailyPuzzleShareCopied, setDailyPuzzleShareCopied] = useState(false);
   const theme = THEMES[themeId];
   const themeStyle = useMemo(() => themeToCssVariables(theme), [theme]);
@@ -409,6 +416,59 @@ export function App() {
   );
 
   useEffect(() => {
+    let midnightTimer: number | null = null;
+
+    const refreshDailyPuzzle = () => {
+      const nextPuzzle = getDailyPuzzle();
+
+      if (dailyPuzzleKeyRef.current === nextPuzzle.puzzleKey) {
+        return;
+      }
+
+      dailyPuzzleKeyRef.current = nextPuzzle.puzzleKey;
+      setDailyPuzzle(nextPuzzle);
+      setDailyPuzzleResult(loadDailyPuzzleResult(nextPuzzle));
+    };
+
+    const scheduleMidnightRefresh = () => {
+      if (midnightTimer !== null) {
+        window.clearTimeout(midnightTimer);
+      }
+
+      const now = new Date();
+      const nextMidnight = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate() + 1,
+      );
+
+      midnightTimer = window.setTimeout(() => {
+        refreshDailyPuzzle();
+        scheduleMidnightRefresh();
+      }, Math.max(1000, nextMidnight.getTime() - now.getTime() + 50));
+    };
+
+    const refreshWhenVisible = () => {
+      if (!document.hidden) {
+        refreshDailyPuzzle();
+      }
+    };
+
+    window.addEventListener('focus', refreshDailyPuzzle);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+    scheduleMidnightRefresh();
+
+    return () => {
+      window.removeEventListener('focus', refreshDailyPuzzle);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+
+      if (midnightTimer !== null) {
+        window.clearTimeout(midnightTimer);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     if (moveCount === 0) {
       setPieDecisionDone(false);
       setPiePromptOpen(false);
@@ -499,6 +559,7 @@ export function App() {
       setPieDecisionDone(true);
 
       if (shouldSwap) {
+        remapMatchAfterSideSwap();
         setHumanSide(getOtherPlayer(humanSide));
         flashNotice(t('notice.aiSwappedSides'));
       } else {
@@ -518,6 +579,7 @@ export function App() {
     humanSide,
     mode,
     pieDecisionPending,
+    remapMatchAfterSideSwap,
     setHumanSide,
     t,
   ]);
@@ -582,23 +644,46 @@ export function App() {
 
   const onlineHandlers = useMemo(
     () => ({
-      onRemoteMatchReset: () => {
-        resetMatch();
+      onAuthoritativeSnapshot: (snapshot: OnlineGameSnapshot) => {
+        restoreOnlineSnapshot(snapshot);
+      },
+      onLocalMatchResetAcknowledged: (snapshot: OnlineGameSnapshot) => {
+        restoreOnlineSnapshot(snapshot);
+      },
+      onLocalMoveAcknowledged: (
+        index: number,
+        player: Player,
+        snapshot: OnlineGameSnapshot,
+      ) => {
+        if (!applyMove(index, player)) {
+          restoreOnlineSnapshot(snapshot);
+        }
+      },
+      onLocalRoundResetAcknowledged: (snapshot: OnlineGameSnapshot) => {
+        restoreOnlineSnapshot(snapshot);
+      },
+      onRemoteMatchReset: (snapshot: OnlineGameSnapshot) => {
+        restoreOnlineSnapshot(snapshot);
         flashNotice(t('notice.opponentResetMatch'));
       },
-      onRemoteMove: (index: number, player: Player) => {
-        // only accept moves the remote side is actually allowed to make
+      onRemoteMove: (
+        index: number,
+        player: Player,
+        snapshot: OnlineGameSnapshot,
+      ) => {
+        // Keep normal move feedback when local state agrees with the server;
+        // otherwise hydrate the accepted authoritative sequence.
         if (
           player !== remotePlayerRef.current ||
-          player !== currentPlayerRef.current
+          player !== currentPlayerRef.current ||
+          !applyMove(index, player)
         ) {
+          restoreOnlineSnapshot(snapshot);
           return;
         }
-
-        applyMove(index, player);
       },
-      onRemoteRoundReset: () => {
-        resetRound();
+      onRemoteRoundReset: (snapshot: OnlineGameSnapshot) => {
+        restoreOnlineSnapshot(snapshot);
         flashNotice(t('notice.opponentNewRound'));
       },
       onRoomSettings: (settings: OnlineRoomSettings) => {
@@ -610,7 +695,15 @@ export function App() {
         }
       },
     }),
-    [applyMove, flashNotice, resetMatch, resetRound, ruleset, setRuleset, t],
+    [
+      applyMove,
+      flashNotice,
+      resetMatch,
+      restoreOnlineSnapshot,
+      ruleset,
+      setRuleset,
+      t,
+    ],
   );
   const online = useOnlineGame(onlineHandlers);
   const onlineRoomActive = mode === 'online' && Boolean(online.localSignal);
@@ -622,6 +715,7 @@ export function App() {
   const isOnlineTurn =
     mode === 'online' &&
     online.isConnected &&
+    !online.pendingAction &&
     online.localPlayer === currentPlayer;
   const isBoardDisabled =
     isAiTurn ||
@@ -814,10 +908,29 @@ export function App() {
 
     if (result.winner) {
       if (ruleset === 'lines') {
+        const winnerScore = result.lineScores[result.winner];
+        const rivalScore = result.lineScores[getOtherPlayer(result.winner)];
+
+        if (mode === 'solo') {
+          return result.winner === humanSide
+            ? t('result.youWinByLines', {
+                score: `${winnerScore}\u2013${rivalScore}`,
+              })
+            : t('result.aiWinsByLines', {
+                score: `${winnerScore}\u2013${rivalScore}`,
+              });
+        }
+
         return t('status.playerWinsScore', {
           player: result.winner,
-          score: `${result.lineScores.X}-${result.lineScores.O}`,
+          score: `${winnerScore}\u2013${rivalScore}`,
         });
+      }
+
+      if (mode === 'solo') {
+        return result.winner === humanSide
+          ? t('result.youWinRound')
+          : t('result.aiWinsRound');
       }
 
       return t('status.playerWins', { player: result.winner });
@@ -857,9 +970,17 @@ export function App() {
       }
 
       if (!online.isConnected) {
-        return online.status === 'waiting'
-          ? t('status.roomReady')
+        if (online.status === 'waiting') {
+          return t('status.roomReady');
+        }
+
+        return online.status === 'peer-waiting'
+          ? t('status.opponentReconnect')
           : t('status.onlineSetup');
+      }
+
+      if (online.pendingAction) {
+        return t('status.confirmingOnlineAction');
       }
 
       if (online.localPlayer !== currentPlayer) {
@@ -877,6 +998,7 @@ export function App() {
     mode,
     online.isConnected,
     online.localPlayer,
+    online.pendingAction,
     online.status,
     result.isDraw,
     result.lineScores.O,
@@ -930,7 +1052,8 @@ export function App() {
           return;
         }
 
-        applyMove(index, online.localPlayer);
+        // Online moves become local only after the room server acknowledges
+        // the authoritative sequence. This prevents optimistic desync.
         return;
       }
 
@@ -955,12 +1078,15 @@ export function App() {
     ],
   );
 
-  const roundInProgress =
-    !result.winner && !result.isDraw && board.some(Boolean);
+  const matchHasProgress =
+    board.some(Boolean) ||
+    match.score.X > 0 ||
+    match.score.O > 0 ||
+    match.score.draws > 0;
 
-  const requestRoundReset = (message: string, run: () => void) => {
-    if (roundInProgress) {
-      setPendingConfirm({ message, run });
+  const requestMatchReset = (message: string, run: () => void) => {
+    if (matchHasProgress) {
+      setPendingConfirm({ message, run, title: t('confirm.resetMatch') });
       return;
     }
 
@@ -972,11 +1098,19 @@ export function App() {
       return;
     }
 
-    requestRoundReset(
+    requestMatchReset(
       t('setup.switchModeConfirm', { mode: labelMode(i18n, nextMode) }),
       () => {
+        if (mode === 'online') {
+          // Detach synchronously so a late room event cannot hydrate the new
+          // local participant setup before the mode-change effect runs.
+          online.close();
+        }
+
         setMode(nextMode);
-        resetRound();
+        // A match belongs to one participant setup. Carrying X/O wins from
+        // Solo into 2P/Online (or back again) changes who those wins represent.
+        resetMatch();
       },
     );
   };
@@ -991,7 +1125,7 @@ export function App() {
       return;
     }
 
-    requestRoundReset(
+    requestMatchReset(
       t('setup.switchRulesConfirm', {
         ruleset: labelRulesetDescription(i18n, nextRuleset),
       }),
@@ -1014,7 +1148,7 @@ export function App() {
       return;
     }
 
-    requestRoundReset(
+    requestMatchReset(
       t('setup.switchEndgameConfirm'),
       () => {
         setLinesEndgameMode(nextEndgameMode);
@@ -1031,11 +1165,13 @@ export function App() {
       return;
     }
 
-    requestRoundReset(
+    requestMatchReset(
       t('setup.switchSideConfirm'),
       () => {
         setHumanSide(side);
-        resetRound();
+        // Solo match scores are stored by mark. Reset when the human swaps
+        // marks so a displayed lead cannot silently become the AI's lead.
+        resetMatch();
       },
     );
   };
@@ -1047,6 +1183,7 @@ export function App() {
 
   const resolvePieDecision = (swap: boolean) => {
     if (swap && mode === 'solo') {
+      remapMatchAfterSideSwap();
       setHumanSide(getOtherPlayer(humanSide));
     }
 
@@ -1061,8 +1198,14 @@ export function App() {
   };
 
   const handleDifficultyChange = (nextDifficulty: Difficulty) => {
-    // applies immediately — the AI simply thinks at the new level from now on
-    setDifficulty(nextDifficulty);
+    if (nextDifficulty === difficulty) {
+      return;
+    }
+
+    requestMatchReset(t('setup.switchDifficultyConfirm'), () => {
+      setDifficulty(nextDifficulty);
+      resetMatch();
+    });
   };
 
   const handleTryCoach = () => {
@@ -1130,8 +1273,11 @@ export function App() {
       return;
     }
 
-    if (mode === 'online' && !online.sendRoundReset()) {
-      flashNotice(t('notice.reconnectReset'));
+    if (mode === 'online') {
+      if (!online.sendRoundReset()) {
+        flashNotice(t('notice.reconnectReset'));
+      }
+
       return;
     }
 
@@ -1139,8 +1285,11 @@ export function App() {
   };
 
   const handleResetMatch = () => {
-    if (mode === 'online' && !online.sendMatchReset()) {
-      flashNotice(t('notice.reconnectReset'));
+    if (mode === 'online') {
+      if (!online.sendMatchReset()) {
+        flashNotice(t('notice.reconnectReset'));
+      }
+
       return;
     }
 
@@ -1254,22 +1403,35 @@ export function App() {
       t('result.roundPrefix', { round: match.roundNumber, text });
 
     if (ruleset === 'lines') {
-      const scoreText = `${result.lineScores.X}\u2013${result.lineScores.O}`;
+      const xVsOScore = `${result.lineScores.X}\u2013${result.lineScores.O}`;
 
       if (result.isDraw) {
-        return withRound(t('result.drawByLines', { score: scoreText }));
+        return withRound(t('result.drawByLines', { score: xVsOScore }));
       }
 
       if (mode === 'solo') {
+        const humanScore = result.lineScores[humanSide];
+        const aiScore = result.lineScores[getOtherPlayer(humanSide)];
+
         return result.winner === humanSide
-          ? withRound(t('result.youWinByLines', { score: scoreText }))
-          : withRound(t('result.aiWinsByLines', { score: scoreText }));
+          ? withRound(
+              t('result.youWinByLines', {
+                score: `${humanScore}\u2013${aiScore}`,
+              }),
+            )
+          : withRound(
+              t('result.aiWinsByLines', {
+                score: `${aiScore}\u2013${humanScore}`,
+              }),
+            );
       }
 
       return withRound(
         t('result.playerWinsByLines', {
           player: result.winner ?? '',
-          score: scoreText,
+          score: `${result.lineScores[result.winner as Player]}\u2013${
+            result.lineScores[getOtherPlayer(result.winner as Player)]
+          }`,
         }),
       );
     }
@@ -1311,6 +1473,20 @@ export function App() {
     return match.winner;
   }, [humanSide, match.winner, mode]);
 
+  const matchScoreText = useMemo(
+    () =>
+      mode === 'solo'
+        ? t('match.soloScore', {
+            ai: match.score[getOtherPlayer(humanSide)],
+            you: match.score[humanSide],
+          })
+        : t('match.playerScore', {
+            o: match.score.O,
+            x: match.score.X,
+          }),
+    [humanSide, match.score, mode, t],
+  );
+
   const matchResultLabel = useMemo(() => {
     if (!match.winner || !matchWinnerText) {
       return null;
@@ -1326,7 +1502,9 @@ export function App() {
 
     return t('result.playerWinsMatch', {
       player: match.winner,
-      score: `${match.score.X}\u2013${match.score.O}`,
+      score: `${match.score[match.winner]}\u2013${
+        match.score[getOtherPlayer(match.winner)]
+      }`,
     });
   }, [humanSide, match.score, match.winner, matchWinnerText, mode, t]);
 
@@ -1351,6 +1529,19 @@ export function App() {
         disabled={isBoardDisabled}
         finalPhase={linesEndgame}
         finalLines={finalLines}
+        hud={{
+          currentPlayer: powerPicker ?? currentPlayer,
+          isAiThinking,
+          isComplete: Boolean(
+            match.winner || result.winner || result.isDraw,
+          ),
+          isDraw: result.isDraw,
+          lineScores: result.lineScores,
+          matchScoreText,
+          remainingCells: result.remainingCells,
+          ruleset,
+          status,
+        }}
         lastMove={lastMove}
         layout={layout}
         matchResultLabel={matchResultLabel}
@@ -1379,6 +1570,10 @@ export function App() {
 
       <GamePanel
         actions={{
+          resetMatchDisabled:
+            mode === 'online' && (!match.isComplete || Boolean(online.pendingAction)),
+          resetRoundDisabled:
+            mode === 'online' && (!result.isComplete || Boolean(online.pendingAction)),
           onResetMatch: handleResetMatch,
           onResetRound: handleResetRound,
         }}
@@ -1440,7 +1635,7 @@ export function App() {
           linesEndgameText: formatLinesEndgameText(i18n, linesEndgame),
           lifetimeScore,
           match,
-          matchWinnerText,
+          matchScoreText,
           mode,
           nextOpenerText,
           openerText,
