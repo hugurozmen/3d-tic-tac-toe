@@ -1435,6 +1435,47 @@ test('mobile view selector can enter and leave the 3D board', async ({ page }) =
   await expect(page.locator('.scanner-grid')).toBeVisible();
 });
 
+test('mobile 3D camera preserves player zoom across viewport resize', async ({
+  page,
+}) => {
+  await openGame(page, {
+    layout: 'cube',
+    viewport: { height: 700, width: 375 },
+  });
+
+  const canvas = page.locator('canvas');
+  const cameraDistance = () =>
+    canvas.evaluate((element) =>
+      Number((element as HTMLCanvasElement).dataset.cameraDistance),
+    );
+  const fittedDistance = () =>
+    canvas.evaluate((element) =>
+      Number((element as HTMLCanvasElement).dataset.cameraFitDistance),
+    );
+
+  await expect(canvas).toBeVisible();
+  await expect.poll(cameraDistance).toBeGreaterThan(0);
+  await expect
+    .poll(async () => Math.abs((await cameraDistance()) - (await fittedDistance())))
+    .toBeLessThan(0.02);
+
+  await page.getByRole('button', { name: 'Zoom board in' }).click();
+  await expect
+    .poll(async () => (await fittedDistance()) - (await cameraDistance()))
+    .toBeGreaterThan(0.5);
+  const zoomedDistance = await cameraDistance();
+
+  await page.setViewportSize({ height: 650, width: 375 });
+  await expect
+    .poll(async () => Math.abs((await cameraDistance()) - zoomedDistance))
+    .toBeLessThan(0.02);
+
+  await page.getByRole('button', { name: 'Reset board view' }).click();
+  await expect
+    .poll(async () => Math.abs((await cameraDistance()) - (await fittedDistance())))
+    .toBeLessThan(0.02);
+});
+
 test('online host and guest can join and relay a scanner move', async ({
   browser,
   page: host,

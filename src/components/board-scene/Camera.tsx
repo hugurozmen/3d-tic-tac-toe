@@ -1,9 +1,10 @@
 import { OrbitControls } from '@react-three/drei';
 import { useThree } from '@react-three/fiber';
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ComponentRef } from 'react';
 import * as THREE from 'three';
 import type { BoardLayout, BoardViewCommand } from '../../game/boardView';
+import { orbitZoomSpeed, resolveCameraFit } from './cameraFit';
 import {
   BOARD_TARGET,
   CAMERA_HOME,
@@ -12,15 +13,75 @@ import {
   fitCameraDistance,
 } from './geometry';
 
-export function CameraRig({ layout }: { layout: BoardLayout }) {
-  const { camera, size } = useThree();
+const COARSE_POINTER_QUERY = '(pointer: coarse)';
+const appliedFitDistances = new WeakMap<THREE.Camera, number>();
+
+function useCoarsePointer() {
+  const [coarsePointer, setCoarsePointer] = useState(() =>
+    window.matchMedia(COARSE_POINTER_QUERY).matches,
+  );
 
   useEffect(() => {
-    const distance = fitCameraDistance(size.width / size.height, layout);
+    const mediaQuery = window.matchMedia(COARSE_POINTER_QUERY);
+    const updatePointer = () => setCoarsePointer(mediaQuery.matches);
 
-    camera.position.setLength(distance);
+    updatePointer();
+    mediaQuery.addEventListener('change', updatePointer);
+
+    return () => mediaQuery.removeEventListener('change', updatePointer);
+  }, []);
+
+  return coarsePointer;
+}
+
+function exposeCameraDistance(
+  canvas: HTMLCanvasElement,
+  camera: THREE.Camera,
+) {
+  if (!import.meta.env.DEV) {
+    return;
+  }
+
+  canvas.dataset.cameraDistance = camera.position
+    .distanceTo(BOARD_TARGET)
+    .toFixed(4);
+}
+
+export function CameraRig({ layout }: { layout: BoardLayout }) {
+  const { camera, gl, size } = useThree();
+
+  useEffect(() => {
+    const nextFittedDistance = fitCameraDistance(
+      size.width / size.height,
+      layout,
+    );
+    const resolution = resolveCameraFit({
+      currentDistance: camera.position.distanceTo(BOARD_TARGET),
+      nextFittedDistance,
+      previousFittedDistance: appliedFitDistances.get(camera) ?? null,
+    });
+
+    if (resolution.shouldApplyFit) {
+      const offset = camera.position.clone().sub(BOARD_TARGET);
+
+      if (offset.lengthSq() === 0) {
+        offset.copy(CAMERA_HOME);
+      }
+
+      camera.position
+        .copy(BOARD_TARGET)
+        .add(offset.setLength(resolution.distance));
+      appliedFitDistances.set(camera, resolution.fittedDistance);
+    }
+
     camera.updateProjectionMatrix();
-  }, [camera, layout, size]);
+
+    if (import.meta.env.DEV) {
+      gl.domElement.dataset.cameraFitDistance = nextFittedDistance.toFixed(4);
+    }
+
+    exposeCameraDistance(gl.domElement, camera);
+  }, [camera, gl, layout, size.height, size.width]);
 
   return null;
 }
@@ -34,7 +95,12 @@ export function CameraControls({
 }) {
   const controls = useRef<ComponentRef<typeof OrbitControls>>(null);
   const lastCommand = useRef(0);
-  const { camera, size } = useThree();
+  const coarsePointer = useCoarsePointer();
+  const { camera, gl, size } = useThree();
+  const updateExposedDistance = useCallback(
+    () => exposeCameraDistance(gl.domElement, camera),
+    [camera, gl],
+  );
 
   useEffect(() => {
     if (!command || lastCommand.current === command.id || !controls.current) {
@@ -47,10 +113,14 @@ export function CameraControls({
     const offset = camera.position.clone().sub(target);
 
     if (command.action === 'reset') {
-      camera.position
-        .copy(CAMERA_HOME)
-        .setLength(fitCameraDistance(size.width / size.height, layout));
+      const fittedDistance = fitCameraDistance(
+        size.width / size.height,
+        layout,
+      );
+
+      camera.position.copy(CAMERA_HOME).setLength(fittedDistance);
       controls.current.target.copy(BOARD_TARGET);
+      appliedFitDistances.set(camera, fittedDistance);
     }
 
     if (command.action === 'rotate-left' || command.action === 'rotate-right') {
@@ -71,7 +141,8 @@ export function CameraControls({
     }
 
     controls.current.update();
-  }, [camera, command, layout, size]);
+    updateExposedDistance();
+  }, [camera, command, layout, size.height, size.width, updateExposedDistance]);
 
   return (
     <OrbitControls
@@ -84,7 +155,7 @@ export function CameraControls({
       minDistance={MIN_DISTANCE}
       minPolarAngle={0.25}
       rotateSpeed={0.62}
-      zoomSpeed={0.7}
+      zoomSpeed={orbitZoomSpeed(coarsePointer)}
     />
   );
 }
