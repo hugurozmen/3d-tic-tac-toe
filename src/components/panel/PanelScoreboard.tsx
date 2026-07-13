@@ -208,7 +208,7 @@ export function PanelScoreboard({
           </>
         ) : null}
 
-        {hasMatchEndEvent ? (
+        {match.isComplete || hasMatchEndEvent ? (
           <span className="scoreboard-match-complete">
             {t('match.complete')}
           </span>

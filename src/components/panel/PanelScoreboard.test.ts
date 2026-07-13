@@ -73,4 +73,21 @@ describe('PanelScoreboard terminal identity', () => {
     expect(markup).toContain('<span>Match</span><strong>X 1 · O 3</strong>');
     expect(markup).not.toContain('<span>Winner</span>');
   });
+
+  it('keeps the match-complete badge after the animation event expires', () => {
+    const match = {
+      ...createMatchState(),
+      isComplete: true,
+      score: { O: 3, X: 1, draws: 0 },
+      winner: 'O' as const,
+    };
+    const markup = renderScoreboard({
+      ...baseProps,
+      animationEvents: [],
+      match,
+    });
+
+    expect(markup).toContain('scoreboard-match-complete');
+    expect(markup).toContain('Match complete');
+  });
 });
