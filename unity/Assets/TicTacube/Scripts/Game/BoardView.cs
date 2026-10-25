@@ -664,7 +664,7 @@ namespace TicTacube.Game
 
                 var body = piece.AddComponent<Rigidbody>();
                 body.mass = 0.05f;
-                body.velocity = new Vector3(Random.Range(-0.6f, 0.6f), Random.Range(-0.4f, 0.2f), Random.Range(-0.6f, 0.6f));
+                body.linearVelocity = new Vector3(Random.Range(-0.6f, 0.6f), Random.Range(-0.4f, 0.2f), Random.Range(-0.6f, 0.6f));
                 body.angularVelocity = new Vector3(Random.Range(-6f, 6f), Random.Range(-6f, 6f), Random.Range(-6f, 6f));
 
                 Object.Destroy(piece, 3.2f);
