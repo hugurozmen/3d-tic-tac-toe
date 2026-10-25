@@ -67,6 +67,10 @@ namespace TicTacube.Game
         private bool puzzleMode;
         private DailyPuzzle currentPuzzle;
 
+        // Achievement context for the current round.
+        private bool pieSwapByHuman;
+        private bool behindAt21;
+
         private Task<int?> aiTask;
         private float aiStartedAt;
         private Coroutine resultRoutine;
@@ -353,6 +357,8 @@ namespace TicTacube.Game
             hud.HideResult();
             hud.ClearHint();
             pieResolved = false;
+            pieSwapByHuman = false;
+            behindAt21 = false;
             lastLeadSign = 0;
             currentPlayer = match.Opener;
             lastResult = Rules.EvaluateBoard(board, ruleset);
@@ -558,6 +564,12 @@ namespace TicTacube.Game
             if (ruleset == Ruleset.Lines)
             {
                 UpdateLeadNarrative();
+
+                if (soloMode && Rules.CellCount - lastResult.RemainingCells == 21)
+                {
+                    behindAt21 = lastResult.LineScore(humanPlayer)
+                        < lastResult.LineScore(Rules.GetOtherPlayer(humanPlayer));
+                }
             }
 
             currentPlayer = Rules.GetOtherPlayer(currentPlayer);
@@ -662,6 +674,20 @@ namespace TicTacube.Game
         {
             gameAudio.PlayLines(newLines.Count);
 
+            if (humanMoved && !puzzleMode)
+            {
+                var toasts = new List<string>();
+                AppendAchievementToasts(Achievements.OnLinesMove(newLines.Count, true), toasts);
+
+                if (newLines.Count >= 2)
+                {
+                    AppendGoalToasts(DailyGoals.Report(DateTime.Now, "multi_line", 1), toasts);
+                }
+
+                AppendGoalToasts(DailyGoals.Report(DateTime.Now, "six_lines", newLines.Count), toasts);
+                ShowProgressionToasts(toasts);
+            }
+
             if (newLines.Count > 1)
             {
                 var center = boardView.CellWorldPosition(newLines[0][1]);
@@ -731,7 +757,7 @@ namespace TicTacube.Game
             // pieResolved stays false until they answer, so a save taken
             // while the prompt is open re-raises the decision on resume.
             phase = GamePhase.PieDecision;
-            hud.ShowPiePrompt();
+            hud.ShowPiePrompt(soloMode && difficulty == Difficulty.Easy);
             return true;
         }
 
@@ -750,6 +776,7 @@ namespace TicTacube.Game
                 if (soloMode)
                 {
                     humanPlayer = Rules.GetOtherPlayer(humanPlayer);
+                    pieSwapByHuman = true;
                 }
 
                 match.RemapForSideSwap();
@@ -898,8 +925,9 @@ namespace TicTacube.Game
             var aiDifficulty = difficulty;
             var aiRuleset = ruleset;
             var aiGravity = gravityMode;
+            var aiPieAware = aiRuleset == Ruleset.Classic && !aiGravity;
             aiStartedAt = Time.time;
-            aiTask = Task.Run(() => Ai.ChooseMove(boardCopy, aiPlayer, aiDifficulty, aiRuleset, null, aiGravity));
+            aiTask = Task.Run(() => Ai.ChooseMove(boardCopy, aiPlayer, aiDifficulty, aiRuleset, null, aiGravity, aiPieAware));
         }
 
         private void Update()
@@ -1016,6 +1044,53 @@ namespace TicTacube.Game
             else
             {
                 SaveProgress(1);
+            }
+
+            if (!puzzleMode)
+            {
+                var toasts = new List<string>();
+
+                if (soloMode)
+                {
+                    AppendAchievementToasts(Achievements.OnRoundEnd(new Achievements.RoundSummary
+                    {
+                        Solo = true,
+                        HumanWon = humanWonRound,
+                        Draw = lastResult.Winner == null && lastResult.IsDraw,
+                        Ruleset = ruleset,
+                        Gravity = gravityMode,
+                        Difficulty = difficulty,
+                        HumanLines = lastResult.LineScore(humanPlayer),
+                        MovesPlayed = Rules.CellCount - lastResult.RemainingCells,
+                        HumanOwnsCenter = board[Ai.CenterIndex] == humanPlayer,
+                        BehindAt21 = behindAt21,
+                        PieSwapWin = pieSwapByHuman,
+                        MatchComplete = match.IsComplete,
+                        HumanWonMatch = match.Winner != null && match.Winner.Value == humanPlayer,
+                        StreakAfterMatch = stats != null ? stats.Value.Streak : 0,
+                    }), toasts);
+
+                    if (humanWonRound)
+                    {
+                        if (difficulty != Difficulty.Easy)
+                        {
+                            AppendGoalToasts(DailyGoals.Report(DateTime.Now, "win_balanced", 1), toasts);
+                        }
+
+                        if (ruleset == Ruleset.Classic)
+                        {
+                            AppendGoalToasts(DailyGoals.Report(DateTime.Now, "classic_win", 1), toasts);
+                        }
+
+                        if (gravityMode)
+                        {
+                            AppendGoalToasts(DailyGoals.Report(DateTime.Now, "tower_round", 1), toasts);
+                        }
+                    }
+                }
+
+                AppendGoalToasts(DailyGoals.Report(DateTime.Now, "play_rounds", 1), toasts);
+                ShowProgressionToasts(toasts);
             }
 
             string title = BuildResultTitle();
@@ -1246,6 +1321,14 @@ namespace TicTacube.Game
 
             var daily = RecordDailyAttempt(solved);
             gameAudio.PlayRoundEnd(solved, false);
+
+            if (solved)
+            {
+                var toasts = new List<string>();
+                AppendGoalToasts(DailyGoals.Report(DateTime.Now, "solve_puzzle", 1), toasts);
+                AppendAchievementToasts(Achievements.OnPuzzleStreak(daily.Streak), toasts);
+                ShowProgressionToasts(toasts);
+            }
 
             if (solved)
             {
@@ -1777,6 +1860,13 @@ namespace TicTacube.Game
             onlineCelebratedSequence = snapshot.Sequence;
             bool humanWon = snapshot.ResultWinner != null && snapshot.ResultWinner.Value == humanPlayer;
 
+            if (celebrate && snapshot.MatchComplete)
+            {
+                var toasts = new List<string>();
+                AppendAchievementToasts(Achievements.OnOnlineMatchComplete(), toasts);
+                ShowProgressionToasts(toasts);
+            }
+
             if (celebrate)
             {
                 gameAudio.PlayRoundEnd(humanWon, snapshot.ResultWinner == null);
@@ -1916,6 +2006,44 @@ namespace TicTacube.Game
             {
                 SaveProgress(phase == GamePhase.RoundOver ? 1 : 0);
             }
+        }
+
+        // ------------------------------------------------------------------
+        // Progression celebration (achievements + daily goals)
+        // ------------------------------------------------------------------
+
+        private static void AppendAchievementToasts(List<Achievements.Def> earned, List<string> toasts)
+        {
+            foreach (var def in earned)
+            {
+                toasts.Add(GameStrings.T("Başarım: ", "Achievement: ") + def.Name() + "!");
+            }
+        }
+
+        private static void AppendGoalToasts(DailyGoals.ProgressReport report, List<string> toasts)
+        {
+            foreach (var goal in report.CompletedNow)
+            {
+                toasts.Add(GameStrings.T("Hedef tamam: ", "Goal done: ") + goal.Text());
+            }
+
+            if (report.DayJustCompleted)
+            {
+                toasts.Add(GameStrings.T(
+                    "Günün 3 hedefi tamam! Yıldız serisi: " + report.StarStreak,
+                    "All 3 daily goals done! Star streak: " + report.StarStreak));
+            }
+        }
+
+        private void ShowProgressionToasts(List<string> toasts)
+        {
+            if (toasts.Count == 0)
+            {
+                return;
+            }
+
+            gameAudio.PlayLines(2);
+            hud.Toast(string.Join("\n", toasts.ToArray()), 2.2f + toasts.Count * 0.9f);
         }
 
         private void RefreshHud()
