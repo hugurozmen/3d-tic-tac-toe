@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using TicTacube.Core;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -7,16 +8,21 @@ using UnityEngine.UI;
 namespace TicTacube.Game
 {
     /// <summary>
-    /// Runtime-built uGUI: main menu, in-game HUD, and the round/match result
-    /// overlay. No prefabs or scene wiring needed.
+    /// Runtime-built uGUI: main menu (with ruleset explanations, match length,
+    /// stats and settings), in-game HUD (turn strip, scores, hint bar, confirm
+    /// and undo buttons, layer/analysis toggles), floating score text, the Pie
+    /// Rule prompt, and the round/match result overlay. No prefabs needed.
     /// </summary>
     public sealed class GameHud : MonoBehaviour
     {
         private static readonly Color PanelColor = new Color(0.08f, 0.1f, 0.16f, 0.92f);
         private static readonly Color ButtonColor = new Color(0.17f, 0.22f, 0.33f, 1f);
         private static readonly Color AccentColor = new Color(0.33f, 0.62f, 0.95f, 1f);
+        private static readonly Color AccentDimColor = new Color(0.25f, 0.42f, 0.62f, 1f);
         private static readonly Color TextColor = new Color(0.92f, 0.94f, 0.98f, 1f);
-        private static readonly Color MutedColor = new Color(0.65f, 0.7f, 0.8f, 1f);
+        private static readonly Color MutedColor = new Color(0.68f, 0.73f, 0.82f, 1f);
+        private static readonly Color XColor = new Color(0.96f, 0.47f, 0.37f, 1f);
+        private static readonly Color OColor = new Color(0.42f, 0.68f, 0.97f, 1f);
 
         private GameController controller;
         private Font font;
@@ -24,22 +30,59 @@ namespace TicTacube.Game
         private GameObject menuPanel;
         private GameObject hudPanel;
         private GameObject resultPanel;
+        private GameObject piePanel;
+        private GameObject returnToResultButton;
 
         private Text modeLabel;
         private Text rulesetLabel;
+        private Text rulesetDescription;
         private Text difficultyLabel;
+        private Text statsLabel;
+        private Text matchLengthLabel;
+        private Text soundLabel;
+        private Text effectsLabel;
+        private Text quickMoveLabel;
         private Text languageLabel;
+        private Text subtitleLabel;
+        private Text startLabel;
+        private Button resumeButton;
+        private Text resumeLabel;
+
+        private Image turnStrip;
         private Text turnLabel;
         private Text scoreLabel;
         private Text lineScoreLabel;
+        private Text hintLabel;
+        private Image hintBackground;
         private Text thinkingLabel;
+        private Button confirmButton;
+        private Text confirmLabel;
+        private Button undoButton;
+        private Text undoLabel;
+        private Text layersLabel;
+        private Text analysisLabel;
+        private Text menuButtonLabel;
+
         private Text resultTitle;
         private Text resultSubtitle;
         private Text resultButtonLabel;
+        private Text peekLabel;
+        private Text toMenuLabel;
+        private Text pieQuestion;
+        private Text pieYesLabel;
+        private Text pieNoLabel;
+        private Text returnLabel;
 
         private bool menuSolo = true;
         private Ruleset menuRuleset = Ruleset.Lines;
         private Difficulty menuDifficulty = Difficulty.Balanced;
+        private int menuTargetWins = 1;
+
+        private Coroutine toastRoutine;
+
+        public bool MenuSolo { get { return menuSolo; } }
+        public Ruleset MenuRuleset { get { return menuRuleset; } }
+        public Difficulty MenuDifficulty { get { return menuDifficulty; } }
 
         public void Initialize(GameController gameController)
         {
@@ -51,6 +94,7 @@ namespace TicTacube.Game
             BuildMenu();
             BuildHud();
             BuildResultOverlay();
+            BuildPiePanel();
             ShowMenu();
         }
 
@@ -108,6 +152,10 @@ namespace TicTacube.Game
             gameObject.AddComponent<GraphicRaycaster>();
         }
 
+        // ------------------------------------------------------------------
+        // Small factories
+        // ------------------------------------------------------------------
+
         private RectTransform CreateRect(string name, Transform parent)
         {
             var child = new GameObject(name);
@@ -137,7 +185,7 @@ namespace TicTacube.Game
             return text;
         }
 
-        private Button CreateButton(Transform parent, string name, string label, int fontSize, Action onClick, out Text labelText)
+        private Button CreateButton(Transform parent, string name, int fontSize, Action onClick, out Text labelText)
         {
             var rect = CreateRect(name, parent);
             var image = rect.gameObject.AddComponent<Image>();
@@ -153,7 +201,7 @@ namespace TicTacube.Game
                 }
             });
 
-            labelText = CreateText(rect, "Label", label, fontSize, TextAnchor.MiddleCenter, TextColor);
+            labelText = CreateText(rect, "Label", "", fontSize, TextAnchor.MiddleCenter, TextColor);
             Stretch((RectTransform)labelText.transform);
 
             return button;
@@ -166,6 +214,13 @@ namespace TicTacube.Game
             rect.pivot = anchor;
             rect.anchoredPosition = position;
             rect.sizeDelta = size;
+        }
+
+        private static void AddOutline(Text text)
+        {
+            var outline = text.gameObject.AddComponent<Outline>();
+            outline.effectColor = new Color(0f, 0f, 0f, 0.75f);
+            outline.effectDistance = new Vector2(2f, -2f);
         }
 
         // ------------------------------------------------------------------
@@ -181,38 +236,42 @@ namespace TicTacube.Game
             var backdrop = rect.gameObject.AddComponent<Image>();
             backdrop.color = PanelColor;
 
-            var title = CreateText(rect, "Title", "TicTacube", 110, TextAnchor.MiddleCenter, TextColor);
-            Place((RectTransform)title.transform, new Vector2(0.5f, 1f), new Vector2(0f, -220f), new Vector2(900f, 140f));
+            var title = CreateText(rect, "Title", "TicTacube", 100, TextAnchor.MiddleCenter, TextColor);
+            title.fontStyle = FontStyle.Bold;
+            Place((RectTransform)title.transform, new Vector2(0.5f, 1f), new Vector2(0f, -140f), new Vector2(900f, 130f));
 
-            var subtitle = CreateText(
-                rect,
-                "Subtitle",
-                GameStrings.T("3x3x3 XOX strateji oyunu", "3x3x3 XOX strategy game"),
-                44,
-                TextAnchor.MiddleCenter,
-                MutedColor);
-            Place((RectTransform)subtitle.transform, new Vector2(0.5f, 1f), new Vector2(0f, -340f), new Vector2(900f, 70f));
+            subtitleLabel = CreateText(rect, "Subtitle", "", 40, TextAnchor.MiddleCenter, MutedColor);
+            Place((RectTransform)subtitleLabel.transform, new Vector2(0.5f, 1f), new Vector2(0f, -268f), new Vector2(900f, 58f));
 
-            float y = -560f;
-            const float rowHeight = 130f;
-            const float rowGap = 40f;
-            var rowSize = new Vector2(760f, rowHeight);
+            statsLabel = CreateText(rect, "Stats", "", 34, TextAnchor.MiddleCenter, MutedColor);
+            Place((RectTransform)statsLabel.transform, new Vector2(0.5f, 1f), new Vector2(0f, -330f), new Vector2(900f, 50f));
 
-            CreateMenuRow(rect, "ModeRow", new Vector2(0f, y), rowSize, CycleMode, out modeLabel);
-            y -= rowHeight + rowGap;
-            CreateMenuRow(rect, "RulesetRow", new Vector2(0f, y), rowSize, CycleRuleset, out rulesetLabel);
-            y -= rowHeight + rowGap;
-            CreateMenuRow(rect, "DifficultyRow", new Vector2(0f, y), rowSize, CycleDifficulty, out difficultyLabel);
-            y -= rowHeight + rowGap;
-            CreateMenuRow(rect, "LanguageRow", new Vector2(0f, y), rowSize, CycleLanguage, out languageLabel);
-            y -= rowHeight + rowGap * 2f;
+            var rowSize = new Vector2(760f, 108f);
 
-            Text startLabel;
-            var startButton = CreateButton(rect, "Start", "", 56, StartPressed, out startLabel);
-            var startRect = (RectTransform)startButton.transform;
-            Place(startRect, new Vector2(0.5f, 1f), new Vector2(0f, y), new Vector2(760f, 150f));
+            CreateMenuRow(rect, "ModeRow", new Vector2(0f, -412f), rowSize, CycleMode, out modeLabel);
+            CreateMenuRow(rect, "RulesetRow", new Vector2(0f, -544f), rowSize, CycleRuleset, out rulesetLabel);
+
+            rulesetDescription = CreateText(rect, "RulesetDesc", "", 30, TextAnchor.MiddleCenter, MutedColor);
+            Place((RectTransform)rulesetDescription.transform, new Vector2(0.5f, 1f), new Vector2(0f, -658f), new Vector2(880f, 76f));
+
+            CreateMenuRow(rect, "DifficultyRow", new Vector2(0f, -744f), rowSize, CycleDifficulty, out difficultyLabel);
+            CreateMenuRow(rect, "MatchRow", new Vector2(0f, -876f), rowSize, CycleMatchLength, out matchLengthLabel);
+
+            var halfSize = new Vector2(368f, 94f);
+            CreateMenuRow(rect, "SoundRow", new Vector2(-198f, -1008f), halfSize, ToggleSound, out soundLabel);
+            CreateMenuRow(rect, "EffectsRow", new Vector2(198f, -1008f), halfSize, ToggleEffects, out effectsLabel);
+            CreateMenuRow(rect, "QuickRow", new Vector2(-198f, -1122f), halfSize, ToggleQuickMove, out quickMoveLabel);
+            CreateMenuRow(rect, "LanguageRow", new Vector2(198f, -1122f), halfSize, CycleLanguage, out languageLabel);
+
+            resumeButton = CreateButton(rect, "Resume", 48, ResumePressed, out resumeLabel);
+            Place((RectTransform)resumeButton.transform, new Vector2(0.5f, 1f), new Vector2(0f, -1248f), new Vector2(760f, 108f));
+            resumeButton.GetComponent<Image>().color = AccentDimColor;
+
+            Text startText;
+            var startButton = CreateButton(rect, "Start", 56, StartPressed, out startText);
+            startLabel = startText;
+            Place((RectTransform)startButton.transform, new Vector2(0.5f, 1f), new Vector2(0f, -1386f), new Vector2(760f, 140f));
             startButton.GetComponent<Image>().color = AccentColor;
-            startLabel.text = GameStrings.T("Başlat", "Start");
             startLabel.fontStyle = FontStyle.Bold;
 
             RefreshMenuLabels();
@@ -226,7 +285,9 @@ namespace TicTacube.Game
             Action onClick,
             out Text label)
         {
-            var button = CreateButton(parent, name, "", 48, onClick, out label);
+            Text text;
+            var button = CreateButton(parent, name, 44, onClick, out text);
+            label = text;
             Place((RectTransform)button.transform, new Vector2(0.5f, 1f), position, size);
         }
 
@@ -254,10 +315,36 @@ namespace TicTacube.Game
             RefreshMenuLabels();
         }
 
+        private void CycleMatchLength()
+        {
+            menuTargetWins = menuTargetWins == 1 ? 2 : menuTargetWins == 2 ? 3 : 1;
+            RefreshMenuLabels();
+        }
+
+        private void ToggleSound()
+        {
+            GamePrefs.Sound = !GamePrefs.Sound;
+            RefreshMenuLabels();
+        }
+
+        private void ToggleEffects()
+        {
+            GamePrefs.Effects = !GamePrefs.Effects;
+            RefreshMenuLabels();
+        }
+
+        private void ToggleQuickMove()
+        {
+            GamePrefs.QuickMove = !GamePrefs.QuickMove;
+            RefreshMenuLabels();
+        }
+
         private void CycleLanguage()
         {
             GameStrings.Turkish = !GameStrings.Turkish;
+            GamePrefs.SaveTurkish(GameStrings.Turkish);
             RefreshMenuLabels();
+            RefreshHudLabels();
         }
 
         public static string RulesetName(Ruleset ruleset)
@@ -282,36 +369,70 @@ namespace TicTacube.Game
             }
         }
 
+        private static string OnOff(bool value)
+        {
+            return value ? GameStrings.T("Açık", "On") : GameStrings.T("Kapalı", "Off");
+        }
+
         private void RefreshMenuLabels()
         {
+            subtitleLabel.text = GameStrings.T("3x3x3 XOX strateji oyunu", "3x3x3 XOX strategy game");
             modeLabel.text = GameStrings.T("Mod: ", "Mode: ")
                 + (menuSolo
                     ? GameStrings.T("Tek Oyuncu", "Single Player")
                     : GameStrings.T("İki Oyuncu", "Two Players"));
             rulesetLabel.text = GameStrings.T("Kurallar: ", "Ruleset: ") + RulesetName(menuRuleset);
+            rulesetDescription.text = menuRuleset == Ruleset.Lines
+                ? GameStrings.T(
+                    "Tahta dolana kadar oynanır; tamamladığın her 3'lü çizgi 1 puan.\nEn çok çizgiyi yapan turu kazanır.",
+                    "Play until the board fills; every completed 3-in-a-row scores 1.\nMost lines wins the round.")
+                : GameStrings.T(
+                    "İlk 3'lü çizgiyi yapan turu kazanır.\nİlk hamleden sonra rakip taraf değişimi isteyebilir (Pie kuralı).",
+                    "First 3-in-a-row wins the round.\nAfter the first move the opponent may swap sides (Pie rule).");
             difficultyLabel.text = GameStrings.T("Zorluk: ", "Difficulty: ") + DifficultyName(menuDifficulty);
             difficultyLabel.color = menuSolo ? TextColor : MutedColor;
+            matchLengthLabel.text = GameStrings.T("Maç: ", "Match: ")
+                + (menuTargetWins == 1
+                    ? GameStrings.T("Tek Tur", "Single Round")
+                    : menuTargetWins + GameStrings.T(" galibiyet", " wins"));
+            soundLabel.text = GameStrings.T("Ses: ", "Sound: ") + OnOff(GamePrefs.Sound);
+            effectsLabel.text = GameStrings.T("Efektler: ", "Effects: ") + OnOff(GamePrefs.Effects);
+            quickMoveLabel.text = GameStrings.T("Hızlı hamle: ", "Quick move: ") + OnOff(GamePrefs.QuickMove);
             languageLabel.text = GameStrings.T("Dil: Türkçe", "Language: English");
+            startLabel.text = GameStrings.T("Başlat", "Start");
 
-            var startLabel = menuPanel.transform.Find("Start/Label");
-
-            if (startLabel != null)
+            if (menuSolo)
             {
-                startLabel.GetComponent<Text>().text = GameStrings.T("Başlat", "Start");
+                var stats = GamePrefs.LoadStats(menuRuleset, menuDifficulty);
+                statsLabel.text = stats.Wins + stats.Losses == 0
+                    ? GameStrings.T("Bu zorlukta henüz maç oynamadın.", "No matches at this difficulty yet.")
+                    : DifficultyName(menuDifficulty) + ": "
+                        + stats.Wins + GameStrings.T("G", "W") + "-" + stats.Losses + GameStrings.T("M", "L")
+                        + GameStrings.T("  Seri: ", "  Streak: ") + stats.Streak
+                        + GameStrings.T("  En iyi: ", "  Best: ") + stats.BestStreak;
+            }
+            else
+            {
+                statsLabel.text = "";
             }
 
-            var subtitle = menuPanel.transform.Find("Subtitle");
+            bool hasSave = GamePrefs.HasSave();
+            resumeButton.gameObject.SetActive(hasSave);
 
-            if (subtitle != null)
+            if (hasSave)
             {
-                subtitle.GetComponent<Text>().text =
-                    GameStrings.T("3x3x3 XOX strateji oyunu", "3x3x3 XOX strategy game");
+                resumeLabel.text = GameStrings.T("Devam Et (kayıtlı maç)", "Continue (saved match)");
             }
         }
 
         private void StartPressed()
         {
-            controller.StartMatch(menuSolo, menuRuleset, menuDifficulty);
+            controller.StartMatch(menuSolo, menuRuleset, menuDifficulty, menuTargetWins);
+        }
+
+        private void ResumePressed()
+        {
+            controller.ResumeSavedMatch();
         }
 
         // ------------------------------------------------------------------
@@ -325,27 +446,82 @@ namespace TicTacube.Game
             hudPanel = rect.gameObject;
 
             var topBar = CreateRect("TopBar", rect);
-            Place(topBar, new Vector2(0.5f, 1f), new Vector2(0f, 0f), new Vector2(1080f, 170f));
+            Place(topBar, new Vector2(0.5f, 1f), new Vector2(0f, 0f), new Vector2(1080f, 180f));
             var topImage = topBar.gameObject.AddComponent<Image>();
             topImage.color = new Color(0.08f, 0.1f, 0.16f, 0.75f);
             topImage.raycastTarget = false;
 
-            turnLabel = CreateText(topBar, "Turn", "", 52, TextAnchor.MiddleLeft, TextColor);
+            var strip = CreateRect("TurnStrip", topBar);
+            Place(strip, new Vector2(0.5f, 1f), new Vector2(0f, 0f), new Vector2(1080f, 12f));
+            turnStrip = strip.gameObject.AddComponent<Image>();
+            turnStrip.raycastTarget = false;
+
+            turnLabel = CreateText(topBar, "Turn", "", 50, TextAnchor.MiddleLeft, TextColor);
+            turnLabel.fontStyle = FontStyle.Bold;
+            AddOutline(turnLabel);
             Place((RectTransform)turnLabel.transform, new Vector2(0f, 0.5f), new Vector2(40f, 0f), new Vector2(520f, 150f));
 
-            scoreLabel = CreateText(topBar, "Score", "", 46, TextAnchor.MiddleRight, TextColor);
-            Place((RectTransform)scoreLabel.transform, new Vector2(1f, 0.5f), new Vector2(-40f, 25f), new Vector2(520f, 80f));
+            scoreLabel = CreateText(topBar, "Score", "", 42, TextAnchor.MiddleRight, TextColor);
+            AddOutline(scoreLabel);
+            Place((RectTransform)scoreLabel.transform, new Vector2(1f, 0.5f), new Vector2(-40f, 32f), new Vector2(520f, 72f));
 
-            lineScoreLabel = CreateText(topBar, "LineScore", "", 40, TextAnchor.MiddleRight, MutedColor);
-            Place((RectTransform)lineScoreLabel.transform, new Vector2(1f, 0.5f), new Vector2(-40f, -40f), new Vector2(520f, 70f));
+            lineScoreLabel = CreateText(topBar, "LineScore", "", 52, TextAnchor.MiddleRight, TextColor);
+            lineScoreLabel.fontStyle = FontStyle.Bold;
+            AddOutline(lineScoreLabel);
+            Place((RectTransform)lineScoreLabel.transform, new Vector2(1f, 0.5f), new Vector2(-40f, -38f), new Vector2(520f, 78f));
 
-            thinkingLabel = CreateText(rect, "Thinking", "", 44, TextAnchor.MiddleCenter, MutedColor);
-            Place((RectTransform)thinkingLabel.transform, new Vector2(0.5f, 0f), new Vector2(0f, 220f), new Vector2(800f, 70f));
+            var hintRect = CreateRect("HintBar", rect);
+            Place(hintRect, new Vector2(0.5f, 1f), new Vector2(0f, -196f), new Vector2(980f, 96f));
+            hintBackground = hintRect.gameObject.AddComponent<Image>();
+            hintBackground.color = new Color(0.08f, 0.1f, 0.16f, 0.72f);
+            hintBackground.raycastTarget = false;
+            hintLabel = CreateText(hintRect, "Hint", "", 38, TextAnchor.MiddleCenter, new Color(1f, 0.88f, 0.55f, 1f));
+            Stretch((RectTransform)hintLabel.transform);
+            hintRect.gameObject.SetActive(false);
 
-            Text menuButtonLabel;
-            var menuButton = CreateButton(rect, "MenuButton", "", 42, controller.BackToMenu, out menuButtonLabel);
-            Place((RectTransform)menuButton.transform, new Vector2(0f, 0f), new Vector2(40f, 40f), new Vector2(260f, 110f));
+            thinkingLabel = CreateText(rect, "Thinking", "", 40, TextAnchor.MiddleCenter, MutedColor);
+            AddOutline(thinkingLabel);
+            Place((RectTransform)thinkingLabel.transform, new Vector2(0.5f, 0f), new Vector2(0f, 400f), new Vector2(800f, 64f));
+
+            confirmButton = CreateButton(rect, "Confirm", 52, ConfirmPressed, out confirmLabel);
+            Place((RectTransform)confirmButton.transform, new Vector2(0.5f, 0f), new Vector2(0f, 220f), new Vector2(480f, 140f));
+            confirmButton.GetComponent<Image>().color = AccentColor;
+            confirmLabel.fontStyle = FontStyle.Bold;
+            confirmButton.gameObject.SetActive(false);
+
+            Text menuText;
+            var menuButton = CreateButton(rect, "MenuButton", 40, controller.BackToMenu, out menuText);
+            menuButtonLabel = menuText;
+            Place((RectTransform)menuButton.transform, new Vector2(0f, 0f), new Vector2(40f, 40f), new Vector2(260f, 100f));
+
+            Text layersText;
+            var layersButton = CreateButton(rect, "LayersButton", 36, controller.ToggleLayersPressed, out layersText);
+            layersLabel = layersText;
+            Place((RectTransform)layersButton.transform, new Vector2(0f, 0f), new Vector2(40f, 158f), new Vector2(260f, 100f));
+
+            Text undoText;
+            undoButton = CreateButton(rect, "UndoButton", 40, controller.UndoPressed, out undoText);
+            undoLabel = undoText;
+            Place((RectTransform)undoButton.transform, new Vector2(1f, 0f), new Vector2(-40f, 40f), new Vector2(260f, 100f));
+
+            Text analysisText;
+            var analysisButton = CreateButton(rect, "AnalysisButton", 36, controller.ToggleAnalysisPressed, out analysisText);
+            analysisLabel = analysisText;
+            Place((RectTransform)analysisButton.transform, new Vector2(1f, 0f), new Vector2(-40f, 158f), new Vector2(260f, 100f));
+        }
+
+        public void RefreshHudLabels()
+        {
             menuButtonLabel.text = GameStrings.T("Menü", "Menu");
+            undoLabel.text = GameStrings.T("Geri Al", "Undo");
+            confirmLabel.text = GameStrings.T("Onayla", "Confirm");
+            layersLabel.text = GameStrings.T("Katmanlar", "Layers");
+            analysisLabel.text = GameStrings.T("Analiz: ", "Hints: ") + OnOff(GamePrefs.Analysis);
+            peekLabel.text = GameStrings.T("Tahtaya Bak", "View Board");
+            toMenuLabel.text = GameStrings.T("Menüye Dön", "Back to Menu");
+            returnLabel.text = GameStrings.T("Sonuca Dön", "Back to Result");
+            pieYesLabel.text = GameStrings.T("Evet, değiştir", "Yes, swap");
+            pieNoLabel.text = GameStrings.T("Hayır", "No");
         }
 
         // ------------------------------------------------------------------
@@ -358,24 +534,103 @@ namespace TicTacube.Game
             Stretch(rect);
             resultPanel = rect.gameObject;
 
+            // Light dim so the finished board (and its beams) stays visible.
             var backdrop = rect.gameObject.AddComponent<Image>();
-            backdrop.color = new Color(0.03f, 0.04f, 0.08f, 0.82f);
+            backdrop.color = new Color(0.03f, 0.04f, 0.08f, 0.42f);
 
-            resultTitle = CreateText(rect, "ResultTitle", "", 86, TextAnchor.MiddleCenter, TextColor);
-            Place((RectTransform)resultTitle.transform, new Vector2(0.5f, 0.5f), new Vector2(0f, 180f), new Vector2(980f, 140f));
+            resultTitle = CreateText(rect, "ResultTitle", "", 78, TextAnchor.MiddleCenter, TextColor);
             resultTitle.fontStyle = FontStyle.Bold;
+            AddOutline(resultTitle);
+            Place((RectTransform)resultTitle.transform, new Vector2(0.5f, 0f), new Vector2(0f, 660f), new Vector2(1000f, 120f));
 
-            resultSubtitle = CreateText(rect, "ResultSubtitle", "", 50, TextAnchor.MiddleCenter, MutedColor);
-            Place((RectTransform)resultSubtitle.transform, new Vector2(0.5f, 0.5f), new Vector2(0f, 60f), new Vector2(980f, 90f));
+            resultSubtitle = CreateText(rect, "ResultSubtitle", "", 44, TextAnchor.MiddleCenter, TextColor);
+            AddOutline(resultSubtitle);
+            Place((RectTransform)resultSubtitle.transform, new Vector2(0.5f, 0f), new Vector2(0f, 548f), new Vector2(1000f, 100f));
 
-            var continueButton = CreateButton(rect, "Continue", "", 54, controller.ResultContinuePressed, out resultButtonLabel);
-            Place((RectTransform)continueButton.transform, new Vector2(0.5f, 0.5f), new Vector2(0f, -120f), new Vector2(620f, 150f));
+            var continueButton = CreateButton(rect, "Continue", 52, controller.ResultContinuePressed, out resultButtonLabel);
+            Place((RectTransform)continueButton.transform, new Vector2(0.5f, 0f), new Vector2(0f, 368f), new Vector2(620f, 140f));
             continueButton.GetComponent<Image>().color = AccentColor;
+            resultButtonLabel.fontStyle = FontStyle.Bold;
 
-            Text toMenuLabel;
-            var toMenuButton = CreateButton(rect, "ToMenu", "", 46, controller.BackToMenu, out toMenuLabel);
-            Place((RectTransform)toMenuButton.transform, new Vector2(0.5f, 0.5f), new Vector2(0f, -310f), new Vector2(620f, 120f));
-            toMenuLabel.text = GameStrings.T("Menüye Dön", "Back to Menu");
+            Text peekText;
+            var peekButton = CreateButton(rect, "Peek", 36, PeekPressed, out peekText);
+            peekLabel = peekText;
+            Place((RectTransform)peekButton.transform, new Vector2(0.5f, 0f), new Vector2(-175f, 230f), new Vector2(330f, 104f));
+
+            Text toMenuText;
+            var toMenuButton = CreateButton(rect, "ToMenu", 36, controller.BackToMenu, out toMenuText);
+            toMenuLabel = toMenuText;
+            Place((RectTransform)toMenuButton.transform, new Vector2(0.5f, 0f), new Vector2(175f, 230f), new Vector2(330f, 104f));
+
+            // Small floating button shown while the result panel is hidden.
+            Text returnText;
+            var returnButton = CreateButton(transform, "ReturnToResult", 34, ReturnToResultPressed, out returnText);
+            returnLabel = returnText;
+            Place((RectTransform)returnButton.transform, new Vector2(1f, 1f), new Vector2(-40f, -220f), new Vector2(300f, 100f));
+            returnButton.GetComponent<Image>().color = AccentDimColor;
+            returnToResultButton = returnButton.gameObject;
+            returnToResultButton.SetActive(false);
+        }
+
+        private void PeekPressed()
+        {
+            resultPanel.SetActive(false);
+            returnToResultButton.SetActive(true);
+        }
+
+        private void ReturnToResultPressed()
+        {
+            returnToResultButton.SetActive(false);
+            resultPanel.SetActive(true);
+        }
+
+        // ------------------------------------------------------------------
+        // Pie Rule prompt
+        // ------------------------------------------------------------------
+
+        private void BuildPiePanel()
+        {
+            var rect = CreateRect("PiePanel", transform);
+            Stretch(rect);
+            piePanel = rect.gameObject;
+
+            var backdrop = rect.gameObject.AddComponent<Image>();
+            backdrop.color = new Color(0.03f, 0.04f, 0.08f, 0.6f);
+
+            var card = CreateRect("Card", rect);
+            Place(card, new Vector2(0.5f, 0.5f), new Vector2(0f, 0f), new Vector2(860f, 440f));
+            var cardImage = card.gameObject.AddComponent<Image>();
+            cardImage.color = PanelColor;
+
+            pieQuestion = CreateText(card, "Question", "", 42, TextAnchor.MiddleCenter, TextColor);
+            Place((RectTransform)pieQuestion.transform, new Vector2(0.5f, 1f), new Vector2(0f, -30f), new Vector2(780f, 220f));
+
+            Text yesText;
+            var yesButton = CreateButton(card, "PieYes", 42, () => controller.PieAnswer(true), out yesText);
+            pieYesLabel = yesText;
+            Place((RectTransform)yesButton.transform, new Vector2(0.5f, 0f), new Vector2(-180f, 36f), new Vector2(330f, 120f));
+            yesButton.GetComponent<Image>().color = AccentColor;
+
+            Text noText;
+            var noButton = CreateButton(card, "PieNo", 42, () => controller.PieAnswer(false), out noText);
+            pieNoLabel = noText;
+            Place((RectTransform)noButton.transform, new Vector2(0.5f, 0f), new Vector2(180f, 36f), new Vector2(330f, 120f));
+
+            piePanel.SetActive(false);
+            RefreshHudLabels();
+        }
+
+        public void ShowPiePrompt()
+        {
+            pieQuestion.text = GameStrings.T(
+                "Rakip ilk hamlesini yaptı.\nTaraf değiştirmek ister misin?\n(Açılış hamlesini ve işaretini devralırsın)",
+                "The opponent made the first move.\nDo you want to swap sides?\n(You take over the opening mark)");
+            piePanel.SetActive(true);
+        }
+
+        public void HidePiePrompt()
+        {
+            piePanel.SetActive(false);
         }
 
         // ------------------------------------------------------------------
@@ -387,6 +642,8 @@ namespace TicTacube.Game
             menuPanel.SetActive(true);
             hudPanel.SetActive(false);
             resultPanel.SetActive(false);
+            piePanel.SetActive(false);
+            returnToResultButton.SetActive(false);
             RefreshMenuLabels();
         }
 
@@ -395,6 +652,7 @@ namespace TicTacube.Game
             menuPanel.SetActive(false);
             hudPanel.SetActive(true);
             resultPanel.SetActive(false);
+            returnToResultButton.SetActive(false);
         }
 
         public void SetTurn(Player player, bool soloMode, Player humanPlayer, bool aiThinking)
@@ -413,19 +671,38 @@ namespace TicTacube.Game
             }
 
             turnLabel.text = who;
+            turnLabel.color = player == Player.X ? XColor : OColor;
+            turnStrip.color = player == Player.X ? XColor : OColor;
             thinkingLabel.text = aiThinking ? GameStrings.T("Rakip düşünüyor…", "Opponent is thinking…") : "";
         }
 
-        public void SetScores(MatchState match, GameResult result, Ruleset ruleset)
+        public void SetScores(MatchState match, GameResult result, Ruleset ruleset, bool soloMode, Player humanPlayer)
         {
-            scoreLabel.text = GameStrings.T("Maç ", "Match ")
-                + match.WinsX + " - " + match.WinsO
-                + GameStrings.T("  Tur ", "  Round ") + match.RoundNumber;
+            string matchText;
+
+            if (match.TargetWins <= 1)
+            {
+                matchText = GameStrings.T("Tek tur", "Single round");
+            }
+            else if (soloMode)
+            {
+                int humanWins = match.Wins(humanPlayer);
+                int aiWins = match.Wins(Rules.GetOtherPlayer(humanPlayer));
+                matchText = GameStrings.T("Sen ", "You ") + humanWins + " - " + aiWins
+                    + GameStrings.T(" Rakip   Tur ", " Opp   Round ") + match.RoundNumber;
+            }
+            else
+            {
+                matchText = "X " + match.WinsX + " - " + match.WinsO + " O"
+                    + GameStrings.T("   Tur ", "   Round ") + match.RoundNumber;
+            }
+
+            scoreLabel.text = matchText;
 
             if (ruleset == Ruleset.Lines && result != null)
             {
-                lineScoreLabel.text = GameStrings.T("Çizgiler  X: ", "Lines  X: ")
-                    + result.LineScoreX + "  O: " + result.LineScoreO;
+                lineScoreLabel.text = GameStrings.T("Çizgi  ", "Lines  ")
+                    + "X " + result.LineScoreX + " - " + result.LineScoreO + " O";
             }
             else
             {
@@ -433,8 +710,124 @@ namespace TicTacube.Game
             }
         }
 
+        public void SetConfirmVisible(bool visible)
+        {
+            confirmButton.gameObject.SetActive(visible);
+        }
+
+        private void ConfirmPressed()
+        {
+            controller.ConfirmPressed();
+        }
+
+        public void SetUndoEnabled(bool enabled)
+        {
+            undoButton.interactable = enabled;
+        }
+
+        public void SetAnalysisLabel()
+        {
+            analysisLabel.text = GameStrings.T("Analiz: ", "Hints: ") + OnOff(GamePrefs.Analysis);
+        }
+
+        // ------------------------------------------------------------------
+        // Hint bar, toasts, floating score
+        // ------------------------------------------------------------------
+
+        public void SetHint(string message)
+        {
+            if (toastRoutine != null)
+            {
+                StopCoroutine(toastRoutine);
+                toastRoutine = null;
+            }
+
+            hintBackground.gameObject.SetActive(!string.IsNullOrEmpty(message));
+            hintLabel.text = message ?? "";
+        }
+
+        public void ClearHint()
+        {
+            SetHint("");
+        }
+
+        public void Toast(string message, float seconds)
+        {
+            SetHint(message);
+            toastRoutine = StartCoroutine(ClearHintAfter(seconds));
+        }
+
+        private IEnumerator ClearHintAfter(float seconds)
+        {
+            yield return new WaitForSeconds(seconds);
+            hintBackground.gameObject.SetActive(false);
+            hintLabel.text = "";
+            toastRoutine = null;
+        }
+
+        /// <summary>Floating score text ("+1") rising from a world position.</summary>
+        public void ShowFloatingScore(Vector3 worldPosition, string message, bool big)
+        {
+            if (!GamePrefs.Effects)
+            {
+                return;
+            }
+
+            var camera = Camera.main;
+
+            if (camera == null)
+            {
+                return;
+            }
+
+            var screen = camera.WorldToScreenPoint(worldPosition);
+
+            if (screen.z <= 0f)
+            {
+                return;
+            }
+
+            // Parent under the HUD panel so menu/result transitions hide it
+            // instead of letting it float over every screen.
+            var text = CreateText(hudPanel.transform, "Floating", message, big ? 72 : 54, TextAnchor.MiddleCenter, big ? new Color(1f, 0.84f, 0.32f, 1f) : TextColor);
+            text.fontStyle = FontStyle.Bold;
+            AddOutline(text);
+            var rect = (RectTransform)text.transform;
+            rect.sizeDelta = new Vector2(420f, 110f);
+            rect.position = new Vector3(screen.x, screen.y, 0f);
+            StartCoroutine(FloatAndFade(text));
+        }
+
+        private IEnumerator FloatAndFade(Text text)
+        {
+            float elapsed = 0f;
+            const float duration = 1.1f;
+            var baseColor = text.color;
+            var rect = (RectTransform)text.transform;
+            var start = rect.position;
+
+            while (elapsed < duration && text != null)
+            {
+                elapsed += Time.deltaTime;
+                float t = Mathf.Clamp01(elapsed / duration);
+                rect.position = new Vector3(start.x, start.y + t * 130f, 0f);
+                text.color = new Color(baseColor.r, baseColor.g, baseColor.b, 1f - t * t);
+                yield return null;
+            }
+
+            if (text != null)
+            {
+                UnityEngine.Object.Destroy(text.gameObject);
+            }
+        }
+
+        // ------------------------------------------------------------------
+        // Result API
+        // ------------------------------------------------------------------
+
         public void ShowResult(string title, string subtitle, string buttonLabel)
         {
+            returnToResultButton.SetActive(false);
             resultPanel.SetActive(true);
             resultTitle.text = title;
             resultSubtitle.text = subtitle;
@@ -444,6 +837,7 @@ namespace TicTacube.Game
         public void HideResult()
         {
             resultPanel.SetActive(false);
+            returnToResultButton.SetActive(false);
         }
     }
 }

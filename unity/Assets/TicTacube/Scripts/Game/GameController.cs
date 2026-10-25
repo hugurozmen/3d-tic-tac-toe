@@ -1,3 +1,5 @@
+using System.Collections;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using TicTacube.Core;
 using UnityEngine;
@@ -9,38 +11,58 @@ namespace TicTacube.Game
         Menu,
         Playing,
         AiThinking,
+        PieDecision,
         RoundOver,
         MatchOver,
     }
 
     /// <summary>
-    /// Owns the match flow: builds the scene, routes taps into the rules,
-    /// runs the AI on a background thread, and drives the HUD.
+    /// Owns the match flow: builds the scene, routes taps through the
+    /// select-confirm flow into the rules, runs the AI on a background
+    /// thread, drives the HUD, and handles undo, the Pie Rule, tutorial
+    /// hints, stats, and match persistence.
     /// </summary>
     public sealed class GameController : MonoBehaviour
     {
         private const float AiMinThinkSeconds = 0.5f;
+        private const float ResultDelaySeconds = 1.4f;
 
         private BoardView boardView;
         private GameHud hud;
+        private GameAudio gameAudio;
         private Camera gameCamera;
+        private CameraOrbit orbit;
 
         private GamePhase phase = GamePhase.Menu;
         private bool soloMode = true;
         private Ruleset ruleset = Ruleset.Lines;
         private Difficulty difficulty = Difficulty.Balanced;
-        private readonly Player humanPlayer = Player.X;
+        private Player humanPlayer = Player.X;
 
         private Player?[] board;
         private Player currentPlayer;
         private MatchState match;
         private GameResult lastResult;
+        private bool pieResolved;
+        private bool matchEndedByDraw;
+
+        // Undo replays from this snapshot: empty for a fresh round, or the
+        // restored position when the round was resumed from a save.
+        private Player?[] baselineBoard;
+        private Player baselineTurn;
+        private int pendingIndex = -1;
+        private readonly List<KeyValuePair<int, Player>> moveHistory = new List<KeyValuePair<int, Player>>();
+
+        private bool tutorialActive;
+        private int tutorialStep;
 
         private Task<int?> aiTask;
         private float aiStartedAt;
+        private Coroutine resultRoutine;
 
         private void Awake()
         {
+            GameStrings.Turkish = GamePrefs.LoadTurkish(GameStrings.Turkish);
             BuildScene();
         }
 
@@ -59,7 +81,7 @@ namespace TicTacube.Game
             gameCamera.backgroundColor = new Color(0.055f, 0.07f, 0.11f);
             gameCamera.fieldOfView = 50f;
 
-            var orbit = gameCamera.gameObject.GetComponent<CameraOrbit>();
+            orbit = gameCamera.gameObject.GetComponent<CameraOrbit>();
 
             if (orbit == null)
             {
@@ -82,6 +104,9 @@ namespace TicTacube.Game
             boardView = boardObject.AddComponent<BoardView>();
             boardView.Build();
 
+            gameAudio = gameObject.AddComponent<GameAudio>();
+            gameAudio.Initialize();
+
             var hudObject = new GameObject("Hud");
             hudObject.transform.SetParent(transform, false);
             hud = hudObject.AddComponent<GameHud>();
@@ -94,21 +119,112 @@ namespace TicTacube.Game
         // Flow control (called from the HUD)
         // ------------------------------------------------------------------
 
-        public void StartMatch(bool solo, Ruleset selectedRuleset, Difficulty selectedDifficulty)
+        public void StartMatch(bool solo, Ruleset selectedRuleset, Difficulty selectedDifficulty, int targetWins)
         {
+            GamePrefs.ClearSave();
             soloMode = solo;
             ruleset = selectedRuleset;
             difficulty = selectedDifficulty;
+            humanPlayer = Player.X;
             match = MatchState.Create(Player.X);
+            match.TargetWins = Mathf.Max(1, targetWins);
+            tutorialActive = !GamePrefs.TutorialDone;
+            tutorialStep = 0;
             StartRound();
             hud.ShowGame();
         }
 
+        public void ResumeSavedMatch()
+        {
+            var save = GamePrefs.ReadSave();
+
+            if (!save.Valid)
+            {
+                // Corrupt or incompatible snapshot: drop it so the resume
+                // button doesn't stay as a dead control.
+                GamePrefs.ClearSave();
+                hud.ShowMenu();
+                return;
+            }
+
+            soloMode = save.Solo;
+            ruleset = (Ruleset)save.Ruleset;
+            difficulty = (Difficulty)save.Difficulty;
+            humanPlayer = (Player)save.HumanPlayer;
+            pieResolved = save.PieResolved;
+            tutorialActive = false;
+
+            match = MatchState.Create((Player)save.Opener);
+            match.TargetWins = save.TargetWins;
+            match.NextOpener = (Player)save.NextOpener;
+            match.RoundNumber = save.RoundNumber;
+            match.WinsX = save.WinsX;
+            match.WinsO = save.WinsO;
+            match.Draws = save.Draws;
+
+            if (save.Stage == 1)
+            {
+                match.AdvanceRound();
+                StartRound();
+                hud.ShowGame();
+                return;
+            }
+
+            board = Rules.CreateBoard();
+            boardView.ClearBoard();
+            moveHistory.Clear();
+            ClearSelection();
+            hud.HideResult();
+
+            for (int index = 0; index < save.Cells.Length; index += 1)
+            {
+                if (save.Cells[index] >= 0)
+                {
+                    board[index] = (Player)save.Cells[index];
+                    boardView.SetMark(index, (Player)save.Cells[index], false);
+                }
+            }
+
+            RebuildBeams();
+            currentPlayer = (Player)save.CurrentPlayer;
+            baselineBoard = (Player?[])board.Clone();
+            baselineTurn = currentPlayer;
+            lastResult = Rules.EvaluateBoard(board, ruleset);
+            phase = GamePhase.Playing;
+            hud.ShowGame();
+            RefreshHud();
+            UpdateHints();
+
+            // A pending Pie decision (Classic, one move played) survives the
+            // save/resume cycle instead of silently disappearing.
+            if (HandlePieRule())
+            {
+                return;
+            }
+
+            MaybeStartAiTurn();
+        }
+
         public void BackToMenu()
         {
+            if (resultRoutine != null)
+            {
+                StopCoroutine(resultRoutine);
+                resultRoutine = null;
+            }
+
+            if (match != null && !match.IsComplete && !matchEndedByDraw && phase != GamePhase.Menu)
+            {
+                SaveProgress(phase == GamePhase.RoundOver ? 1 : 0);
+            }
+
             aiTask = null;
             phase = GamePhase.Menu;
+            ClearSelection();
             boardView.ClearBoard();
+            boardView.ClearHints();
+            hud.ClearHint();
+            hud.HidePiePrompt();
             hud.ShowMenu();
         }
 
@@ -116,9 +232,7 @@ namespace TicTacube.Game
         {
             if (phase == GamePhase.MatchOver)
             {
-                match = MatchState.Create(Player.X);
-                StartRound();
-                hud.ShowGame();
+                StartMatch(soloMode, ruleset, difficulty, match.TargetWins);
                 return;
             }
 
@@ -133,13 +247,61 @@ namespace TicTacube.Game
         private void StartRound()
         {
             board = Rules.CreateBoard();
+            baselineBoard = Rules.CreateBoard();
+            baselineTurn = match.Opener;
+            matchEndedByDraw = false;
             boardView.ClearBoard();
+            moveHistory.Clear();
+            ClearSelection();
             hud.HideResult();
+            hud.ClearHint();
+            pieResolved = false;
             currentPlayer = match.Opener;
             lastResult = Rules.EvaluateBoard(board, ruleset);
             phase = GamePhase.Playing;
             RefreshHud();
+            UpdateHints();
+            ShowTutorialStep(0);
             MaybeStartAiTurn();
+        }
+
+        // ------------------------------------------------------------------
+        // Tutorial hints
+        // ------------------------------------------------------------------
+
+        private void ShowTutorialStep(int step)
+        {
+            if (!tutorialActive || match.RoundNumber > 1 || step < tutorialStep)
+            {
+                return;
+            }
+
+            tutorialStep = step;
+
+            switch (step)
+            {
+                case 0:
+                    hud.SetHint(GamePrefs.QuickMove
+                        ? GameStrings.T("Boş bir hücreye dokunarak işaretini koy.", "Tap an empty cell to place your mark.")
+                        : GameStrings.T(
+                            "Boş bir hücreye dokun, sonra Onayla'ya bas.",
+                            "Tap an empty cell, then press Confirm."));
+                    break;
+                case 1:
+                    hud.SetHint(ruleset == Ruleset.Lines
+                        ? GameStrings.T(
+                            "Üç işaretini aynı hizaya getir — her 3'lü çizgi 1 puan.",
+                            "Line up three of your marks — every 3-in-a-row scores 1.")
+                        : GameStrings.T(
+                            "İlk 3'lü çizgiyi yapan turu kazanır.",
+                            "First 3-in-a-row wins the round."));
+                    break;
+                case 2:
+                    hud.SetHint(GameStrings.T(
+                        "+1 puan! Tahta dolunca en çok çizgisi olan kazanır.",
+                        "+1 point! When the board fills, most lines wins."));
+                    break;
+            }
         }
 
         // ------------------------------------------------------------------
@@ -163,20 +325,70 @@ namespace TicTacube.Game
                 return;
             }
 
-            PlaceMark(index);
+            if (GamePrefs.QuickMove)
+            {
+                PlaceMark(index);
+                return;
+            }
+
+            if (pendingIndex == index)
+            {
+                PlaceMark(index);
+                return;
+            }
+
+            pendingIndex = index;
+            boardView.ClearSelection();
+            boardView.SetSelected(index, true);
+            hud.SetConfirmVisible(true);
+            gameAudio.PlaySelect();
+        }
+
+        public void ConfirmPressed()
+        {
+            if (phase == GamePhase.Playing && pendingIndex >= 0 && board[pendingIndex] == null)
+            {
+                PlaceMark(pendingIndex);
+            }
+        }
+
+        private void ClearSelection()
+        {
+            pendingIndex = -1;
+            boardView.ClearSelection();
+
+            if (hud != null)
+            {
+                hud.SetConfirmVisible(false);
+            }
         }
 
         private void PlaceMark(int index)
         {
+            ClearSelection();
+
             var previous = (Player?[])board.Clone();
-            board[index] = currentPlayer;
-            boardView.SetMark(index, currentPlayer);
+            var mover = currentPlayer;
+            board[index] = mover;
+            boardView.SetMark(index, mover, true);
+            moveHistory.Add(new KeyValuePair<int, Player>(index, mover));
+            gameAudio.PlayTap();
+
+            bool humanMoved = !soloMode || mover == humanPlayer;
+
+            if (humanMoved && tutorialStep == 0)
+            {
+                ShowTutorialStep(1);
+            }
 
             if (ruleset == Ruleset.Lines)
             {
-                foreach (var line in Rules.GetNewCompletedLines(previous, board, currentPlayer))
+                var newLines = Rules.GetNewCompletedLines(previous, board, mover);
+
+                if (newLines.Count > 0)
                 {
-                    boardView.AddLineBeam(line, currentPlayer);
+                    boardView.AddLineBeams(newLines, mover);
+                    CelebrateLines(newLines, mover, humanMoved);
                 }
             }
 
@@ -197,8 +409,236 @@ namespace TicTacube.Game
 
             currentPlayer = Rules.GetOtherPlayer(currentPlayer);
             RefreshHud();
+            UpdateHints();
+            SaveProgress(0);
+
+            if (HandlePieRule())
+            {
+                return;
+            }
+
             MaybeStartAiTurn();
         }
+
+        private void CelebrateLines(List<int[]> newLines, Player mover, bool humanMoved)
+        {
+            gameAudio.PlayLines(newLines.Count);
+
+            if (newLines.Count > 1)
+            {
+                var center = boardView.CellWorldPosition(newLines[0][1]);
+                hud.ShowFloatingScore(
+                    center,
+                    "+" + newLines.Count + " " + GameStrings.T("ÇİFT!", "MULTI!"),
+                    true);
+                orbit.Shake(0.22f);
+            }
+            else
+            {
+                hud.ShowFloatingScore(boardView.CellWorldPosition(newLines[0][1]), "+1", false);
+            }
+
+            if (humanMoved && ruleset == Ruleset.Lines && tutorialStep == 1)
+            {
+                ShowTutorialStep(2);
+            }
+        }
+
+        // ------------------------------------------------------------------
+        // Pie Rule (Classic)
+        // ------------------------------------------------------------------
+
+        /// <summary>
+        /// After the opening move in Classic, the responding side may swap
+        /// sides. Returns true when the flow is paused waiting on a human.
+        /// </summary>
+        private bool HandlePieRule()
+        {
+            if (ruleset != Ruleset.Classic || pieResolved)
+            {
+                return false;
+            }
+
+            int movesPlayed = Rules.CellCount - Rules.GetAvailableMoves(board).Count;
+
+            if (movesPlayed != 1)
+            {
+                return false;
+            }
+
+            if (soloMode && currentPlayer != humanPlayer)
+            {
+                // AI responds to the human's opening. Resolve immediately and
+                // persist, so a kill right after this point resumes correctly.
+                pieResolved = true;
+
+                if (Ai.ShouldSwapClassicPie(board, difficulty))
+                {
+                    humanPlayer = Rules.GetOtherPlayer(humanPlayer);
+                    match.RemapForSideSwap();
+                    hud.Toast(GameStrings.T(
+                        "Rakip taraf değiştirdi — açılış hamlesi artık onun!",
+                        "The opponent swapped sides — the opening move is theirs now!"), 3.5f);
+                    RefreshHud();
+                    UpdateHints();
+                }
+
+                SaveProgress(0);
+                return false;
+            }
+
+            // A human responds (the human in solo, or player 2 in duo).
+            // pieResolved stays false until they answer, so a save taken
+            // while the prompt is open re-raises the decision on resume.
+            phase = GamePhase.PieDecision;
+            hud.ShowPiePrompt();
+            return true;
+        }
+
+        public void PieAnswer(bool swap)
+        {
+            if (phase != GamePhase.PieDecision)
+            {
+                return;
+            }
+
+            pieResolved = true;
+            hud.HidePiePrompt();
+
+            if (swap)
+            {
+                if (soloMode)
+                {
+                    humanPlayer = Rules.GetOtherPlayer(humanPlayer);
+                }
+
+                match.RemapForSideSwap();
+                hud.Toast(GameStrings.T(
+                    soloMode ? "Tarafları değiştirdin — açılış hamlesi senin!" : "Taraflar değişti!",
+                    soloMode ? "You swapped sides — the opening move is yours!" : "Sides swapped!"), 3f);
+            }
+
+            phase = GamePhase.Playing;
+            RefreshHud();
+            UpdateHints();
+            SaveProgress(0);
+            MaybeStartAiTurn();
+        }
+
+        // ------------------------------------------------------------------
+        // Undo
+        // ------------------------------------------------------------------
+
+        public void UndoPressed()
+        {
+            if (phase != GamePhase.Playing || moveHistory.Count == 0)
+            {
+                return;
+            }
+
+            int undoCount = soloMode ? 2 : 1;
+
+            // In solo, only undo when it's the human's turn...
+            if (soloMode && currentPlayer != humanPlayer)
+            {
+                return;
+            }
+
+            // ...and only when a human move gets taken back — otherwise the
+            // player could re-roll the AI's opening until they like it.
+            if (soloMode)
+            {
+                bool hasHumanMove = false;
+
+                foreach (var move in moveHistory)
+                {
+                    if (move.Value == humanPlayer)
+                    {
+                        hasHumanMove = true;
+                        break;
+                    }
+                }
+
+                if (!hasHumanMove)
+                {
+                    return;
+                }
+            }
+
+            undoCount = Mathf.Min(undoCount, moveHistory.Count);
+
+            for (int i = 0; i < undoCount; i += 1)
+            {
+                moveHistory.RemoveAt(moveHistory.Count - 1);
+            }
+
+            ReplayFromHistory();
+            SaveProgress(0);
+
+            // If the undo landed on the AI's turn (odd history after a pie
+            // swap), restart its move so the game can't stall.
+            MaybeStartAiTurn();
+        }
+
+        private void ReplayFromHistory()
+        {
+            ClearSelection();
+            boardView.ClearBoard();
+
+            // Rebuild from the round baseline (a restored save keeps its
+            // position), then re-apply the remaining history on top.
+            board = (Player?[])baselineBoard.Clone();
+
+            for (int index = 0; index < board.Length; index += 1)
+            {
+                if (board[index] != null)
+                {
+                    boardView.SetMark(index, board[index].Value, false);
+                }
+            }
+
+            RebuildBeams();
+
+            foreach (var move in moveHistory)
+            {
+                var previous = (Player?[])board.Clone();
+                board[move.Key] = move.Value;
+                boardView.SetMark(move.Key, move.Value, false);
+
+                if (ruleset == Ruleset.Lines)
+                {
+                    boardView.AddLineBeams(Rules.GetNewCompletedLines(previous, board, move.Value), move.Value);
+                }
+            }
+
+            if (moveHistory.Count == 0)
+            {
+                boardView.HideLastMoveRing();
+            }
+
+            currentPlayer = moveHistory.Count > 0
+                ? Rules.GetOtherPlayer(moveHistory[moveHistory.Count - 1].Value)
+                : baselineTurn;
+            lastResult = Rules.EvaluateBoard(board, ruleset);
+            RefreshHud();
+            UpdateHints();
+        }
+
+        /// <summary>Rebuild beams from a restored board (no move order known).</summary>
+        private void RebuildBeams()
+        {
+            if (ruleset != Ruleset.Lines)
+            {
+                return;
+            }
+
+            boardView.AddLineBeams(Rules.GetCompletedLines(board, Player.X), Player.X);
+            boardView.AddLineBeams(Rules.GetCompletedLines(board, Player.O), Player.O);
+        }
+
+        // ------------------------------------------------------------------
+        // AI turn
+        // ------------------------------------------------------------------
 
         private void MaybeStartAiTurn()
         {
@@ -209,6 +649,7 @@ namespace TicTacube.Game
 
             phase = GamePhase.AiThinking;
             RefreshHud();
+            boardView.ClearHints();
 
             var boardCopy = (Player?[])board.Clone();
             var aiPlayer = currentPlayer;
@@ -232,6 +673,7 @@ namespace TicTacube.Game
 
             var task = aiTask;
             aiTask = null;
+            phase = GamePhase.Playing;
 
             if (task.IsFaulted || task.Result == null)
             {
@@ -240,16 +682,13 @@ namespace TicTacube.Game
 
                 if (moves.Count == 0)
                 {
-                    phase = GamePhase.Playing;
                     return;
                 }
 
-                phase = GamePhase.Playing;
                 PlaceAiMark(moves[0]);
                 return;
             }
 
-            phase = GamePhase.Playing;
             PlaceAiMark(task.Result.Value);
         }
 
@@ -273,67 +712,232 @@ namespace TicTacube.Game
 
         private void FinishRound()
         {
+            if (tutorialActive)
+            {
+                tutorialActive = false;
+                GamePrefs.TutorialDone = true;
+            }
+
+            hud.ClearHint();
+            boardView.ClearHints();
             match.RecordRound(lastResult.Winner, lastResult.IsDraw);
-            phase = match.IsComplete ? GamePhase.MatchOver : GamePhase.RoundOver;
+
+            // A single-round match ends on a draw too — draws don't count
+            // toward the win target, so without this it would never finish.
+            matchEndedByDraw = !match.IsComplete && match.TargetWins == 1 && lastResult.IsDraw;
+            bool matchOver = match.IsComplete || matchEndedByDraw;
+            phase = matchOver ? GamePhase.MatchOver : GamePhase.RoundOver;
             RefreshHud();
 
-            string title;
-            string subtitle;
+            bool humanWonRound = lastResult.Winner != null
+                && (!soloMode || lastResult.Winner.Value == humanPlayer);
+            gameAudio.PlayRoundEnd(humanWonRound, lastResult.Winner == null);
 
             if (lastResult.Winner != null)
             {
-                string winnerName = WinnerName(lastResult.Winner.Value);
-                title = GameStrings.T(winnerName + " turu kazandı!", winnerName + " wins the round!");
+                boardView.PulseBeams(lastResult.Winner.Value, ResultDelaySeconds);
+
+                if (humanWonRound)
+                {
+                    boardView.PlayConfetti();
+                }
+            }
+
+            StatsData? stats = null;
+
+            if (matchOver)
+            {
+                GamePrefs.ClearSave();
+
+                if (match.IsComplete && soloMode && match.Winner != null)
+                {
+                    stats = GamePrefs.RecordMatch(ruleset, difficulty, match.Winner.Value == humanPlayer);
+                }
             }
             else
             {
-                title = GameStrings.T("Berabere!", "It's a draw!");
+                SaveProgress(1);
             }
+
+            string title = BuildResultTitle();
+            string subtitle = BuildResultSubtitle(stats);
+            string buttonLabel = matchOver
+                ? GameStrings.T("Yeni Maç", "New Match")
+                : GameStrings.T("Sonraki Tur", "Next Round");
+
+            if (resultRoutine != null)
+            {
+                StopCoroutine(resultRoutine);
+            }
+
+            resultRoutine = StartCoroutine(ShowResultDelayed(title, subtitle, buttonLabel));
+        }
+
+        private IEnumerator ShowResultDelayed(string title, string subtitle, string buttonLabel)
+        {
+            yield return new WaitForSeconds(ResultDelaySeconds);
+            hud.ShowResult(title, subtitle, buttonLabel);
+            resultRoutine = null;
+        }
+
+        private string BuildResultTitle()
+        {
+            if (match.IsComplete && match.Winner != null)
+            {
+                if (!soloMode)
+                {
+                    return match.Winner.Value + GameStrings.T(" maçı kazandı!", " wins the match!");
+                }
+
+                return match.Winner.Value == humanPlayer
+                    ? GameStrings.T("Maçı kazandın!", "You win the match!")
+                    : GameStrings.T("Rakip maçı kazandı.", "The opponent wins the match.");
+            }
+
+            if (lastResult.Winner == null)
+            {
+                return GameStrings.T("Berabere!", "It's a draw!");
+            }
+
+            if (!soloMode)
+            {
+                return lastResult.Winner.Value + GameStrings.T(" turu kazandı!", " wins the round!");
+            }
+
+            return lastResult.Winner.Value == humanPlayer
+                ? GameStrings.T("Turu kazandın!", "You win the round!")
+                : GameStrings.T("Rakip turu kazandı.", "The opponent wins the round.");
+        }
+
+        private string BuildResultSubtitle(StatsData? stats)
+        {
+            string subtitle;
 
             if (ruleset == Ruleset.Lines)
             {
-                subtitle = GameStrings.T("Çizgiler  X: ", "Lines  X: ")
-                    + lastResult.LineScoreX + "  O: " + lastResult.LineScoreO;
+                subtitle = GameStrings.T("Çizgi  X ", "Lines  X ")
+                    + lastResult.LineScoreX + " - " + lastResult.LineScoreO + " O";
+
+                // Consolation: losing with completed lines still reads as progress.
+                if (soloMode && lastResult.Winner != null && lastResult.Winner.Value != humanPlayer
+                    && lastResult.LineScore(humanPlayer) > 0)
+                {
+                    subtitle += GameStrings.T(
+                        "\nYine de " + lastResult.LineScore(humanPlayer) + " çizgi tamamladın!",
+                        "\nStill, you completed " + lastResult.LineScore(humanPlayer) + " lines!");
+                }
             }
-            else
+            else if (match.TargetWins > 1)
             {
                 subtitle = GameStrings.T("Maç ", "Match ") + match.WinsX + " - " + match.WinsO;
             }
-
-            string buttonLabel;
+            else
+            {
+                subtitle = "";
+            }
 
             if (match.IsComplete)
             {
-                string matchWinner = WinnerName(match.Winner.Value);
-                title = GameStrings.T(matchWinner + " maçı kazandı!", matchWinner + " wins the match!");
                 subtitle = GameStrings.T("Skor ", "Score ") + match.WinsX + " - " + match.WinsO
                     + GameStrings.T("  Berabere: ", "  Draws: ") + match.Draws;
-                buttonLabel = GameStrings.T("Yeni Maç", "New Match");
-            }
-            else
-            {
-                buttonLabel = GameStrings.T("Sonraki Tur", "Next Round");
+
+                if (stats != null && stats.Value.Streak > 1)
+                {
+                    subtitle += GameStrings.T("\nSeri: ", "\nStreak: ") + stats.Value.Streak
+                        + GameStrings.T(" maç!", " matches!");
+                }
             }
 
-            hud.ShowResult(title, subtitle, buttonLabel);
+            return subtitle;
         }
 
-        private string WinnerName(Player player)
+        // ------------------------------------------------------------------
+        // Toggles
+        // ------------------------------------------------------------------
+
+        public void ToggleLayersPressed()
         {
-            if (!soloMode)
+            boardView.SetLayersSeparated(!boardView.LayersSeparated);
+        }
+
+        public void ToggleAnalysisPressed()
+        {
+            GamePrefs.Analysis = !GamePrefs.Analysis;
+            hud.SetAnalysisLabel();
+            UpdateHints();
+        }
+
+        /// <summary>Threat hints for the side to move (red = must block, green = can score).</summary>
+        private void UpdateHints()
+        {
+            if (!GamePrefs.Analysis
+                || phase != GamePhase.Playing && phase != GamePhase.AiThinking
+                || (soloMode && currentPlayer != humanPlayer))
             {
-                return player.ToString();
+                boardView.ClearHints();
+                return;
             }
 
-            return player == humanPlayer
-                ? GameStrings.T("Sen", "You")
-                : GameStrings.T("Rakip", "Opponent");
+            var danger = Rules.GetBlockingCells(board, currentPlayer);
+            var scoring = Rules.GetThreatCells(board, currentPlayer);
+            boardView.ShowHints(danger, scoring);
+        }
+
+        // ------------------------------------------------------------------
+        // Persistence
+        // ------------------------------------------------------------------
+
+        private void SaveProgress(int stage)
+        {
+            if (match == null || match.IsComplete)
+            {
+                return;
+            }
+
+            var cells = new int[Rules.CellCount];
+
+            for (int index = 0; index < board.Length; index += 1)
+            {
+                cells[index] = board[index] == null ? -1 : (int)board[index].Value;
+            }
+
+            GamePrefs.WriteSave(new SaveState
+            {
+                Stage = stage,
+                Cells = cells,
+                CurrentPlayer = (int)currentPlayer,
+                Ruleset = (int)ruleset,
+                Difficulty = (int)difficulty,
+                Solo = soloMode,
+                HumanPlayer = (int)humanPlayer,
+                PieResolved = pieResolved,
+                Opener = (int)match.Opener,
+                NextOpener = (int)match.NextOpener,
+                RoundNumber = match.RoundNumber,
+                WinsX = match.WinsX,
+                WinsO = match.WinsO,
+                Draws = match.Draws,
+                TargetWins = match.TargetWins,
+            });
+        }
+
+        private void OnApplicationPause(bool paused)
+        {
+            if (paused && match != null && !match.IsComplete && !matchEndedByDraw
+                && phase != GamePhase.Menu && phase != GamePhase.MatchOver)
+            {
+                SaveProgress(phase == GamePhase.RoundOver ? 1 : 0);
+            }
         }
 
         private void RefreshHud()
         {
             hud.SetTurn(currentPlayer, soloMode, humanPlayer, phase == GamePhase.AiThinking);
-            hud.SetScores(match, lastResult, ruleset);
+            hud.SetScores(match, lastResult, ruleset, soloMode, humanPlayer);
+            hud.SetUndoEnabled(
+                phase == GamePhase.Playing
+                && moveHistory.Count > 0
+                && (!soloMode || currentPlayer == humanPlayer));
         }
     }
 }
