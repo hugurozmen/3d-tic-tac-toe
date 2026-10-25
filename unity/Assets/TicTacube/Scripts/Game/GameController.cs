@@ -1256,6 +1256,14 @@ namespace TicTacube.Game
         {
             if (!snapshot.ResultComplete)
             {
+                // A pending delayed result panel must not pop over the round
+                // the opponent just reset.
+                if (resultRoutine != null)
+                {
+                    StopCoroutine(resultRoutine);
+                    resultRoutine = null;
+                }
+
                 if (onlineResultShown || phase != GamePhase.Playing)
                 {
                     onlineResultShown = false;
