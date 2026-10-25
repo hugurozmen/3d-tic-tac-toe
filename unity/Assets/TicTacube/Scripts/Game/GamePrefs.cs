@@ -91,6 +91,23 @@ namespace TicTacube.Game
             set { SetBool(KeyTutorialDone, value); }
         }
 
+        private const string KeyServerUrl = "tictacube_server_url";
+        public const string DefaultServerUrl = "ws://127.0.0.1:8787";
+
+        public static string ServerUrl
+        {
+            get
+            {
+                string stored = PlayerPrefs.GetString(KeyServerUrl, DefaultServerUrl);
+                return string.IsNullOrEmpty(stored) ? DefaultServerUrl : stored;
+            }
+            set
+            {
+                PlayerPrefs.SetString(KeyServerUrl, value ?? DefaultServerUrl);
+                PlayerPrefs.Save();
+            }
+        }
+
         public static bool LoadTurkish(bool deviceDefault)
         {
             return GetBool(KeyTurkish, deviceDefault);

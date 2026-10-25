@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using TicTacube.Core;
+using TicTacube.Online;
 using UnityEngine;
 
 namespace TicTacube.Game
@@ -59,6 +60,15 @@ namespace TicTacube.Game
         private Task<int?> aiTask;
         private float aiStartedAt;
         private Coroutine resultRoutine;
+
+        // Online room state: the server is authoritative, so the client only
+        // renders snapshots and submits actions.
+        private OnlineClient online;
+        private bool onlineMode;
+        private readonly List<OnlineEvent> onlineEvents = new List<OnlineEvent>();
+        private Player?[] onlineRendered;
+        private long onlineRenderedSequence = -1;
+        private bool onlineResultShown;
 
         private void Awake()
         {
@@ -213,7 +223,16 @@ namespace TicTacube.Game
                 resultRoutine = null;
             }
 
-            if (match != null && !match.IsComplete && !matchEndedByDraw && phase != GamePhase.Menu)
+            if (onlineMode)
+            {
+                online.Close();
+                onlineMode = false;
+                onlineRendered = null;
+                onlineRenderedSequence = -1;
+                onlineResultShown = false;
+                hud.SetOnlineUi(false);
+            }
+            else if (match != null && !match.IsComplete && !matchEndedByDraw && phase != GamePhase.Menu)
             {
                 SaveProgress(phase == GamePhase.RoundOver ? 1 : 0);
             }
@@ -230,6 +249,30 @@ namespace TicTacube.Game
 
         public void ResultContinuePressed()
         {
+            if (onlineMode)
+            {
+                var snapshot = online.LastSnapshot;
+
+                if (snapshot == null)
+                {
+                    return;
+                }
+
+                if (snapshot.MatchComplete)
+                {
+                    online.SendResetMatch();
+                }
+                else if (snapshot.ResultComplete)
+                {
+                    online.SendResetRound();
+                }
+
+                hud.HideResult();
+                onlineResultShown = false;
+                phase = GamePhase.Playing;
+                return;
+            }
+
             if (phase == GamePhase.MatchOver)
             {
                 StartMatch(soloMode, ruleset, difficulty, match.TargetWins);
@@ -315,6 +358,12 @@ namespace TicTacube.Game
                 return;
             }
 
+            if (onlineMode)
+            {
+                OnlineCellTapped(index);
+                return;
+            }
+
             if (soloMode && currentPlayer != humanPlayer)
             {
                 return;
@@ -346,7 +395,18 @@ namespace TicTacube.Game
 
         public void ConfirmPressed()
         {
-            if (phase == GamePhase.Playing && pendingIndex >= 0 && board[pendingIndex] == null)
+            if (phase != GamePhase.Playing || pendingIndex < 0)
+            {
+                return;
+            }
+
+            if (onlineMode)
+            {
+                SendOnlineMove(pendingIndex);
+                return;
+            }
+
+            if (board[pendingIndex] == null)
             {
                 PlaceMark(pendingIndex);
             }
@@ -531,7 +591,7 @@ namespace TicTacube.Game
 
         public void UndoPressed()
         {
-            if (phase != GamePhase.Playing || moveHistory.Count == 0)
+            if (onlineMode || phase != GamePhase.Playing || moveHistory.Count == 0)
             {
                 return;
             }
@@ -661,6 +721,12 @@ namespace TicTacube.Game
 
         private void Update()
         {
+            if (onlineMode)
+            {
+                PumpOnline();
+                return;
+            }
+
             if (phase != GamePhase.AiThinking || aiTask == null)
             {
                 return;
@@ -852,6 +918,415 @@ namespace TicTacube.Game
         }
 
         // ------------------------------------------------------------------
+        // Online rooms
+        // ------------------------------------------------------------------
+
+        private void EnterOnlineMode()
+        {
+            if (online == null)
+            {
+                online = new OnlineClient();
+            }
+
+            onlineMode = true;
+            tutorialActive = false;
+            onlineRendered = null;
+            onlineRenderedSequence = -1;
+            onlineResultShown = false;
+            phase = GamePhase.Playing;
+
+            ClearSelection();
+            boardView.ClearBoard();
+            boardView.ClearHints();
+            hud.HideResult();
+            hud.SetOnlineUi(true);
+            hud.SetUndoEnabled(false);
+            hud.ShowGame();
+            hud.SetHint(GameStrings.T("Sunucuya bağlanılıyor…", "Connecting to server…"));
+        }
+
+        public void StartOnlineHost(string url, Ruleset selectedRuleset)
+        {
+            EnterOnlineMode();
+            ruleset = selectedRuleset;
+            online.HostRoom(url, selectedRuleset);
+        }
+
+        public void StartOnlineJoin(string url, string code)
+        {
+            EnterOnlineMode();
+            online.JoinRoom(url, code);
+        }
+
+        public void OnlineReconnectPressed()
+        {
+            if (onlineMode && online.HasSession)
+            {
+                hud.SetReconnectVisible(false);
+                online.Reconnect();
+            }
+        }
+
+        private void PumpOnline()
+        {
+            online.Tick();
+            onlineEvents.Clear();
+            online.DrainEvents(onlineEvents);
+
+            foreach (var entry in onlineEvents)
+            {
+                if (!onlineMode)
+                {
+                    break; // an event handler returned to the menu
+                }
+
+                ProcessOnlineEvent(entry);
+            }
+        }
+
+        private void ProcessOnlineEvent(OnlineEvent entry)
+        {
+            switch (entry.Type)
+            {
+                case OnlineEventType.SessionEstablished:
+                    humanPlayer = entry.PlayerMark;
+
+                    if (entry.Settings != null)
+                    {
+                        ruleset = entry.Settings.Ruleset;
+                    }
+
+                    // Force a full redraw from the next snapshot.
+                    onlineRendered = null;
+                    onlineRenderedSequence = -1;
+                    onlineResultShown = false;
+                    hud.HideResult();
+                    break;
+
+                case OnlineEventType.StatusChanged:
+                    OnOnlineStatusChanged(entry.Status);
+                    break;
+
+                case OnlineEventType.SnapshotUpdated:
+                    ApplyOnlineSnapshot(entry.Snapshot);
+                    break;
+
+                case OnlineEventType.ActionRejected:
+                    OnOnlineActionRejected(entry.Code, entry.Message);
+                    break;
+
+                case OnlineEventType.ErrorMessage:
+                    hud.Toast(GameStrings.T("Sunucu: ", "Server: ") + entry.Message, 4f);
+                    break;
+            }
+        }
+
+        private void OnOnlineStatusChanged(OnlineStatus status)
+        {
+            hud.SetReconnectVisible(status == OnlineStatus.Disconnected && online.HasSession);
+
+            switch (status)
+            {
+                case OnlineStatus.Connecting:
+                    hud.SetHint(GameStrings.T("Sunucuya bağlanılıyor…", "Connecting to server…"));
+                    break;
+                case OnlineStatus.Waiting:
+                    hud.SetHint(GameStrings.T(
+                        "Oda kodu: " + online.RoomId + " — rakibini bekle",
+                        "Room code: " + online.RoomId + " — waiting for your opponent"));
+                    break;
+                case OnlineStatus.Connected:
+                    hud.Toast(GameStrings.T("Rakip bağlı — iyi oyunlar!", "Opponent connected — good luck!"), 2.5f);
+                    break;
+                case OnlineStatus.PeerWaiting:
+                    hud.SetHint(GameStrings.T(
+                        "Rakibin bağlantısı koptu — bekleniyor…",
+                        "Opponent disconnected — waiting…"));
+                    break;
+                case OnlineStatus.Reconnecting:
+                    hud.SetHint(GameStrings.T("Yeniden bağlanılıyor…", "Reconnecting…"));
+                    break;
+                case OnlineStatus.Disconnected:
+                    hud.SetHint(online.HasSession
+                        ? GameStrings.T(
+                            "Bağlantı koptu. Yeniden Bağlan'a bas.",
+                            "Connection lost. Press Reconnect.")
+                        : GameStrings.T(
+                            "Bağlanılamadı. Menüden tekrar dene.",
+                            "Could not connect. Try again from the menu."));
+                    break;
+            }
+        }
+
+        private void OnOnlineActionRejected(string code, string message)
+        {
+            ClearSelection();
+
+            switch (code)
+            {
+                case "sequence-mismatch":
+                    return; // the snapshot that follows resyncs silently
+                case "out-of-turn":
+                    hud.Toast(GameStrings.T("Sıra sende değil.", "It's not your turn."), 2f);
+                    return;
+                case "cell-occupied":
+                    hud.Toast(GameStrings.T("Bu hücre dolu.", "That cell is occupied."), 2f);
+                    return;
+                case "peer-unavailable":
+                    hud.Toast(GameStrings.T("Rakip şu an bağlı değil.", "Your opponent is not connected."), 2.5f);
+                    return;
+                case "round-complete":
+                    hud.Toast(GameStrings.T("Tur bitti.", "The round is over."), 2f);
+                    return;
+                case "ack-timeout":
+                    hud.Toast(GameStrings.T(
+                        "Sunucu yanıtı zaman aşımına uğradı.",
+                        "The server confirmation timed out."), 3f);
+                    return;
+                default:
+                    hud.Toast(GameStrings.T("Sunucu: ", "Server: ") + message, 3f);
+                    return;
+            }
+        }
+
+        private void OnlineCellTapped(int index)
+        {
+            var snapshot = online.LastSnapshot;
+
+            if (online.Status != OnlineStatus.Connected
+                || snapshot == null
+                || snapshot.ResultComplete
+                || snapshot.CurrentPlayer != humanPlayer
+                || snapshot.Board[index] != null
+                || online.HasPendingAction)
+            {
+                return;
+            }
+
+            if (GamePrefs.QuickMove || pendingIndex == index)
+            {
+                SendOnlineMove(index);
+                return;
+            }
+
+            pendingIndex = index;
+            boardView.ClearSelection();
+            boardView.SetSelected(index, true);
+            hud.SetConfirmVisible(true);
+            gameAudio.PlaySelect();
+        }
+
+        private void SendOnlineMove(int index)
+        {
+            var snapshot = online.LastSnapshot;
+
+            if (online.Status != OnlineStatus.Connected
+                || snapshot == null
+                || snapshot.Board[index] != null
+                || online.HasPendingAction)
+            {
+                return;
+            }
+
+            // Keep the cell highlighted as a "sending" cue; the snapshot that
+            // confirms the move clears the selection.
+            hud.SetConfirmVisible(false);
+            online.SendMove(index);
+        }
+
+        private void ApplyOnlineSnapshot(OnlineSnapshot snapshot)
+        {
+            if (snapshot.Sequence < onlineRenderedSequence)
+            {
+                return;
+            }
+
+            int added = 0;
+            int removed = 0;
+            int addedIndex = -1;
+            Player addedPlayer = Player.X;
+
+            if (onlineRendered != null)
+            {
+                for (int index = 0; index < Rules.CellCount; index += 1)
+                {
+                    var before = onlineRendered[index];
+                    var after = snapshot.Board[index];
+
+                    if (before == after)
+                    {
+                        continue;
+                    }
+
+                    if (before == null && after != null)
+                    {
+                        added += 1;
+                        addedIndex = index;
+                        addedPlayer = after.Value;
+                    }
+                    else
+                    {
+                        removed += 1;
+                    }
+                }
+            }
+
+            if (onlineRendered == null || removed > 0 || added > 1)
+            {
+                RebuildOnlineBoard(snapshot);
+            }
+            else if (added == 1)
+            {
+                var previous = (Player?[])onlineRendered.Clone();
+                boardView.SetMark(addedIndex, addedPlayer, true);
+                gameAudio.PlayTap();
+
+                if (ruleset == Ruleset.Lines)
+                {
+                    var next = (Player?[])previous.Clone();
+                    next[addedIndex] = addedPlayer;
+                    var newLines = Rules.GetNewCompletedLines(previous, next, addedPlayer);
+
+                    if (newLines.Count > 0)
+                    {
+                        boardView.AddLineBeams(newLines, addedPlayer);
+                        CelebrateLines(newLines, addedPlayer, addedPlayer == humanPlayer);
+                    }
+                }
+                else if (snapshot.ResultComplete && snapshot.ResultWinner != null)
+                {
+                    HighlightOnlineClassicWin(snapshot);
+                }
+            }
+
+            onlineRendered = (Player?[])snapshot.Board.Clone();
+            onlineRenderedSequence = snapshot.Sequence;
+            ClearSelection();
+            hud.SetTurn(snapshot.CurrentPlayer, true, humanPlayer, false);
+            hud.SetOnlineScores(snapshot, humanPlayer, ruleset);
+            HandleOnlineRoundState(snapshot);
+        }
+
+        private void RebuildOnlineBoard(OnlineSnapshot snapshot)
+        {
+            boardView.ClearBoard();
+
+            for (int index = 0; index < Rules.CellCount; index += 1)
+            {
+                if (index != snapshot.LastMove && snapshot.Board[index] != null)
+                {
+                    boardView.SetMark(index, snapshot.Board[index].Value, false);
+                }
+            }
+
+            // Place the last move last so the ring lands on it.
+            if (snapshot.LastMove >= 0 && snapshot.Board[snapshot.LastMove] != null)
+            {
+                boardView.SetMark(snapshot.LastMove, snapshot.Board[snapshot.LastMove].Value, false);
+            }
+            else
+            {
+                boardView.HideLastMoveRing();
+            }
+
+            if (ruleset == Ruleset.Lines)
+            {
+                var mirror = (Player?[])snapshot.Board.Clone();
+                boardView.AddLineBeams(Rules.GetCompletedLines(mirror, Player.X), Player.X);
+                boardView.AddLineBeams(Rules.GetCompletedLines(mirror, Player.O), Player.O);
+            }
+            else if (snapshot.ResultComplete && snapshot.ResultWinner != null)
+            {
+                HighlightOnlineClassicWin(snapshot);
+            }
+        }
+
+        private void HighlightOnlineClassicWin(OnlineSnapshot snapshot)
+        {
+            var mirror = (Player?[])snapshot.Board.Clone();
+            var completed = Rules.GetCompletedLines(mirror, snapshot.ResultWinner.Value);
+
+            if (completed.Count > 0)
+            {
+                boardView.HighlightWinningLine(completed[0], snapshot.ResultWinner.Value);
+            }
+        }
+
+        private void HandleOnlineRoundState(OnlineSnapshot snapshot)
+        {
+            if (!snapshot.ResultComplete)
+            {
+                if (onlineResultShown || phase != GamePhase.Playing)
+                {
+                    onlineResultShown = false;
+                    phase = GamePhase.Playing;
+                    hud.HideResult();
+                    hud.Toast(GameStrings.T("Yeni tur!", "New round!"), 2f);
+                }
+
+                return;
+            }
+
+            if (onlineResultShown)
+            {
+                return;
+            }
+
+            onlineResultShown = true;
+            phase = snapshot.MatchComplete ? GamePhase.MatchOver : GamePhase.RoundOver;
+
+            bool humanWon = snapshot.ResultWinner != null && snapshot.ResultWinner.Value == humanPlayer;
+            gameAudio.PlayRoundEnd(humanWon, snapshot.ResultWinner == null);
+
+            if (snapshot.ResultWinner != null)
+            {
+                boardView.PulseBeams(snapshot.ResultWinner.Value, ResultDelaySeconds);
+
+                if (humanWon)
+                {
+                    boardView.PlayConfetti();
+                }
+            }
+
+            string title;
+
+            if (snapshot.MatchComplete && snapshot.MatchWinner != null)
+            {
+                title = snapshot.MatchWinner.Value == humanPlayer
+                    ? GameStrings.T("Maçı kazandın!", "You win the match!")
+                    : GameStrings.T("Rakip maçı kazandı.", "The opponent wins the match.");
+            }
+            else if (snapshot.ResultWinner == null)
+            {
+                title = GameStrings.T("Berabere!", "It's a draw!");
+            }
+            else
+            {
+                title = humanWon
+                    ? GameStrings.T("Turu kazandın!", "You win the round!")
+                    : GameStrings.T("Rakip turu kazandı.", "The opponent wins the round.");
+            }
+
+            string subtitle = ruleset == Ruleset.Lines
+                ? GameStrings.T("Çizgi  X ", "Lines  X ") + snapshot.LineScoreX + " - " + snapshot.LineScoreO + " O"
+                : "";
+            subtitle += (subtitle.Length > 0 ? "\n" : "")
+                + GameStrings.T("Maç  Sen ", "Match  You ") + snapshot.Wins(humanPlayer)
+                + " - " + snapshot.Wins(Rules.GetOtherPlayer(humanPlayer)) + GameStrings.T(" Rakip", " Opp");
+
+            string buttonLabel = snapshot.MatchComplete
+                ? GameStrings.T("Yeni Maç", "New Match")
+                : GameStrings.T("Sonraki Tur", "Next Round");
+
+            if (resultRoutine != null)
+            {
+                StopCoroutine(resultRoutine);
+            }
+
+            resultRoutine = StartCoroutine(ShowResultDelayed(title, subtitle, buttonLabel));
+        }
+
+        // ------------------------------------------------------------------
         // Toggles
         // ------------------------------------------------------------------
 
@@ -870,6 +1345,12 @@ namespace TicTacube.Game
         /// <summary>Threat hints for the side to move (red = must block, green = can score).</summary>
         private void UpdateHints()
         {
+            if (onlineMode)
+            {
+                boardView.ClearHints();
+                return;
+            }
+
             if (!GamePrefs.Analysis
                 || phase != GamePhase.Playing && phase != GamePhase.AiThinking
                 || (soloMode && currentPlayer != humanPlayer))
@@ -889,7 +1370,7 @@ namespace TicTacube.Game
 
         private void SaveProgress(int stage)
         {
-            if (match == null || match.IsComplete)
+            if (onlineMode || match == null || match.IsComplete)
             {
                 return;
             }
