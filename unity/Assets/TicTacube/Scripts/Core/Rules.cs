@@ -361,11 +361,11 @@ namespace TicTacube.Core
         }
 
         /// <summary>Best single-move line gain available to the player.</summary>
-        public static int GetBestImmediateLineGain(Player?[] board, Player player)
+        public static int GetBestImmediateLineGain(Player?[] board, Player player, bool gravity = false)
         {
             int best = 0;
 
-            foreach (int move in GetAvailableMoves(board))
+            foreach (int move in gravity ? GetGravityMoves(board) : GetAvailableMoves(board))
             {
                 var next = (Player?[])board.Clone();
                 next[move] = player;

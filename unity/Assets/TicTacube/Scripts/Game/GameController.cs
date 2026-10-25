@@ -464,7 +464,7 @@ namespace TicTacube.Game
             {
                 var next = (Player?[])board.Clone();
                 next[index] = currentPlayer;
-                int risk = Rules.GetBestImmediateLineGain(next, Rules.GetOtherPlayer(currentPlayer));
+                int risk = Rules.GetBestImmediateLineGain(next, Rules.GetOtherPlayer(currentPlayer), gravityMode);
 
                 if (risk > 0)
                 {
