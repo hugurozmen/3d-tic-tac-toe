@@ -44,6 +44,12 @@ namespace TicTacube.Game
         private MatchState match;
         private GameResult lastResult;
         private bool pieResolved;
+        private bool matchEndedByDraw;
+
+        // Undo replays from this snapshot: empty for a fresh round, or the
+        // restored position when the round was resumed from a save.
+        private Player?[] baselineBoard;
+        private Player baselineTurn;
         private int pendingIndex = -1;
         private readonly List<KeyValuePair<int, Player>> moveHistory = new List<KeyValuePair<int, Player>>();
 
@@ -134,6 +140,9 @@ namespace TicTacube.Game
 
             if (!save.Valid)
             {
+                // Corrupt or incompatible snapshot: drop it so the resume
+                // button doesn't stay as a dead control.
+                GamePrefs.ClearSave();
                 hud.ShowMenu();
                 return;
             }
@@ -178,11 +187,21 @@ namespace TicTacube.Game
 
             RebuildBeams();
             currentPlayer = (Player)save.CurrentPlayer;
+            baselineBoard = (Player?[])board.Clone();
+            baselineTurn = currentPlayer;
             lastResult = Rules.EvaluateBoard(board, ruleset);
             phase = GamePhase.Playing;
             hud.ShowGame();
             RefreshHud();
             UpdateHints();
+
+            // A pending Pie decision (Classic, one move played) survives the
+            // save/resume cycle instead of silently disappearing.
+            if (HandlePieRule())
+            {
+                return;
+            }
+
             MaybeStartAiTurn();
         }
 
@@ -194,7 +213,7 @@ namespace TicTacube.Game
                 resultRoutine = null;
             }
 
-            if (match != null && !match.IsComplete && phase != GamePhase.Menu)
+            if (match != null && !match.IsComplete && !matchEndedByDraw && phase != GamePhase.Menu)
             {
                 SaveProgress(phase == GamePhase.RoundOver ? 1 : 0);
             }
@@ -228,6 +247,9 @@ namespace TicTacube.Game
         private void StartRound()
         {
             board = Rules.CreateBoard();
+            baselineBoard = Rules.CreateBoard();
+            baselineTurn = match.Opener;
+            matchEndedByDraw = false;
             boardView.ClearBoard();
             moveHistory.Clear();
             ClearSelection();
@@ -365,11 +387,7 @@ namespace TicTacube.Game
 
                 if (newLines.Count > 0)
                 {
-                    foreach (var line in newLines)
-                    {
-                        boardView.AddLineBeam(line, mover);
-                    }
-
+                    boardView.AddLineBeams(newLines, mover);
                     CelebrateLines(newLines, mover, humanMoved);
                 }
             }
@@ -448,11 +466,12 @@ namespace TicTacube.Game
                 return false;
             }
 
-            pieResolved = true;
-
             if (soloMode && currentPlayer != humanPlayer)
             {
-                // AI responds to the human's opening.
+                // AI responds to the human's opening. Resolve immediately and
+                // persist, so a kill right after this point resumes correctly.
+                pieResolved = true;
+
                 if (Ai.ShouldSwapClassicPie(board, difficulty))
                 {
                     humanPlayer = Rules.GetOtherPlayer(humanPlayer);
@@ -464,10 +483,13 @@ namespace TicTacube.Game
                     UpdateHints();
                 }
 
+                SaveProgress(0);
                 return false;
             }
 
             // A human responds (the human in solo, or player 2 in duo).
+            // pieResolved stays false until they answer, so a save taken
+            // while the prompt is open re-raises the decision on resume.
             phase = GamePhase.PieDecision;
             hud.ShowPiePrompt();
             return true;
@@ -480,6 +502,7 @@ namespace TicTacube.Game
                 return;
             }
 
+            pieResolved = true;
             hud.HidePiePrompt();
 
             if (swap)
@@ -515,11 +538,31 @@ namespace TicTacube.Game
 
             int undoCount = soloMode ? 2 : 1;
 
-            // In solo, only undo when it's the human's turn and a full
-            // human+AI pair exists; a single trailing human move also works.
+            // In solo, only undo when it's the human's turn...
             if (soloMode && currentPlayer != humanPlayer)
             {
                 return;
+            }
+
+            // ...and only when a human move gets taken back — otherwise the
+            // player could re-roll the AI's opening until they like it.
+            if (soloMode)
+            {
+                bool hasHumanMove = false;
+
+                foreach (var move in moveHistory)
+                {
+                    if (move.Value == humanPlayer)
+                    {
+                        hasHumanMove = true;
+                        break;
+                    }
+                }
+
+                if (!hasHumanMove)
+                {
+                    return;
+                }
             }
 
             undoCount = Mathf.Min(undoCount, moveHistory.Count);
@@ -541,7 +584,20 @@ namespace TicTacube.Game
         {
             ClearSelection();
             boardView.ClearBoard();
-            board = Rules.CreateBoard();
+
+            // Rebuild from the round baseline (a restored save keeps its
+            // position), then re-apply the remaining history on top.
+            board = (Player?[])baselineBoard.Clone();
+
+            for (int index = 0; index < board.Length; index += 1)
+            {
+                if (board[index] != null)
+                {
+                    boardView.SetMark(index, board[index].Value, false);
+                }
+            }
+
+            RebuildBeams();
 
             foreach (var move in moveHistory)
             {
@@ -551,16 +607,18 @@ namespace TicTacube.Game
 
                 if (ruleset == Ruleset.Lines)
                 {
-                    foreach (var line in Rules.GetNewCompletedLines(previous, board, move.Value))
-                    {
-                        boardView.AddLineBeam(line, move.Value);
-                    }
+                    boardView.AddLineBeams(Rules.GetNewCompletedLines(previous, board, move.Value), move.Value);
                 }
+            }
+
+            if (moveHistory.Count == 0)
+            {
+                boardView.HideLastMoveRing();
             }
 
             currentPlayer = moveHistory.Count > 0
                 ? Rules.GetOtherPlayer(moveHistory[moveHistory.Count - 1].Value)
-                : match.Opener;
+                : baselineTurn;
             lastResult = Rules.EvaluateBoard(board, ruleset);
             RefreshHud();
             UpdateHints();
@@ -574,15 +632,8 @@ namespace TicTacube.Game
                 return;
             }
 
-            foreach (var line in Rules.GetCompletedLines(board, Player.X))
-            {
-                boardView.AddLineBeam(line, Player.X);
-            }
-
-            foreach (var line in Rules.GetCompletedLines(board, Player.O))
-            {
-                boardView.AddLineBeam(line, Player.O);
-            }
+            boardView.AddLineBeams(Rules.GetCompletedLines(board, Player.X), Player.X);
+            boardView.AddLineBeams(Rules.GetCompletedLines(board, Player.O), Player.O);
         }
 
         // ------------------------------------------------------------------
@@ -670,7 +721,12 @@ namespace TicTacube.Game
             hud.ClearHint();
             boardView.ClearHints();
             match.RecordRound(lastResult.Winner, lastResult.IsDraw);
-            phase = match.IsComplete ? GamePhase.MatchOver : GamePhase.RoundOver;
+
+            // A single-round match ends on a draw too — draws don't count
+            // toward the win target, so without this it would never finish.
+            matchEndedByDraw = !match.IsComplete && match.TargetWins == 1 && lastResult.IsDraw;
+            bool matchOver = match.IsComplete || matchEndedByDraw;
+            phase = matchOver ? GamePhase.MatchOver : GamePhase.RoundOver;
             RefreshHud();
 
             bool humanWonRound = lastResult.Winner != null
@@ -689,11 +745,11 @@ namespace TicTacube.Game
 
             StatsData? stats = null;
 
-            if (match.IsComplete)
+            if (matchOver)
             {
                 GamePrefs.ClearSave();
 
-                if (soloMode && match.Winner != null)
+                if (match.IsComplete && soloMode && match.Winner != null)
                 {
                     stats = GamePrefs.RecordMatch(ruleset, difficulty, match.Winner.Value == humanPlayer);
                 }
@@ -705,7 +761,7 @@ namespace TicTacube.Game
 
             string title = BuildResultTitle();
             string subtitle = BuildResultSubtitle(stats);
-            string buttonLabel = match.IsComplete
+            string buttonLabel = matchOver
                 ? GameStrings.T("Yeni Maç", "New Match")
                 : GameStrings.T("Sonraki Tur", "Next Round");
 
@@ -867,7 +923,8 @@ namespace TicTacube.Game
 
         private void OnApplicationPause(bool paused)
         {
-            if (paused && match != null && !match.IsComplete && phase != GamePhase.Menu)
+            if (paused && match != null && !match.IsComplete && !matchEndedByDraw
+                && phase != GamePhase.Menu && phase != GamePhase.MatchOver)
             {
                 SaveProgress(phase == GamePhase.RoundOver ? 1 : 0);
             }

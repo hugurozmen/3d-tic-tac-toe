@@ -46,6 +46,10 @@ namespace TicTacube.Game
 
         private GameObject lastMoveRing;
         private Coroutine lastMovePulse;
+        private Material ringMaterialX;
+        private Material ringMaterialO;
+        private Color ringBaseColorX;
+        private Color ringBaseColorO;
         private Coroutine separationRoutine;
         private float layerSeparation;
 
@@ -95,6 +99,13 @@ namespace TicTacube.Game
             hintRedMaterial = LoadMaterial("HintRed", new Color(0.9f, 0.25f, 0.25f, 0.4f));
             hintGreenMaterial = LoadMaterial("HintGreen", new Color(0.3f, 0.85f, 0.45f, 0.4f));
             frameMaterial = LoadMaterial("Frame", new Color(0.3f, 0.34f, 0.44f));
+
+            // One reusable ring material per player (avoids leaking a new
+            // material instance on every placement).
+            ringMaterialX = new Material(markXMaterial);
+            ringMaterialO = new Material(markOMaterial);
+            ringBaseColorX = ringMaterialX.color;
+            ringBaseColorO = ringMaterialO.color;
 
             // Slightly different tint per Y layer so depth reads at a glance.
             layerIdleMaterials = new Material[3];
@@ -209,6 +220,10 @@ namespace TicTacube.Game
                 lastMovePulse = null;
             }
 
+            // Reset both ring tints in case an earlier pulse was interrupted.
+            ringMaterialX.color = ringBaseColorX;
+            ringMaterialO.color = ringBaseColorO;
+
             if (lastMoveRing == null)
             {
                 lastMoveRing = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
@@ -221,33 +236,29 @@ namespace TicTacube.Game
             lastMoveRing.transform.localPosition = new Vector3(0f, -0.42f, 0f);
             lastMoveRing.transform.localScale = new Vector3(0.8f, 0.02f, 0.8f);
 
-            var ringRenderer = lastMoveRing.GetComponent<Renderer>();
-            ringRenderer.material = new Material(player == Player.X ? markXMaterial : markOMaterial);
+            var ringMaterial = player == Player.X ? ringMaterialX : ringMaterialO;
+            var ringBaseColor = player == Player.X ? ringBaseColorX : ringBaseColorO;
+            lastMoveRing.GetComponent<Renderer>().sharedMaterial = ringMaterial;
 
             if (animate && GamePrefs.Effects)
             {
-                lastMovePulse = StartCoroutine(PulseRing(ringRenderer));
+                lastMovePulse = StartCoroutine(PulseRing(ringMaterial, ringBaseColor));
             }
         }
 
-        private IEnumerator PulseRing(Renderer ringRenderer)
+        private IEnumerator PulseRing(Material ringMaterial, Color baseColor)
         {
-            var baseColor = ringRenderer.material.color;
             float elapsed = 0f;
 
-            while (elapsed < 1.6f && ringRenderer != null)
+            while (elapsed < 1.6f)
             {
                 elapsed += Time.deltaTime;
                 float wave = (Mathf.Sin(elapsed * 9f) + 1f) * 0.5f;
-                ringRenderer.material.color = Color.Lerp(baseColor, Color.white, wave * 0.65f);
+                ringMaterial.color = Color.Lerp(baseColor, Color.white, wave * 0.65f);
                 yield return null;
             }
 
-            if (ringRenderer != null)
-            {
-                ringRenderer.material.color = baseColor;
-            }
-
+            ringMaterial.color = baseColor;
             lastMovePulse = null;
         }
 
@@ -281,6 +292,21 @@ namespace TicTacube.Game
             sphere.transform.localScale = new Vector3(0.58f, 0.58f, 0.58f);
             sphere.GetComponent<Renderer>().sharedMaterial = markOMaterial;
             return container;
+        }
+
+        public void HideLastMoveRing()
+        {
+            if (lastMovePulse != null)
+            {
+                StopCoroutine(lastMovePulse);
+                lastMovePulse = null;
+            }
+
+            if (lastMoveRing != null)
+            {
+                lastMoveRing.transform.SetParent(transform, false);
+                lastMoveRing.SetActive(false);
+            }
         }
 
         public void RemoveMark(int index)
@@ -320,12 +346,18 @@ namespace TicTacube.Game
         // ------------------------------------------------------------------
 
         /// <summary>
-        /// Draw a beam through a completed line. X beams are square bars,
-        /// O beams are round bars, so ownership reads without color. Older
-        /// beams of the same player dim so the newest lines stand out.
+        /// Draw beams through lines completed by one move. X beams are square
+        /// bars, O beams are round bars, so ownership reads without color.
+        /// The player's older beams dim once per move, so a multi-line move
+        /// keeps all of its new beams bright together.
         /// </summary>
-        public void AddLineBeam(int[] line, Player player)
+        public void AddLineBeams(List<int[]> lines, Player player)
         {
+            if (lines == null || lines.Count == 0)
+            {
+                return;
+            }
+
             foreach (var entry in beams)
             {
                 if (entry.Owner == player)
@@ -335,10 +367,13 @@ namespace TicTacube.Game
                 }
             }
 
-            var beam = CreateBeam(line, player == Player.X ? beamXMaterial : beamOMaterial, player == Player.X, 0.12f);
-            beam.name = "Beam " + player;
-            beams.Add(new BeamEntry { Beam = beam, Owner = player, Line = line });
-            beam.SetActive(!LayersSeparated);
+            foreach (var line in lines)
+            {
+                var beam = CreateBeam(line, player == Player.X ? beamXMaterial : beamOMaterial, player == Player.X, 0.12f);
+                beam.name = "Beam " + player;
+                beams.Add(new BeamEntry { Beam = beam, Owner = player, Line = line });
+                beam.SetActive(!LayersSeparated);
+            }
         }
 
         /// <summary>Highlight the round-winning line (Classic ruleset).</summary>

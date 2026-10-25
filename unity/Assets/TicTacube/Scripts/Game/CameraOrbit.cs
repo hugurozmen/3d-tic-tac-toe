@@ -131,6 +131,10 @@ namespace TicTacube.Game
                 }
                 else if (trackingTouch && touch.phase == TouchPhase.Moved)
                 {
+                    // The Began-frame query can run before the input module
+                    // processed the touch; keep accumulating so a tap that
+                    // started on a button never falls through to the board.
+                    touchStartedOverUi = touchStartedOverUi || PointerOverUi(touch.fingerId);
                     touchTravel += touch.deltaPosition.magnitude;
 
                     // Dead zone: don't orbit until the finger clearly drags,
@@ -151,7 +155,7 @@ namespace TicTacube.Game
                 {
                     bool isTap = !dragging && Time.time - touchStartTime <= TapMaxSeconds;
 
-                    if (isTap && !touchStartedOverUi)
+                    if (isTap && !touchStartedOverUi && !PointerOverUi(touch.fingerId))
                     {
                         TryTap(touch.position);
                     }
@@ -213,7 +217,7 @@ namespace TicTacube.Game
             {
                 bool isTap = !dragging && Time.time - touchStartTime <= TapMaxSeconds;
 
-                if (isTap && !touchStartedOverUi)
+                if (isTap && !touchStartedOverUi && !PointerOverUi(-1))
                 {
                     TryTap(Input.mousePosition);
                 }

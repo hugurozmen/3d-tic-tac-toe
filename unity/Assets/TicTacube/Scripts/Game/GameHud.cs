@@ -787,7 +787,9 @@ namespace TicTacube.Game
                 return;
             }
 
-            var text = CreateText(transform, "Floating", message, big ? 72 : 54, TextAnchor.MiddleCenter, big ? new Color(1f, 0.84f, 0.32f, 1f) : TextColor);
+            // Parent under the HUD panel so menu/result transitions hide it
+            // instead of letting it float over every screen.
+            var text = CreateText(hudPanel.transform, "Floating", message, big ? 72 : 54, TextAnchor.MiddleCenter, big ? new Color(1f, 0.84f, 0.32f, 1f) : TextColor);
             text.fontStyle = FontStyle.Bold;
             AddOutline(text);
             var rect = (RectTransform)text.transform;
