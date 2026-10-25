@@ -44,6 +44,7 @@ namespace TicTacube.Game
         public int WinsO;
         public int Draws;
         public int TargetWins;
+        public bool Gravity;
     }
 
     /// <summary>
@@ -134,14 +135,14 @@ namespace TicTacube.Game
         // Stats
         // ------------------------------------------------------------------
 
-        private static string StatsKey(Ruleset ruleset, Difficulty difficulty)
+        private static string StatsKey(Ruleset ruleset, Difficulty difficulty, bool gravity)
         {
-            return KeyStatsPrefix + (int)ruleset + "_" + (int)difficulty;
+            return KeyStatsPrefix + (int)ruleset + "_" + (int)difficulty + (gravity ? "_g" : "");
         }
 
-        public static StatsData LoadStats(Ruleset ruleset, Difficulty difficulty)
+        public static StatsData LoadStats(Ruleset ruleset, Difficulty difficulty, bool gravity)
         {
-            string json = PlayerPrefs.GetString(StatsKey(ruleset, difficulty), "");
+            string json = PlayerPrefs.GetString(StatsKey(ruleset, difficulty, gravity), "");
 
             if (string.IsNullOrEmpty(json))
             {
@@ -158,9 +159,9 @@ namespace TicTacube.Game
             }
         }
 
-        public static StatsData RecordMatch(Ruleset ruleset, Difficulty difficulty, bool humanWon)
+        public static StatsData RecordMatch(Ruleset ruleset, Difficulty difficulty, bool gravity, bool humanWon)
         {
-            var stats = LoadStats(ruleset, difficulty);
+            var stats = LoadStats(ruleset, difficulty, gravity);
 
             if (humanWon)
             {
@@ -174,17 +175,17 @@ namespace TicTacube.Game
                 stats.Streak = 0;
             }
 
-            PlayerPrefs.SetString(StatsKey(ruleset, difficulty), JsonUtility.ToJson(stats));
+            PlayerPrefs.SetString(StatsKey(ruleset, difficulty, gravity), JsonUtility.ToJson(stats));
             PlayerPrefs.Save();
             return stats;
         }
 
         /// <summary>A drawn single-round match: counted, but streak survives.</summary>
-        public static StatsData RecordDraw(Ruleset ruleset, Difficulty difficulty)
+        public static StatsData RecordDraw(Ruleset ruleset, Difficulty difficulty, bool gravity)
         {
-            var stats = LoadStats(ruleset, difficulty);
+            var stats = LoadStats(ruleset, difficulty, gravity);
             stats.Draws += 1;
-            PlayerPrefs.SetString(StatsKey(ruleset, difficulty), JsonUtility.ToJson(stats));
+            PlayerPrefs.SetString(StatsKey(ruleset, difficulty, gravity), JsonUtility.ToJson(stats));
             PlayerPrefs.Save();
             return stats;
         }

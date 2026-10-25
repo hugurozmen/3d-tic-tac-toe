@@ -13,6 +13,20 @@ namespace TicTacube.Core
     {
         public const int CenterIndex = 13;
 
+        /// <summary>
+        /// When true, move enumeration is restricted to gravity-legal drops
+        /// (Tower mode). Set per ChooseMove call; thread-static so a
+        /// background AI task cannot leak the flag into other callers, and
+        /// a no-op when false (web parity preserved).
+        /// </summary>
+        [ThreadStatic]
+        private static bool gravityRules;
+
+        private static List<int> LegalMoves(Player?[] board)
+        {
+            return gravityRules ? Rules.GetGravityMoves(board) : Rules.GetAvailableMoves(board);
+        }
+
         private static readonly double[] LineWeights = { 0, 4, 34, 420 };
 
         private static readonly HashSet<int> Corners = new HashSet<int> { 0, 2, 6, 8, 18, 20, 24, 26 };
@@ -101,7 +115,7 @@ namespace TicTacube.Core
 
         private static int? FindWinningMove(Player?[] board, Player player)
         {
-            foreach (int move in Rules.GetAvailableMoves(board))
+            foreach (int move in LegalMoves(board))
             {
                 var next = (Player?[])board.Clone();
                 next[move] = player;
@@ -203,7 +217,7 @@ namespace TicTacube.Core
 
         private static List<int> GetCandidateMoves(Player?[] board)
         {
-            var moves = Rules.GetAvailableMoves(board);
+            var moves = LegalMoves(board);
 
             return moves
                 .OrderByDescending(move => move == CenterIndex ? 3 : Corners.Contains(move) ? 2 : 1)
@@ -214,7 +228,7 @@ namespace TicTacube.Core
         {
             double score = 0;
 
-            foreach (int move in Rules.GetAvailableMoves(board))
+            foreach (int move in LegalMoves(board))
             {
                 var next = (Player?[])board.Clone();
                 next[move] = player;
@@ -515,7 +529,7 @@ namespace TicTacube.Core
         {
             int best = 0;
 
-            foreach (int move in Rules.GetAvailableMoves(board))
+            foreach (int move in LegalMoves(board))
             {
                 var next = (Player?[])board.Clone();
                 next[move] = player;
@@ -643,7 +657,7 @@ namespace TicTacube.Core
         {
             var rivalThreatCells = new HashSet<int>(Rules.GetThreatCells(board, Rules.GetOtherPlayer(player)));
 
-            return Rules.GetAvailableMoves(board)
+            return LegalMoves(board)
                 .Select(move => new RankedMove
                 {
                     Move = move,
@@ -818,7 +832,7 @@ namespace TicTacube.Core
 
         private static int? ChooseLinesMove(Player?[] board, Player player, Difficulty difficulty, Func<double> random)
         {
-            var moves = Rules.GetAvailableMoves(board);
+            var moves = LegalMoves(board);
 
             if (moves.Count == 0)
             {
@@ -898,7 +912,7 @@ namespace TicTacube.Core
 
         private static int? ChooseClassicMove(Player?[] board, Player player, Difficulty difficulty, Func<double> random)
         {
-            var moves = Rules.GetAvailableMoves(board);
+            var moves = LegalMoves(board);
 
             if (moves.Count == 0)
             {
@@ -925,13 +939,13 @@ namespace TicTacube.Core
                 return TakeRandom(moves, random);
             }
 
-            int movesPlayed = Rules.CellCount - moves.Count;
+            int movesPlayed = Rules.CellCount - Rules.GetAvailableMoves(board).Count;
 
             if (difficulty != Difficulty.Easy && movesPlayed <= 1)
             {
                 foreach (int move in ClassicOpeningBook)
                 {
-                    if (board[move] == null)
+                    if (board[move] == null && (!gravityRules || Rules.IsGravityLegal(board, move)))
                     {
                         return move;
                     }
@@ -1070,17 +1084,27 @@ namespace TicTacube.Core
             Player player,
             Difficulty difficulty,
             Ruleset ruleset,
-            Func<double> random = null)
+            Func<double> random = null,
+            bool gravity = false)
         {
+            gravityRules = gravity;
+
             if (random == null)
             {
                 var rng = new Random();
                 random = rng.NextDouble;
             }
 
-            return ruleset == Ruleset.Lines
-                ? ChooseLinesMove(board, player, difficulty, random)
-                : ChooseClassicMove(board, player, difficulty, random);
+            try
+            {
+                return ruleset == Ruleset.Lines
+                    ? ChooseLinesMove(board, player, difficulty, random)
+                    : ChooseClassicMove(board, player, difficulty, random);
+            }
+            finally
+            {
+                gravityRules = false;
+            }
         }
     }
 }

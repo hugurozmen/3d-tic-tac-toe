@@ -89,7 +89,7 @@ namespace TicTacube.Game
         private string puzzleShareText = "";
 
         private int menuMode; // 0 solo, 1 duo, 2 online
-        private Ruleset menuRuleset = Ruleset.Lines;
+        private int menuRulesetIndex; // 0 Lines, 1 Classic, 2 Tower Lines, 3 Tower Classic
         private Difficulty menuDifficulty = Difficulty.Balanced;
         private int menuTargetWins = 1;
 
@@ -366,9 +366,21 @@ namespace TicTacube.Game
             RefreshMenuLabels();
         }
 
+        private Ruleset MenuRulesetBase
+        {
+            get { return menuRulesetIndex % 2 == 0 ? Ruleset.Lines : Ruleset.Classic; }
+        }
+
+        private bool MenuGravity
+        {
+            get { return menuRulesetIndex >= 2; }
+        }
+
         private void CycleRuleset()
         {
-            menuRuleset = menuRuleset == Ruleset.Lines ? Ruleset.Classic : Ruleset.Lines;
+            // Tower variants are local-only (the online server fixes rules).
+            int optionCount = MenuOnline ? 2 : 4;
+            menuRulesetIndex = (menuRulesetIndex + 1) % optionCount;
             RefreshMenuLabels();
         }
 
@@ -416,6 +428,44 @@ namespace TicTacube.Game
             RefreshHudLabels();
         }
 
+        private string MenuRulesetOptionName()
+        {
+            switch (menuRulesetIndex)
+            {
+                case 0:
+                    return GameStrings.T("Çizgiler", "Lines");
+                case 1:
+                    return GameStrings.T("Klasik", "Classic");
+                case 2:
+                    return GameStrings.T("Kule (Çizgiler)", "Tower (Lines)");
+                default:
+                    return GameStrings.T("Kule (Klasik)", "Tower (Classic)");
+            }
+        }
+
+        private string MenuRulesetDescription()
+        {
+            switch (menuRulesetIndex)
+            {
+                case 0:
+                    return GameStrings.T(
+                        "Tahta dolana kadar oynanır; tamamladığın her 3'lü çizgi 1 puan.\nEn çok çizgiyi yapan turu kazanır.",
+                        "Play until the board fills; every completed 3-in-a-row scores 1.\nMost lines wins the round.");
+                case 1:
+                    return GameStrings.T(
+                        "İlk 3'lü çizgiyi yapan turu kazanır.\nİlk hamleden sonra rakip taraf değişimi isteyebilir (Pie kuralı).",
+                        "First 3-in-a-row wins the round.\nAfter the first move the opponent may swap sides (Pie rule).");
+                case 2:
+                    return GameStrings.T(
+                        "Taşlar sütuna bırakılır, en alttaki boş hücreye düşer (9 hedef).\nTahta dolunca en çok çizgisi olan kazanır.",
+                        "Marks drop into a column and land on its lowest empty cell (9 targets).\nMost lines on the full board wins.");
+                default:
+                    return GameStrings.T(
+                        "Taşlar sütuna düşer; ilk 3'lü çizgiyi yapan turu kazanır.\n(Kule'de Pie kuralı yoktur.)",
+                        "Marks drop into columns; first 3-in-a-row wins the round.\n(No Pie rule in Tower.)");
+            }
+        }
+
         public static string RulesetName(Ruleset ruleset)
         {
             return ruleset == Ruleset.Lines
@@ -452,14 +502,13 @@ namespace TicTacube.Game
                     : menuMode == 1
                         ? GameStrings.T("İki Oyuncu", "Two Players")
                         : GameStrings.T("Online Oda", "Online Room"));
-            rulesetLabel.text = GameStrings.T("Kurallar: ", "Ruleset: ") + RulesetName(menuRuleset);
-            rulesetDescription.text = menuRuleset == Ruleset.Lines
-                ? GameStrings.T(
-                    "Tahta dolana kadar oynanır; tamamladığın her 3'lü çizgi 1 puan.\nEn çok çizgiyi yapan turu kazanır.",
-                    "Play until the board fills; every completed 3-in-a-row scores 1.\nMost lines wins the round.")
-                : GameStrings.T(
-                    "İlk 3'lü çizgiyi yapan turu kazanır.\nİlk hamleden sonra rakip taraf değişimi isteyebilir (Pie kuralı).",
-                    "First 3-in-a-row wins the round.\nAfter the first move the opponent may swap sides (Pie rule).");
+            if (MenuOnline && menuRulesetIndex >= 2)
+            {
+                menuRulesetIndex %= 2;
+            }
+
+            rulesetLabel.text = GameStrings.T("Kurallar: ", "Ruleset: ") + MenuRulesetOptionName();
+            rulesetDescription.text = MenuRulesetDescription();
             difficultyLabel.text = GameStrings.T("Zorluk: ", "Difficulty: ") + DifficultyName(menuDifficulty);
             difficultyLabel.color = MenuSolo ? TextColor : MutedColor;
             matchLengthLabel.text = GameStrings.T("Maç: ", "Match: ")
@@ -500,7 +549,7 @@ namespace TicTacube.Game
 
             if (MenuSolo)
             {
-                var stats = GamePrefs.LoadStats(menuRuleset, menuDifficulty);
+                var stats = GamePrefs.LoadStats(MenuRulesetBase, menuDifficulty, MenuGravity);
                 statsLabel.text = stats.Wins + stats.Losses + stats.Draws == 0
                     ? GameStrings.T("Bu zorlukta henüz maç oynamadın.", "No matches at this difficulty yet.")
                     : DifficultyName(menuDifficulty) + ": "
@@ -569,11 +618,11 @@ namespace TicTacube.Game
         {
             if (MenuOnline)
             {
-                controller.StartOnlineHost(ReadServerUrl(), menuRuleset);
+                controller.StartOnlineHost(ReadServerUrl(), MenuRulesetBase);
                 return;
             }
 
-            controller.StartMatch(MenuSolo, menuRuleset, menuDifficulty, menuTargetWins);
+            controller.StartMatch(MenuSolo, MenuRulesetBase, menuDifficulty, menuTargetWins, MenuGravity);
         }
 
         private void JoinPressed()

@@ -37,6 +37,7 @@ namespace TicTacube.Game
 
         private GamePhase phase = GamePhase.Menu;
         private bool soloMode = true;
+        private bool gravityMode;
         private Ruleset ruleset = Ruleset.Lines;
         private Difficulty difficulty = Difficulty.Balanced;
         private Player humanPlayer = Player.X;
@@ -146,11 +147,12 @@ namespace TicTacube.Game
         // Flow control (called from the HUD)
         // ------------------------------------------------------------------
 
-        public void StartMatch(bool solo, Ruleset selectedRuleset, Difficulty selectedDifficulty, int targetWins)
+        public void StartMatch(bool solo, Ruleset selectedRuleset, Difficulty selectedDifficulty, int targetWins, bool gravity)
         {
             GamePrefs.ClearSave();
             puzzleMode = false;
             soloMode = solo;
+            gravityMode = gravity;
             ruleset = selectedRuleset;
             difficulty = selectedDifficulty;
             humanPlayer = Player.X;
@@ -181,6 +183,7 @@ namespace TicTacube.Game
 
             puzzleMode = false;
             soloMode = save.Solo;
+            gravityMode = save.Gravity;
             ruleset = (Ruleset)save.Ruleset;
             difficulty = (Difficulty)save.Difficulty;
             humanPlayer = (Player)save.HumanPlayer;
@@ -326,7 +329,7 @@ namespace TicTacube.Game
 
             if (phase == GamePhase.MatchOver)
             {
-                StartMatch(soloMode, ruleset, difficulty, match.TargetWins);
+                StartMatch(soloMode, ruleset, difficulty, match.TargetWins, gravityMode);
                 return;
             }
 
@@ -421,6 +424,17 @@ namespace TicTacube.Game
                 return;
             }
 
+            if (gravityMode)
+            {
+                // Tower: any tap in a column drops to its lowest empty cell.
+                index = Rules.GravityDropIndex(board, index);
+
+                if (index < 0)
+                {
+                    return; // column full
+                }
+            }
+
             if (board[index] != null)
             {
                 return;
@@ -504,7 +518,7 @@ namespace TicTacube.Game
             var previous = (Player?[])board.Clone();
             var mover = currentPlayer;
             board[index] = mover;
-            boardView.SetMark(index, mover, true);
+            boardView.SetMark(index, mover, true, gravityMode);
             moveHistory.Add(new KeyValuePair<int, Player>(index, mover));
             gameAudio.PlayTap();
 
@@ -678,7 +692,9 @@ namespace TicTacube.Game
         /// </summary>
         private bool HandlePieRule()
         {
-            if (ruleset != Ruleset.Classic || pieResolved)
+            // Tower has no pie: the column constraint already tempers the
+            // opening, and dropped marks can't be 'taken over' meaningfully.
+            if (ruleset != Ruleset.Classic || pieResolved || gravityMode)
             {
                 return false;
             }
@@ -881,8 +897,9 @@ namespace TicTacube.Game
             var aiPlayer = currentPlayer;
             var aiDifficulty = difficulty;
             var aiRuleset = ruleset;
+            var aiGravity = gravityMode;
             aiStartedAt = Time.time;
-            aiTask = Task.Run(() => Ai.ChooseMove(boardCopy, aiPlayer, aiDifficulty, aiRuleset));
+            aiTask = Task.Run(() => Ai.ChooseMove(boardCopy, aiPlayer, aiDifficulty, aiRuleset, null, aiGravity));
         }
 
         private void Update()
@@ -926,13 +943,18 @@ namespace TicTacube.Game
 
         private void PlaceAiMark(int index)
         {
-            if (board[index] != null)
+            if (board[index] != null || (gravityMode && !Rules.IsGravityLegal(board, index)))
             {
-                foreach (int move in Rules.GetAvailableMoves(board))
+                var fallback = gravityMode
+                    ? Rules.GetGravityMoves(board)
+                    : Rules.GetAvailableMoves(board);
+
+                if (fallback.Count == 0)
                 {
-                    index = move;
-                    break;
+                    return;
                 }
+
+                index = fallback[0];
             }
 
             PlaceMark(index);
@@ -983,12 +1005,12 @@ namespace TicTacube.Game
 
                 if (match.IsComplete && soloMode && match.Winner != null)
                 {
-                    stats = GamePrefs.RecordMatch(ruleset, difficulty, match.Winner.Value == humanPlayer);
+                    stats = GamePrefs.RecordMatch(ruleset, difficulty, gravityMode, match.Winner.Value == humanPlayer);
                 }
                 else if (matchEndedByDraw && soloMode)
                 {
                     // Draws leave a trace too (and don't break the streak).
-                    GamePrefs.RecordDraw(ruleset, difficulty);
+                    GamePrefs.RecordDraw(ruleset, difficulty, gravityMode);
                 }
             }
             else
@@ -1103,6 +1125,7 @@ namespace TicTacube.Game
             }
 
             puzzleMode = true;
+            gravityMode = false;
             tutorialActive = false;
             currentPuzzle = Puzzles.GetDailyPuzzle(DateTime.Now);
             ruleset = currentPuzzle.Ruleset;
@@ -1310,6 +1333,7 @@ namespace TicTacube.Game
 
             onlineMode = true;
             puzzleMode = false;
+            gravityMode = false;
             tutorialActive = false;
             onlineRendered = null;
             onlineRenderedSequence = -1;
@@ -1880,6 +1904,7 @@ namespace TicTacube.Game
                 WinsO = match.WinsO,
                 Draws = match.Draws,
                 TargetWins = match.TargetWins,
+                Gravity = gravityMode,
             });
         }
 
