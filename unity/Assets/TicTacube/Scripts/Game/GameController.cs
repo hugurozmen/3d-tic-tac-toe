@@ -75,6 +75,40 @@ namespace TicTacube.Game
         // can't stack a second (the opponent's!) mark into the same column.
         private float lastGravityPlacementAt = -10f;
 
+        // Tournament Lines: center-weighted scores + opening komi verdict.
+        private bool tournamentMode;
+        private double tournamentScoreX;
+        private double tournamentScoreO;
+
+        // The round verdict actually used (tournament can override the raw
+        // evaluation): set at the top of FinishRound.
+        private Player? finalRoundWinner;
+        private bool finalRoundDraw;
+
+        // Opponent ladder.
+        private bool ladderMode;
+        private Ladder.Step ladderStep;
+        private bool ladderSuccess;
+
+        // Match log for the summary panel + round replay (local modes only).
+        private sealed class LoggedMove
+        {
+            public int Index;
+            public Player Mover;
+            public int LinesGained;
+        }
+
+        private readonly List<LoggedMove> roundMoveLog = new List<LoggedMove>();
+        private List<LoggedMove> lastRoundLog = new List<LoggedMove>();
+        private readonly List<string> matchRoundSummaries = new List<string>();
+        private int bestMoveLines;
+        private int bestMoveNumber;
+        private bool replaying;
+        private Coroutine replayRoutine;
+        private string lastShownTitle = "";
+        private string lastShownSubtitle = "";
+        private string lastShownButton = "";
+
         private Task<int?> aiTask;
         private float aiStartedAt;
         private Coroutine resultRoutine;
@@ -155,13 +189,15 @@ namespace TicTacube.Game
         // Flow control (called from the HUD)
         // ------------------------------------------------------------------
 
-        public void StartMatch(bool solo, Ruleset selectedRuleset, Difficulty selectedDifficulty, int targetWins, bool gravity)
+        public void StartMatch(bool solo, Ruleset selectedRuleset, Difficulty selectedDifficulty, int targetWins, bool gravity, bool tournament = false)
         {
             GamePrefs.ClearSave();
             puzzleMode = false;
+            ladderMode = false;
             soloMode = solo;
-            gravityMode = gravity;
-            ruleset = selectedRuleset;
+            gravityMode = gravity && !tournament;
+            tournamentMode = tournament;
+            ruleset = tournament ? Ruleset.Lines : selectedRuleset;
             difficulty = selectedDifficulty;
             humanPlayer = Player.X;
             tutorialActive = !GamePrefs.TutorialDone;
@@ -171,9 +207,60 @@ namespace TicTacube.Game
             // very first game keeps the human opening so the tutorial works.
             Player opener = tutorialActive ? Player.X : GamePrefs.TakeNextOpener();
             match = MatchState.Create(opener);
-            match.TargetWins = Mathf.Max(1, targetWins);
+
+            // Tournament is a competitive format: at least a 2-win match.
+            match.TargetWins = tournament ? Mathf.Max(2, targetWins) : Mathf.Max(1, targetWins);
+            ResetMatchLog();
             StartRound();
             hud.ShowGame();
+        }
+
+        /// <summary>Start (or replay) a ladder step as a dedicated match.</summary>
+        public void StartLadderStep(Ladder.Step step)
+        {
+            if (!Ladder.IsUnlocked(step))
+            {
+                return;
+            }
+
+            if (onlineMode)
+            {
+                online.Close();
+                onlineMode = false;
+                hud.SetOnlineUi(false);
+                hud.HideRoomCode();
+            }
+
+            GamePrefs.ClearSave();
+            puzzleMode = false;
+            tournamentMode = false;
+            ladderMode = true;
+            ladderStep = step;
+            ladderSuccess = false;
+            soloMode = true;
+            gravityMode = step.Gravity;
+            ruleset = step.Ruleset;
+            difficulty = step.Difficulty;
+            humanPlayer = Player.X;
+            tutorialActive = false;
+            tutorialStep = 0;
+
+            match = MatchState.Create(step.AiOpens ? Player.O : Player.X);
+            match.TargetWins = step.TargetWins;
+            ResetMatchLog();
+            StartRound();
+            hud.ShowGame();
+            hud.Toast(GameStrings.T("Basamak ", "Step ") + step.Number + ": " + step.Condition(), 3.5f);
+        }
+
+        private void ResetMatchLog()
+        {
+            roundMoveLog.Clear();
+            lastRoundLog = new List<LoggedMove>();
+            matchRoundSummaries.Clear();
+            bestMoveLines = 0;
+            bestMoveNumber = 0;
+            hud.SetSummaryAvailable(false);
         }
 
         public void ResumeSavedMatch()
@@ -190,9 +277,12 @@ namespace TicTacube.Game
             }
 
             puzzleMode = false;
+            ladderMode = false;
+            tournamentMode = save.Tournament;
             soloMode = save.Solo;
             gravityMode = save.Gravity;
             ruleset = (Ruleset)save.Ruleset;
+            ResetMatchLog();
             difficulty = (Difficulty)save.Difficulty;
             humanPlayer = (Player)save.HumanPlayer;
             pieResolved = save.PieResolved;
@@ -258,6 +348,16 @@ namespace TicTacube.Game
                 resultRoutine = null;
             }
 
+            if (replayRoutine != null)
+            {
+                StopCoroutine(replayRoutine);
+                replayRoutine = null;
+                replaying = false;
+            }
+
+            hud.SetSummaryAvailable(false);
+            hud.HideSummary();
+
             if (onlineMode)
             {
                 if (online.HasSession)
@@ -281,10 +381,18 @@ namespace TicTacube.Game
                 // Leaving a puzzle must never overwrite a real match save.
                 puzzleMode = false;
             }
+            else if (ladderMode)
+            {
+                // Ladder attempts are not resumable; leaving abandons them.
+                ladderMode = false;
+            }
             else if (match != null && !match.IsComplete && !matchEndedByDraw && phase != GamePhase.Menu)
             {
                 SaveProgress(phase == GamePhase.RoundOver ? 1 : 0);
             }
+
+            tournamentMode = false;
+            ladderMode = false;
 
             aiTask = null;
             phase = GamePhase.Menu;
@@ -335,9 +443,27 @@ namespace TicTacube.Game
                 return;
             }
 
+            if (ladderMode && phase == GamePhase.MatchOver)
+            {
+                if (ladderSuccess && ladderStep.Number >= Ladder.Steps.Length)
+                {
+                    BackToMenu();
+                }
+                else if (ladderSuccess)
+                {
+                    StartLadderStep(Ladder.Steps[ladderStep.Number]); // next (0-indexed array)
+                }
+                else
+                {
+                    StartLadderStep(ladderStep);
+                }
+
+                return;
+            }
+
             if (phase == GamePhase.MatchOver)
             {
-                StartMatch(soloMode, ruleset, difficulty, match.TargetWins, gravityMode);
+                StartMatch(soloMode, ruleset, difficulty, match.TargetWins, gravityMode, tournamentMode);
                 return;
             }
 
@@ -364,6 +490,7 @@ namespace TicTacube.Game
             pieSwapByHuman = false;
             behindAt21 = false;
             lastLeadSign = 0;
+            roundMoveLog.Clear();
             currentPlayer = match.Opener;
             lastResult = Rules.EvaluateBoard(board, ruleset);
             phase = GamePhase.Playing;
@@ -563,15 +690,26 @@ namespace TicTacube.Game
                 ShowTutorialStep(1);
             }
 
+            int linesGained = 0;
+
             if (ruleset == Ruleset.Lines)
             {
                 var newLines = Rules.GetNewCompletedLines(previous, board, mover);
+                linesGained = newLines.Count;
 
                 if (newLines.Count > 0)
                 {
                     boardView.AddLineBeams(newLines, mover);
                     CelebrateLines(newLines, mover, humanMoved);
                 }
+            }
+
+            roundMoveLog.Add(new LoggedMove { Index = index, Mover = mover, LinesGained = linesGained });
+
+            if ((!soloMode || mover == humanPlayer) && linesGained > bestMoveLines)
+            {
+                bestMoveLines = linesGained;
+                bestMoveNumber = roundMoveLog.Count;
             }
 
             lastResult = Rules.EvaluateBoard(board, ruleset);
@@ -1030,22 +1168,37 @@ namespace TicTacube.Game
 
             hud.ClearHint();
             boardView.ClearHints();
-            match.RecordRound(lastResult.Winner, lastResult.IsDraw);
+
+            // The round verdict: raw evaluation, or the Tournament override
+            // (center-weighted score; an exact tie goes to the non-opener).
+            finalRoundWinner = lastResult.Winner;
+            finalRoundDraw = lastResult.Winner == null && lastResult.IsDraw;
+
+            if (tournamentMode && lastResult.IsComplete)
+            {
+                tournamentScoreX = LinesVariant.WeightedScore(lastResult.CompletedX);
+                tournamentScoreO = LinesVariant.WeightedScore(lastResult.CompletedO);
+                finalRoundWinner = LinesVariant.Verdict(tournamentScoreX, tournamentScoreO, match.Opener);
+                finalRoundDraw = false;
+            }
+
+            match.RecordRound(finalRoundWinner, finalRoundDraw);
 
             // A single-round match ends on a draw too — draws don't count
             // toward the win target, so without this it would never finish.
-            matchEndedByDraw = !match.IsComplete && match.TargetWins == 1 && lastResult.IsDraw;
+            matchEndedByDraw = !match.IsComplete && match.TargetWins == 1 && finalRoundDraw;
             bool matchOver = match.IsComplete || matchEndedByDraw;
             phase = matchOver ? GamePhase.MatchOver : GamePhase.RoundOver;
             RefreshHud();
+            RecordRoundSummary(matchOver);
 
-            bool humanWonRound = lastResult.Winner != null
-                && (!soloMode || lastResult.Winner.Value == humanPlayer);
-            gameAudio.PlayRoundEnd(humanWonRound, lastResult.Winner == null);
+            bool humanWonRound = finalRoundWinner != null
+                && (!soloMode || finalRoundWinner.Value == humanPlayer);
+            gameAudio.PlayRoundEnd(humanWonRound, finalRoundWinner == null);
 
-            if (lastResult.Winner != null)
+            if (finalRoundWinner != null)
             {
-                boardView.PulseBeams(lastResult.Winner.Value, ResultDelaySeconds);
+                boardView.PulseBeams(finalRoundWinner.Value, ResultDelaySeconds);
 
                 if (humanWonRound)
                 {
@@ -1061,12 +1214,12 @@ namespace TicTacube.Game
 
                 if (match.IsComplete && soloMode && match.Winner != null)
                 {
-                    stats = GamePrefs.RecordMatch(ruleset, difficulty, gravityMode, match.Winner.Value == humanPlayer);
+                    stats = GamePrefs.RecordMatch(ruleset, difficulty, gravityMode, tournamentMode, match.Winner.Value == humanPlayer);
                 }
                 else if (matchEndedByDraw && soloMode)
                 {
                     // Draws leave a trace too (and don't break the streak).
-                    GamePrefs.RecordDraw(ruleset, difficulty, gravityMode);
+                    GamePrefs.RecordDraw(ruleset, difficulty, gravityMode, tournamentMode);
                 }
             }
             else
@@ -1084,7 +1237,7 @@ namespace TicTacube.Game
                     {
                         Solo = true,
                         HumanWon = humanWonRound,
-                        Draw = lastResult.Winner == null && lastResult.IsDraw,
+                        Draw = finalRoundDraw,
                         Ruleset = ruleset,
                         Gravity = gravityMode,
                         Difficulty = difficulty,
@@ -1127,12 +1280,71 @@ namespace TicTacube.Game
                 ? GameStrings.T("Yeni Maç", "New Match")
                 : GameStrings.T("Sonraki Tur", "Next Round");
 
+            if (ladderMode && matchOver)
+            {
+                bool humanWonMatch = match.IsComplete && match.Winner != null && match.Winner.Value == humanPlayer;
+                ladderSuccess = Ladder.ConditionMet(
+                    ladderStep,
+                    humanWonMatch,
+                    lastResult.LineScore(humanPlayer),
+                    lastResult.LineScore(Rules.GetOtherPlayer(humanPlayer)));
+
+                if (ladderSuccess)
+                {
+                    bool advanced = Ladder.Conquer(ladderStep);
+                    title = GameStrings.T(
+                        "Basamak " + ladderStep.Number + " fethedildi!",
+                        "Step " + ladderStep.Number + " conquered!");
+                    subtitle = ladderStep.Condition()
+                        + (advanced && ladderStep.Number < Ladder.Steps.Length
+                            ? GameStrings.T("\nSıradaki: ", "\nNext: ") + Ladder.Steps[ladderStep.Number].Title()
+                            : "");
+                    buttonLabel = ladderStep.Number < Ladder.Steps.Length
+                        ? GameStrings.T("Sonraki Basamak", "Next Step")
+                        : GameStrings.T("Menü", "Menu");
+                }
+                else
+                {
+                    title = GameStrings.T(
+                        "Basamak " + ladderStep.Number + " düştü.",
+                        "Step " + ladderStep.Number + " holds.");
+                    subtitle = GameStrings.T("Koşul: ", "Condition: ") + ladderStep.Condition();
+                    buttonLabel = GameStrings.T("Tekrar Dene", "Try Again");
+                }
+            }
+
+            lastShownTitle = title;
+            lastShownSubtitle = subtitle;
+            lastShownButton = buttonLabel;
+            hud.SetSummaryAvailable(matchOver && matchRoundSummaries.Count > 0);
+
             if (resultRoutine != null)
             {
                 StopCoroutine(resultRoutine);
             }
 
             resultRoutine = StartCoroutine(ShowResultDelayed(title, subtitle, buttonLabel));
+        }
+
+        /// <summary>One line per finished round, for the match summary panel.</summary>
+        private void RecordRoundSummary(bool matchOver)
+        {
+            lastRoundLog = new List<LoggedMove>(roundMoveLog);
+
+            string score = tournamentMode
+                ? LinesVariant.Format(tournamentScoreX) + " - " + LinesVariant.Format(tournamentScoreO)
+                : ruleset == Ruleset.Lines
+                    ? lastResult.LineScoreX + " - " + lastResult.LineScoreO
+                    : GameStrings.T((Rules.CellCount - lastResult.RemainingCells) + " hamle", (Rules.CellCount - lastResult.RemainingCells) + " moves");
+
+            string verdict = finalRoundWinner == null
+                ? GameStrings.T("berabere", "draw")
+                : soloMode
+                    ? (finalRoundWinner.Value == humanPlayer ? GameStrings.T("Sen", "You") : GameStrings.T("Rakip", "Opp"))
+                    : finalRoundWinner.Value.ToString();
+
+            matchRoundSummaries.Add(GameStrings.T("Tur ", "Round ") + match.RoundNumber
+                + ":  X " + score + " O  —  " + verdict);
         }
 
         private IEnumerator ShowResultDelayed(string title, string subtitle, string buttonLabel)
@@ -1156,17 +1368,17 @@ namespace TicTacube.Game
                     : GameStrings.T("Rakip maçı kazandı.", "The opponent wins the match.");
             }
 
-            if (lastResult.Winner == null)
+            if (finalRoundWinner == null)
             {
                 return GameStrings.T("Berabere!", "It's a draw!");
             }
 
             if (!soloMode)
             {
-                return lastResult.Winner.Value + GameStrings.T(" turu kazandı!", " wins the round!");
+                return finalRoundWinner.Value + GameStrings.T(" turu kazandı!", " wins the round!");
             }
 
-            return lastResult.Winner.Value == humanPlayer
+            return finalRoundWinner.Value == humanPlayer
                 ? GameStrings.T("Turu kazandın!", "You win the round!")
                 : GameStrings.T("Rakip turu kazandı.", "The opponent wins the round.");
         }
@@ -1175,13 +1387,25 @@ namespace TicTacube.Game
         {
             string subtitle;
 
-            if (ruleset == Ruleset.Lines)
+            if (tournamentMode)
+            {
+                subtitle = GameStrings.T("Ağırlıklı çizgi  X ", "Weighted lines  X ")
+                    + LinesVariant.Format(tournamentScoreX) + " - " + LinesVariant.Format(tournamentScoreO) + " O";
+
+                if (tournamentScoreX == tournamentScoreO)
+                {
+                    subtitle += GameStrings.T(
+                        "\nEşitlik — açılmayan taraf kazanır (komi).",
+                        "\nTied — the non-opener wins (komi).");
+                }
+            }
+            else if (ruleset == Ruleset.Lines)
             {
                 subtitle = GameStrings.T("Çizgi  X ", "Lines  X ")
                     + lastResult.LineScoreX + " - " + lastResult.LineScoreO + " O";
 
                 // Consolation: losing with completed lines still reads as progress.
-                if (soloMode && lastResult.Winner != null && lastResult.Winner.Value != humanPlayer
+                if (soloMode && finalRoundWinner != null && finalRoundWinner.Value != humanPlayer
                     && lastResult.LineScore(humanPlayer) > 0)
                 {
                     subtitle += GameStrings.T(
@@ -1229,6 +1453,8 @@ namespace TicTacube.Game
 
             puzzleMode = true;
             gravityMode = false;
+            tournamentMode = false;
+            ladderMode = false;
             tutorialActive = false;
             currentPuzzle = Puzzles.GetDailyPuzzle(DateTime.Now);
             ruleset = currentPuzzle.Ruleset;
@@ -1445,6 +1671,8 @@ namespace TicTacube.Game
             onlineMode = true;
             puzzleMode = false;
             gravityMode = false;
+            tournamentMode = false;
+            ladderMode = false;
             tutorialActive = false;
             onlineRendered = null;
             onlineRenderedSequence = -1;
@@ -2018,7 +2246,7 @@ namespace TicTacube.Game
 
         private void SaveProgress(int stage)
         {
-            if (onlineMode || puzzleMode || match == null || match.IsComplete)
+            if (onlineMode || puzzleMode || ladderMode || match == null || match.IsComplete)
             {
                 return;
             }
@@ -2048,17 +2276,86 @@ namespace TicTacube.Game
                 Draws = match.Draws,
                 TargetWins = match.TargetWins,
                 Gravity = gravityMode,
+                Tournament = tournamentMode,
             });
         }
 
         private void OnApplicationPause(bool paused)
         {
-            if (paused && !onlineMode && !puzzleMode
+            if (paused && !onlineMode && !puzzleMode && !ladderMode
                 && match != null && !match.IsComplete && !matchEndedByDraw
                 && phase != GamePhase.Menu && phase != GamePhase.MatchOver)
             {
                 SaveProgress(phase == GamePhase.RoundOver ? 1 : 0);
             }
+        }
+
+        // ------------------------------------------------------------------
+        // Match summary + round replay (local modes)
+        // ------------------------------------------------------------------
+
+        public void ShowMatchSummaryPressed()
+        {
+            if (matchRoundSummaries.Count == 0)
+            {
+                return;
+            }
+
+            string bestMove = bestMoveLines > 0
+                ? GameStrings.T(
+                    "En iyi hamlen: +" + bestMoveLines + " çizgi (" + bestMoveNumber + ". hamle, son tur)",
+                    "Your best move: +" + bestMoveLines + " lines (move " + bestMoveNumber + ", last round)")
+                : "";
+            hud.ShowSummary(matchRoundSummaries, bestMove, lastRoundLog.Count > 0 && !replaying);
+        }
+
+        public void ReplayLastRoundPressed()
+        {
+            if (replaying || onlineMode || lastRoundLog.Count == 0
+                || (phase != GamePhase.MatchOver && phase != GamePhase.RoundOver))
+            {
+                return;
+            }
+
+            if (resultRoutine != null)
+            {
+                StopCoroutine(resultRoutine);
+                resultRoutine = null;
+            }
+
+            replayRoutine = StartCoroutine(ReplayLastRound());
+        }
+
+        private IEnumerator ReplayLastRound()
+        {
+            replaying = true;
+            hud.HideSummary();
+            hud.HideResult();
+            hud.Toast(GameStrings.T("Son tur tekrar oynatılıyor…", "Replaying the last round…"), 2f);
+            boardView.ClearBoard();
+            boardView.ClearHints();
+
+            var scratch = Rules.CreateBoard();
+
+            foreach (var move in lastRoundLog)
+            {
+                var previous = (Player?[])scratch.Clone();
+                scratch[move.Index] = move.Mover;
+                boardView.SetMark(move.Index, move.Mover, true, gravityMode);
+                gameAudio.PlayTap();
+
+                if (ruleset == Ruleset.Lines)
+                {
+                    boardView.AddLineBeams(Rules.GetNewCompletedLines(previous, scratch, move.Mover), move.Mover);
+                }
+
+                yield return new WaitForSeconds(0.45f);
+            }
+
+            yield return new WaitForSeconds(0.8f);
+            replaying = false;
+            replayRoutine = null;
+            hud.ShowResult(lastShownTitle, lastShownSubtitle, lastShownButton);
         }
 
         // ------------------------------------------------------------------
@@ -2103,6 +2400,14 @@ namespace TicTacube.Game
         {
             hud.SetTurn(currentPlayer, soloMode, humanPlayer, phase == GamePhase.AiThinking);
             hud.SetScores(match, lastResult, ruleset, soloMode, humanPlayer);
+
+            if (tournamentMode && lastResult != null)
+            {
+                double weightedX = LinesVariant.WeightedScore(lastResult.CompletedX);
+                double weightedO = LinesVariant.WeightedScore(lastResult.CompletedO);
+                hud.SetLineScoreText(GameStrings.T("Çizgi (ağırlıklı)  ", "Lines (weighted)  ")
+                    + "X " + LinesVariant.Format(weightedX) + " - " + LinesVariant.Format(weightedO) + " O");
+            }
             hud.SetUndoEnabled(
                 phase == GamePhase.Playing
                 && moveHistory.Count > 0

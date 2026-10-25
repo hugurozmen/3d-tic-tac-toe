@@ -212,7 +212,8 @@ namespace TicTacube.Game
                 foreach (Ruleset ruleset in new[] { Ruleset.Lines, Ruleset.Classic })
                 {
                     if (GamePrefs.LoadStats(ruleset, difficulty, false).Wins > 0
-                        || GamePrefs.LoadStats(ruleset, difficulty, true).Wins > 0)
+                        || GamePrefs.LoadStats(ruleset, difficulty, true).Wins > 0
+                        || GamePrefs.LoadStats(ruleset, difficulty, false, true).Wins > 0)
                     {
                         hasWin = true;
                         break;
