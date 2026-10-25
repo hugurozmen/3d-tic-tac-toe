@@ -49,6 +49,17 @@ genç oyuncu ve erişilebilirlik ihtiyaçları olan oyuncu).
 - **İstatistik ve seri**: zorluk + kural seti başına galibiyet/mağlubiyet/
   beraberlik, güncel ve en iyi seri (cihazda saklanır; beraberlik seriyi
   bozmaz)
+- **Başarımlar**: 16 tek seferlik rozet (ilk çizgi, çifte/üçlü hamle,
+  merkezsiz zafer, 21. hamle geri dönüşü, pie takası zaferi, Zor/Usta
+  galibiyetleri, Usta serisi, 10+ çizgili tur, Usta'ya karşı beraberlik,
+  7 hamlede Klasik, toplam 100 çizgi, dört zorlukta galibiyet, 7 günlük
+  bulmaca serisi, ilk online maç); kazanım anında bildirim + fanfar
+- **Günlük hedefler**: tarih-tohumlu 3 hedef (sunucusuz, deterministik);
+  üçü de bitince günün yıldızı ve yıldız serisi; menüdeki
+  "Hedefler & Başarımlar" paneli ikisini birlikte gösterir
+- **Pie-farkında AI açılışı** (Klasik solo): AI artık merkezi açıp takas
+  hediye etmez — Dengeli köşe, Zor/Usta yüz-merkezi açar (kendi takas
+  eşiklerinin altında); Kolay zorlukta pie kartı tek satır ipucu verir
 - **Kaldığın yerden devam**: maç durumu her hamlede kaydedilir; uygulama
   kapansa bile menüden sürdürülür
 - **Rehberli ilk tur**: ilk oyunda adım adım ipucu çubuğu; kurallar oyun

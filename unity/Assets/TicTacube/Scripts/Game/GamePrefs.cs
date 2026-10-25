@@ -235,6 +235,58 @@ namespace TicTacube.Game
         }
 
         // ------------------------------------------------------------------
+        // Achievements + lifetime counters (plain string formats: robust and
+        // testable without JsonUtility)
+        // ------------------------------------------------------------------
+
+        private const string KeyAchievements = "tictacube_achievements";
+        private const string KeyTotalLines = "tictacube_total_lines";
+        private const string KeyDailyGoals = "tictacube_daily_goals";
+
+        public static bool HasAchievement(string id)
+        {
+            string raw = PlayerPrefs.GetString(KeyAchievements, "");
+            return ("," + raw + ",").Contains("," + id + ",");
+        }
+
+        /// <summary>true when this call newly awarded the achievement.</summary>
+        public static bool AwardAchievement(string id)
+        {
+            if (HasAchievement(id))
+            {
+                return false;
+            }
+
+            string raw = PlayerPrefs.GetString(KeyAchievements, "");
+            PlayerPrefs.SetString(KeyAchievements, string.IsNullOrEmpty(raw) ? id : raw + "," + id);
+            PlayerPrefs.Save();
+            return true;
+        }
+
+        public static int TotalLines
+        {
+            get { return PlayerPrefs.GetInt(KeyTotalLines, 0); }
+        }
+
+        public static int AddTotalLines(int count)
+        {
+            int total = TotalLines + count;
+            PlayerPrefs.SetInt(KeyTotalLines, total);
+            PlayerPrefs.Save();
+            return total;
+        }
+
+        public static string DailyGoalsRaw
+        {
+            get { return PlayerPrefs.GetString(KeyDailyGoals, ""); }
+            set
+            {
+                PlayerPrefs.SetString(KeyDailyGoals, value ?? "");
+                PlayerPrefs.Save();
+            }
+        }
+
+        // ------------------------------------------------------------------
         // Resume snapshot
         // ------------------------------------------------------------------
 

@@ -80,6 +80,9 @@ namespace TicTacube.Game
         private Text roomCodeCopyLabel;
         private string shownRoomCode = "";
         private Text dailyPuzzleLabel;
+        private Text progressLabel;
+        private GameObject progressPanel;
+        private RectTransform progressContent;
 
         private int shownLineA = -1;
         private int shownLineB = -1;
@@ -122,6 +125,7 @@ namespace TicTacube.Game
             BuildResultOverlay();
             BuildRoomCodePanel();
             BuildPiePanel();
+            BuildProgressPanel();
             ShowMenu();
         }
 
@@ -326,6 +330,12 @@ namespace TicTacube.Game
             CreateMenuRow(rect, "QuickRow", new Vector2(-198f, -1122f), halfSize, ToggleQuickMove, out quickMoveLabel);
             CreateMenuRow(rect, "LanguageRow", new Vector2(198f, -1122f), halfSize, CycleLanguage, out languageLabel);
 
+            Text progressText;
+            var progressButton = CreateButton(rect, "Progress", 32, ProgressPressed, out progressText);
+            progressLabel = progressText;
+            Place((RectTransform)progressButton.transform, new Vector2(0f, 1f), new Vector2(28f, -28f), new Vector2(330f, 130f));
+            progressButton.GetComponent<Image>().color = AccentDimColor;
+
             Text dailyText;
             var dailyButton = CreateButton(rect, "DailyPuzzle", 34, DailyPuzzlePressed, out dailyText);
             dailyPuzzleLabel = dailyText;
@@ -366,21 +376,34 @@ namespace TicTacube.Game
             RefreshMenuLabels();
         }
 
+        // Online shows/starts only the base rulesets, but the player's Tower
+        // selection survives a pass through the online mode untouched.
+        private int EffectiveRulesetIndex
+        {
+            get { return MenuOnline ? menuRulesetIndex % 2 : menuRulesetIndex; }
+        }
+
         private Ruleset MenuRulesetBase
         {
-            get { return menuRulesetIndex % 2 == 0 ? Ruleset.Lines : Ruleset.Classic; }
+            get { return EffectiveRulesetIndex % 2 == 0 ? Ruleset.Lines : Ruleset.Classic; }
         }
 
         private bool MenuGravity
         {
-            get { return menuRulesetIndex >= 2; }
+            get { return EffectiveRulesetIndex >= 2; }
         }
 
         private void CycleRuleset()
         {
-            // Tower variants are local-only (the online server fixes rules).
-            int optionCount = MenuOnline ? 2 : 4;
-            menuRulesetIndex = (menuRulesetIndex + 1) % optionCount;
+            if (MenuOnline)
+            {
+                menuRulesetIndex = (EffectiveRulesetIndex + 1) % 2;
+            }
+            else
+            {
+                menuRulesetIndex = (menuRulesetIndex + 1) % 4;
+            }
+
             RefreshMenuLabels();
         }
 
@@ -430,7 +453,7 @@ namespace TicTacube.Game
 
         private string MenuRulesetOptionName()
         {
-            switch (menuRulesetIndex)
+            switch (EffectiveRulesetIndex)
             {
                 case 0:
                     return GameStrings.T("Çizgiler", "Lines");
@@ -445,7 +468,7 @@ namespace TicTacube.Game
 
         private string MenuRulesetDescription()
         {
-            switch (menuRulesetIndex)
+            switch (EffectiveRulesetIndex)
             {
                 case 0:
                     return GameStrings.T(
@@ -502,11 +525,6 @@ namespace TicTacube.Game
                     : menuMode == 1
                         ? GameStrings.T("İki Oyuncu", "Two Players")
                         : GameStrings.T("Online Oda", "Online Room"));
-            if (MenuOnline && menuRulesetIndex >= 2)
-            {
-                menuRulesetIndex %= 2;
-            }
-
             rulesetLabel.text = GameStrings.T("Kurallar: ", "Ruleset: ") + MenuRulesetOptionName();
             rulesetDescription.text = MenuRulesetDescription();
             difficultyLabel.text = GameStrings.T("Zorluk: ", "Difficulty: ") + DifficultyName(menuDifficulty);
@@ -573,6 +591,22 @@ namespace TicTacube.Game
             }
 
             RefreshDailyPuzzleLabel();
+            RefreshProgressLabel();
+        }
+
+        private void RefreshProgressLabel()
+        {
+            DailyGoals.State goals;
+            int done = DailyGoals.CompletedCount(DateTime.Now, out goals);
+            progressLabel.text = GameStrings.T("Hedefler ", "Goals ") + done + "/3"
+                + (goals.StarStreak > 0 ? " *" + goals.StarStreak : "")
+                + "\n" + GameStrings.T("Rozet ", "Badges ") + Achievements.EarnedCount() + "/" + Achievements.All.Length;
+        }
+
+        private void ProgressPressed()
+        {
+            RefreshProgressPanel();
+            progressPanel.SetActive(true);
         }
 
         private void RefreshDailyPuzzleLabel()
@@ -829,6 +863,87 @@ namespace TicTacube.Game
         }
 
         // ------------------------------------------------------------------
+        // Progress panel: today's goals + the achievement grid
+        // ------------------------------------------------------------------
+
+        private void BuildProgressPanel()
+        {
+            var rect = CreateRect("ProgressPanel", transform);
+            Stretch(rect);
+            progressPanel = rect.gameObject;
+
+            var backdrop = rect.gameObject.AddComponent<Image>();
+            backdrop.color = PanelColor;
+
+            var content = CreateRect("Content", rect);
+            Stretch(content);
+            progressContent = content;
+
+            Text closeText;
+            var closeButton = CreateButton(rect, "Close", 44, () => progressPanel.SetActive(false), out closeText);
+            Place((RectTransform)closeButton.transform, new Vector2(0.5f, 0f), new Vector2(0f, 40f), new Vector2(420f, 110f));
+            closeButton.GetComponent<Image>().color = AccentColor;
+            closeText.text = GameStrings.T("Kapat", "Close");
+
+            progressPanel.SetActive(false);
+        }
+
+        /// <summary>Rebuilt on each open: content is small (3 goals + 16 badges).</summary>
+        private void RefreshProgressPanel()
+        {
+            for (int i = progressContent.transform.childCount - 1; i >= 0; i -= 1)
+            {
+                UnityEngine.Object.Destroy(progressContent.transform.GetChild(i).gameObject);
+            }
+
+            var title = CreateText(progressContent, "Title",
+                GameStrings.T("Hedefler & Başarımlar", "Goals & Achievements"), 56, TextAnchor.MiddleCenter, TextColor);
+            title.fontStyle = FontStyle.Bold;
+            Place((RectTransform)title.transform, new Vector2(0.5f, 1f), new Vector2(0f, -60f), new Vector2(900f, 90f));
+
+            DailyGoals.State goals;
+            DailyGoals.CompletedCount(DateTime.Now, out goals);
+
+            var goalsHeading = CreateText(progressContent, "GoalsHeading",
+                GameStrings.T("Bugünün hedefleri", "Today's goals")
+                + (goals.StarStreak > 0
+                    ? GameStrings.T("  (yıldız serisi: ", "  (star streak: ") + goals.StarStreak + ")"
+                    : ""),
+                40, TextAnchor.MiddleLeft, MutedColor);
+            Place((RectTransform)goalsHeading.transform, new Vector2(0.5f, 1f), new Vector2(0f, -170f), new Vector2(920f, 60f));
+
+            for (int i = 0; i < 3; i += 1)
+            {
+                var goal = DailyGoals.Pool[goals.GoalIndices[i]];
+                bool done = goals.Progress[i] >= goal.Target;
+                string progress = goal.Target > 1 ? "  (" + goals.Progress[i] + "/" + goal.Target + ")" : "";
+                var row = CreateText(progressContent, "Goal" + i,
+                    (done ? "+ " : "- ") + goal.Text() + progress,
+                    36, TextAnchor.MiddleLeft, done ? new Color(0.55f, 0.9f, 0.6f, 1f) : TextColor);
+                Place((RectTransform)row.transform, new Vector2(0.5f, 1f), new Vector2(0f, -236f - i * 62f), new Vector2(920f, 58f));
+            }
+
+            var badgeHeading = CreateText(progressContent, "BadgeHeading",
+                GameStrings.T("Başarımlar ", "Achievements ") + Achievements.EarnedCount() + "/" + Achievements.All.Length,
+                40, TextAnchor.MiddleLeft, MutedColor);
+            Place((RectTransform)badgeHeading.transform, new Vector2(0.5f, 1f), new Vector2(0f, -460f), new Vector2(920f, 60f));
+
+            for (int i = 0; i < Achievements.All.Length; i += 1)
+            {
+                var def = Achievements.All[i];
+                bool earned = Achievements.IsEarned(def.Id);
+                int column = i % 2;
+                int row = i / 2;
+                var cell = CreateText(progressContent, "Badge" + i,
+                    def.Name() + "\n" + def.Desc(),
+                    27, TextAnchor.UpperLeft,
+                    earned ? new Color(1f, 0.84f, 0.32f, 1f) : new Color(0.5f, 0.54f, 0.62f, 1f));
+                Place((RectTransform)cell.transform, new Vector2(0.5f, 1f),
+                    new Vector2(column == 0 ? -240f : 240f, -530f - row * 104f), new Vector2(460f, 100f));
+            }
+        }
+
+        // ------------------------------------------------------------------
         // Room code showcase (online hosting)
         // ------------------------------------------------------------------
 
@@ -916,11 +1031,19 @@ namespace TicTacube.Game
             RefreshHudLabels();
         }
 
-        public void ShowPiePrompt()
+        public void ShowPiePrompt(bool showHint)
         {
             pieQuestion.text = GameStrings.T(
                 "Rakip ilk hamlesini yaptı.\nTaraf değiştirmek ister misin?\n(Açılış hamlesini ve işaretini devralırsın)",
                 "The opponent made the first move.\nDo you want to swap sides?\n(You take over the opening mark)");
+
+            if (showHint)
+            {
+                pieQuestion.text += GameStrings.T(
+                    "\nİpucu: merkez açılışı güçlüdür — takas etmek genelde iyidir.",
+                    "\nHint: a center opening is strong — swapping is usually good.");
+            }
+
             piePanel.SetActive(true);
         }
 
@@ -935,6 +1058,7 @@ namespace TicTacube.Game
 
         public void ShowMenu()
         {
+            progressPanel.SetActive(false);
             menuPanel.SetActive(true);
             hudPanel.SetActive(false);
             resultPanel.SetActive(false);
@@ -945,6 +1069,7 @@ namespace TicTacube.Game
 
         public void ShowGame()
         {
+            progressPanel.SetActive(false);
             menuPanel.SetActive(false);
             hudPanel.SetActive(true);
             resultPanel.SetActive(false);

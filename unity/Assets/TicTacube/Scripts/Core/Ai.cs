@@ -22,6 +22,15 @@ namespace TicTacube.Core
         [ThreadStatic]
         private static bool gravityRules;
 
+        /// <summary>
+        /// When true (solo Classic with the Pie Rule live), the AI's own
+        /// opening avoids handing the responder a free center takeover: it
+        /// opens below its own swap thresholds instead. Off by default so
+        /// web move parity is preserved.
+        /// </summary>
+        [ThreadStatic]
+        private static bool pieAwareOpening;
+
         private static List<int> LegalMoves(Player?[] board)
         {
             return gravityRules ? Rules.GetGravityMoves(board) : Rules.GetAvailableMoves(board);
@@ -941,6 +950,26 @@ namespace TicTacube.Core
 
             int movesPlayed = Rules.CellCount - Rules.GetAvailableMoves(board).Count;
 
+            // Pie-aware opening: with the swap rule live, the center (swap
+            // value 186) is a gift to the responder. Open under the
+            // responder's own threshold instead: Balanced keeps a corner
+            // (77 < its 78 threshold); Hard/Master take a face center
+            // (40 < 66/54 — the strongest cell nobody swaps for).
+            if (pieAwareOpening && movesPlayed == 0 && difficulty != Difficulty.Easy)
+            {
+                int[] pieOpenings = difficulty == Difficulty.Balanced
+                    ? new[] { 0, 2, 6, 8, 18, 20, 24, 26 }
+                    : new[] { 4, 10, 12, 14, 16, 22 };
+
+                foreach (int move in pieOpenings)
+                {
+                    if (board[move] == null && (!gravityRules || Rules.IsGravityLegal(board, move)))
+                    {
+                        return move;
+                    }
+                }
+            }
+
             if (difficulty != Difficulty.Easy && movesPlayed <= 1)
             {
                 foreach (int move in ClassicOpeningBook)
@@ -1085,9 +1114,11 @@ namespace TicTacube.Core
             Difficulty difficulty,
             Ruleset ruleset,
             Func<double> random = null,
-            bool gravity = false)
+            bool gravity = false,
+            bool pieAware = false)
         {
             gravityRules = gravity;
+            pieAwareOpening = pieAware;
 
             if (random == null)
             {
@@ -1104,6 +1135,7 @@ namespace TicTacube.Core
             finally
             {
                 gravityRules = false;
+                pieAwareOpening = false;
             }
         }
     }
