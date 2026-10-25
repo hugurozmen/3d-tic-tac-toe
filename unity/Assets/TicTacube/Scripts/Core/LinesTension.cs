@@ -16,15 +16,21 @@ namespace TicTacube.Core
 
     public static class LinesTension
     {
-        /// <summary>Null outside the final six cells (or on a full board).</summary>
-        public static LinesEndgame Analyze(Player?[] board, Player currentPlayer)
+        /// <summary>
+        /// Null outside the final six cells (or on a full board). With
+        /// gravity, the swing is computed over legal drops only, while the
+        /// "Final N" count stays the true number of empty cells.
+        /// </summary>
+        public static LinesEndgame Analyze(Player?[] board, Player currentPlayer, bool gravity = false)
         {
-            var moves = Rules.GetAvailableMoves(board);
+            var remaining = Rules.GetAvailableMoves(board);
 
-            if (moves.Count == 0 || moves.Count > 6)
+            if (remaining.Count == 0 || remaining.Count > 6)
             {
                 return null;
             }
+
+            var moves = gravity ? Rules.GetGravityMoves(board) : remaining;
 
             var rival = Rules.GetOtherPlayer(currentPlayer);
             var rivalThreats = Rules.GetLineThreats(board, rival);
@@ -60,7 +66,7 @@ namespace TicTacube.Core
 
             return new LinesEndgame
             {
-                RemainingCells = moves.Count,
+                RemainingCells = remaining.Count,
                 MaxScoreLines = maxScore,
                 MaxBlockLines = maxBlock,
             };

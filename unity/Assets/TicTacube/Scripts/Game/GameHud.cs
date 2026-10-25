@@ -376,21 +376,34 @@ namespace TicTacube.Game
             RefreshMenuLabels();
         }
 
+        // Online shows/starts only the base rulesets, but the player's Tower
+        // selection survives a pass through the online mode untouched.
+        private int EffectiveRulesetIndex
+        {
+            get { return MenuOnline ? menuRulesetIndex % 2 : menuRulesetIndex; }
+        }
+
         private Ruleset MenuRulesetBase
         {
-            get { return menuRulesetIndex % 2 == 0 ? Ruleset.Lines : Ruleset.Classic; }
+            get { return EffectiveRulesetIndex % 2 == 0 ? Ruleset.Lines : Ruleset.Classic; }
         }
 
         private bool MenuGravity
         {
-            get { return menuRulesetIndex >= 2; }
+            get { return EffectiveRulesetIndex >= 2; }
         }
 
         private void CycleRuleset()
         {
-            // Tower variants are local-only (the online server fixes rules).
-            int optionCount = MenuOnline ? 2 : 4;
-            menuRulesetIndex = (menuRulesetIndex + 1) % optionCount;
+            if (MenuOnline)
+            {
+                menuRulesetIndex = (EffectiveRulesetIndex + 1) % 2;
+            }
+            else
+            {
+                menuRulesetIndex = (menuRulesetIndex + 1) % 4;
+            }
+
             RefreshMenuLabels();
         }
 
@@ -440,7 +453,7 @@ namespace TicTacube.Game
 
         private string MenuRulesetOptionName()
         {
-            switch (menuRulesetIndex)
+            switch (EffectiveRulesetIndex)
             {
                 case 0:
                     return GameStrings.T("Çizgiler", "Lines");
@@ -455,7 +468,7 @@ namespace TicTacube.Game
 
         private string MenuRulesetDescription()
         {
-            switch (menuRulesetIndex)
+            switch (EffectiveRulesetIndex)
             {
                 case 0:
                     return GameStrings.T(
@@ -512,11 +525,6 @@ namespace TicTacube.Game
                     : menuMode == 1
                         ? GameStrings.T("İki Oyuncu", "Two Players")
                         : GameStrings.T("Online Oda", "Online Room"));
-            if (MenuOnline && menuRulesetIndex >= 2)
-            {
-                menuRulesetIndex %= 2;
-            }
-
             rulesetLabel.text = GameStrings.T("Kurallar: ", "Ruleset: ") + MenuRulesetOptionName();
             rulesetDescription.text = MenuRulesetDescription();
             difficultyLabel.text = GameStrings.T("Zorluk: ", "Difficulty: ") + DifficultyName(menuDifficulty);

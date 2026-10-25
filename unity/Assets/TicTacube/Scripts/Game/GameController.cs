@@ -71,6 +71,10 @@ namespace TicTacube.Game
         private bool pieSwapByHuman;
         private bool behindAt21;
 
+        // Tower + quick move: a brief cooldown so an accidental double tap
+        // can't stack a second (the opponent's!) mark into the same column.
+        private float lastGravityPlacementAt = -10f;
+
         private Task<int?> aiTask;
         private float aiStartedAt;
         private Coroutine resultRoutine;
@@ -385,11 +389,25 @@ namespace TicTacube.Game
             switch (step)
             {
                 case 0:
-                    hud.SetHint(GamePrefs.QuickMove
-                        ? GameStrings.T("Boş bir hücreye dokunarak işaretini koy.", "Tap an empty cell to place your mark.")
-                        : GameStrings.T(
-                            "Boş bir hücreye dokun, sonra Onayla'ya bas.",
-                            "Tap an empty cell, then press Confirm."));
+                    if (gravityMode)
+                    {
+                        hud.SetHint(GamePrefs.QuickMove
+                            ? GameStrings.T(
+                                "Bir sütuna dokun — taşın en alttaki boş hücreye düşer.",
+                                "Tap a column — your mark drops to its lowest empty cell.")
+                            : GameStrings.T(
+                                "Bir sütuna dokun: seçim taşın düşeceği hücrede belirir. Sonra Onayla'ya bas.",
+                                "Tap a column: the selection appears where the mark will land. Then press Confirm."));
+                    }
+                    else
+                    {
+                        hud.SetHint(GamePrefs.QuickMove
+                            ? GameStrings.T("Boş bir hücreye dokunarak işaretini koy.", "Tap an empty cell to place your mark.")
+                            : GameStrings.T(
+                                "Boş bir hücreye dokun, sonra Onayla'ya bas.",
+                                "Tap an empty cell, then press Confirm."));
+                    }
+
                     break;
                 case 1:
                     hud.SetHint(ruleset == Ruleset.Lines
@@ -432,6 +450,11 @@ namespace TicTacube.Game
 
             if (gravityMode)
             {
+                if (GamePrefs.QuickMove && Time.time - lastGravityPlacementAt < 0.4f)
+                {
+                    return; // double-tap guard: don't stack a second mark
+                }
+
                 // Tower: any tap in a column drops to its lowest empty cell.
                 index = Rules.GravityDropIndex(board, index);
 
@@ -526,6 +549,11 @@ namespace TicTacube.Game
             board[index] = mover;
             boardView.SetMark(index, mover, true, gravityMode);
             moveHistory.Add(new KeyValuePair<int, Player>(index, mover));
+
+            if (gravityMode)
+            {
+                lastGravityPlacementAt = Time.time;
+            }
             gameAudio.PlayTap();
 
             bool humanMoved = !soloMode || mover == humanPlayer;
@@ -636,7 +664,7 @@ namespace TicTacube.Game
                 return;
             }
 
-            var endgame = LinesTension.Analyze(board, currentPlayer);
+            var endgame = LinesTension.Analyze(board, currentPlayer, gravityMode);
             hud.SetHint(endgame == null ? "" : BandText(endgame));
         }
 
@@ -1956,7 +1984,32 @@ namespace TicTacube.Game
 
             var danger = Rules.GetThreatCellCounts(board, Rules.GetOtherPlayer(currentPlayer));
             var scoring = Rules.GetThreatCellCounts(board, currentPlayer);
+
+            if (gravityMode)
+            {
+                // Tower: only show threats playable THIS turn — a floating
+                // "block here" cube would bait the player into dropping a
+                // mark underneath it and legalizing the rival's win.
+                danger = FilterGravityLegal(danger);
+                scoring = FilterGravityLegal(scoring);
+            }
+
             boardView.ShowHints(danger, scoring);
+        }
+
+        private Dictionary<int, int> FilterGravityLegal(Dictionary<int, int> cells)
+        {
+            var filtered = new Dictionary<int, int>();
+
+            foreach (var entry in cells)
+            {
+                if (Rules.IsGravityLegal(board, entry.Key))
+                {
+                    filtered[entry.Key] = entry.Value;
+                }
+            }
+
+            return filtered;
         }
 
         // ------------------------------------------------------------------

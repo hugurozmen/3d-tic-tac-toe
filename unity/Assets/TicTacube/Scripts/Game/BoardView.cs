@@ -206,7 +206,10 @@ namespace TicTacube.Game
         {
             int x, y, z;
             WinningLines.ToCoordinate(index, out x, out y, out z);
-            float startHeight = (2 - y) * CellSpacing + 1.3f;
+
+            // Fall from above the tower even in the exploded layer view.
+            float spacing = CellSpacing + LayerExtraGap * layerSeparation;
+            float startHeight = (2 - y) * spacing + 1.3f;
             const float duration = 0.22f;
             float elapsed = 0f;
 
