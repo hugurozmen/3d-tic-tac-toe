@@ -763,6 +763,11 @@ namespace TicTacube.Game
             hintBackground.raycastTarget = false;
             hintLabel = CreateText(hintRect, "Hint", "", 38, TextAnchor.MiddleCenter, new Color(1f, 0.88f, 0.55f, 1f));
             Stretch((RectTransform)hintLabel.transform);
+            // Long toasts (e.g. the ladder personality intro) must never be
+            // truncated by the fixed-height bar: shrink to fit instead.
+            hintLabel.resizeTextForBestFit = true;
+            hintLabel.resizeTextMinSize = 22;
+            hintLabel.resizeTextMaxSize = 38;
             hintRect.gameObject.SetActive(false);
 
             thinkingLabel = CreateText(rect, "Thinking", "", 40, TextAnchor.MiddleCenter, MutedColor);

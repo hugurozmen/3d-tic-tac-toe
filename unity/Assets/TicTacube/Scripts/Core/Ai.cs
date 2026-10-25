@@ -864,11 +864,16 @@ namespace TicTacube.Core
             // Drifter-style profiles refuse an open center in the opening:
             // the center is otherwise the forced pick, so the personality
             // only becomes visible (and exploitable) by dropping it from the
-            // candidate set outright. No-op for the default profile.
+            // candidate set outright. Tactics still override the aversion —
+            // a center that completes a line for either side stays playable,
+            // otherwise any (a, center, b) pair the rival builds would be an
+            // unstoppable free line. No-op for the default profile.
             if (Profile.CenterAvoidPlies > 0
                 && moves.Count > 1
                 && moves.Contains(CenterIndex)
-                && Rules.CellCount - Rules.GetAvailableMoves(board).Count < Profile.CenterAvoidPlies)
+                && Rules.CellCount - Rules.GetAvailableMoves(board).Count < Profile.CenterAvoidPlies
+                && !Rules.GetThreatCells(board, player).Contains(CenterIndex)
+                && !Rules.GetThreatCells(board, Rules.GetOtherPlayer(player)).Contains(CenterIndex))
             {
                 moves = moves.Where(move => move != CenterIndex).ToList();
             }

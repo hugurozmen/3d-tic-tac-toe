@@ -65,15 +65,17 @@ namespace TicTacube.Game
             new Step { Number = 8, Difficulty = Difficulty.Hard, Ruleset = Ruleset.Classic,
                 TitleTr = "Soğukkanlı", TitleEn = "Cold Blood",
                 ConditionTr = "Zor'a karşı bir Klasik turu kazan", ConditionEn = "Win a Classic round vs Hard" },
+            // Step 9 is the honest gate: pure Master, no personality.
             new Step { Number = 9, Difficulty = Difficulty.Master, Ruleset = Ruleset.Lines,
-                PersonalityId = "drifter",
                 TitleTr = "Usta Kapısı", TitleEn = "Master's Gate",
                 ConditionTr = "Usta'ya karşı bir Çizgiler turu kazan", ConditionEn = "Win a Lines round vs Master" },
-            // Aggressive, not Fortress: the audit showed Fortress drives
-            // Master games to ~80% draws, which would make a 3+ margin
-            // nearly unreachable; Aggressive sharpens games both ways.
+            // Drifter by measurement (docs/personality-audit.md): baseline
+            // Master self-play is already 77% drawish and Aggressive stays
+            // equally drawish at this depth, so a 3+ margin is only
+            // realistic against Drifter, whose center aversion is the
+            // designed crack (draws 92→58, 3+ margin wins 8→11 per 120).
             new Step { Number = 10, Difficulty = Difficulty.Master, Ruleset = Ruleset.Lines, RequiredMargin = 3,
-                PersonalityId = "aggressive",
+                PersonalityId = "drifter",
                 TitleTr = "Ezici Üstünlük", TitleEn = "Crusher",
                 ConditionTr = "Usta'yı 3+ çizgi farkla yen", ConditionEn = "Beat Master by 3+ lines" },
             new Step { Number = 11, Difficulty = Difficulty.Master, Ruleset = Ruleset.Classic,
