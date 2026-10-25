@@ -39,6 +39,14 @@ genç oyuncu ve erişilebilirlik ihtiyaçları olan oyuncu).
   galibiyetlik maç). Basamaklar sırayla açılır, fethedilenler tekrar
   oynanabilir; ilerleme cihazda saklanır ve basamak maçları istatistikleri
   şişirmez
+- **AI kişilikleri** (yalnız merdivende, Çizgiler): 6 basamakta rakip bir
+  kişilik profiliyle oynar — **Kumarbaz** (en iyi hamle yerine %35
+  sürpriz), **Kale** (savunma ağırlıklı, beraberliğe sürükler),
+  **Saldırgan** (tehdit üstüne tehdit, savunmayı savsaklar — oyunlar
+  keskinleşir) ve **Merkezkaç** (ilk 10 taşta açık merkezi reddeder:
+  bilerek istismar edilebilir zaaf). Varsayılan profil mevcut sabitlerin
+  aynısı olduğundan web hamle eşitliği normal modlarda bit-bit sürer;
+  denge ölçümleri `docs/personality-audit.md`'de
 - **Maç özeti + tur tekrarı**: sonuç ekranındaki **Özet** düğmesi tur tur
   dökümü (kim kazandı, kaç hamle, çizgi skorları) ve "en iyi hamleni"
   (tek hamlede en çok çizgi) gösterir; **Tekrar İzle** son turu taş taş,
