@@ -268,6 +268,72 @@ namespace TicTacube.Core
             return GetThreatCells(board, GetOtherPlayer(player));
         }
 
+        // ------------------------------------------------------------------
+        // Gravity (Tower mode): marks drop to the lowest empty cell of their
+        // (x,z) column, Connect-4 style. Y is the vertical axis, so the cell
+        // below index i is i - BoardSize.
+        // ------------------------------------------------------------------
+
+        /// <summary>Is this empty cell resting on the floor or on a mark?</summary>
+        public static bool IsGravityLegal(Player?[] board, int index)
+        {
+            if (board[index] != null)
+            {
+                return false;
+            }
+
+            int x, y, z;
+            WinningLines.ToCoordinate(index, out x, out y, out z);
+            return y == 0 || board[index - BoardSize] != null;
+        }
+
+        /// <summary>The (at most nine) legal drop cells, one per open column.</summary>
+        public static List<int> GetGravityMoves(Player?[] board)
+        {
+            var moves = new List<int>();
+
+            for (int z = 0; z < BoardSize; z += 1)
+            {
+                for (int x = 0; x < BoardSize; x += 1)
+                {
+                    for (int y = 0; y < BoardSize; y += 1)
+                    {
+                        int index = WinningLines.ToIndex(x, y, z);
+
+                        if (board[index] == null)
+                        {
+                            moves.Add(index);
+                            break;
+                        }
+                    }
+                }
+            }
+
+            return moves;
+        }
+
+        /// <summary>
+        /// Where a mark dropped into the tapped cell's column lands;
+        /// -1 when the column is full.
+        /// </summary>
+        public static int GravityDropIndex(Player?[] board, int tappedIndex)
+        {
+            int x, y, z;
+            WinningLines.ToCoordinate(tappedIndex, out x, out y, out z);
+
+            for (int level = 0; level < BoardSize; level += 1)
+            {
+                int index = WinningLines.ToIndex(x, level, z);
+
+                if (board[index] == null)
+                {
+                    return index;
+                }
+            }
+
+            return -1;
+        }
+
         /// <summary>
         /// Empty cells that complete at least one of the player's threats,
         /// with how many lines each cell would complete — a cell completing
@@ -295,11 +361,11 @@ namespace TicTacube.Core
         }
 
         /// <summary>Best single-move line gain available to the player.</summary>
-        public static int GetBestImmediateLineGain(Player?[] board, Player player)
+        public static int GetBestImmediateLineGain(Player?[] board, Player player, bool gravity = false)
         {
             int best = 0;
 
-            foreach (int move in GetAvailableMoves(board))
+            foreach (int move in gravity ? GetGravityMoves(board) : GetAvailableMoves(board))
             {
                 var next = (Player?[])board.Clone();
                 next[move] = player;

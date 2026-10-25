@@ -173,6 +173,11 @@ namespace TicTacube.Game
 
         public void SetMark(int index, Player player, bool animate)
         {
+            SetMark(index, player, animate, false);
+        }
+
+        public void SetMark(int index, Player player, bool animate, bool drop)
+        {
             cells[index].SetOccupied(true);
 
             var mark = player == Player.X ? CreateXMark() : CreateOMark();
@@ -183,10 +188,51 @@ namespace TicTacube.Game
 
             if (animate && GamePrefs.Effects)
             {
-                StartCoroutine(PopIn(mark.transform));
+                if (drop)
+                {
+                    StartCoroutine(DropIn(mark.transform, index));
+                }
+                else
+                {
+                    StartCoroutine(PopIn(mark.transform));
+                }
             }
 
             MoveLastMoveRing(index, player, animate);
+        }
+
+        /// <summary>Tower mode: the mark falls into its column and settles.</summary>
+        private IEnumerator DropIn(Transform target, int index)
+        {
+            int x, y, z;
+            WinningLines.ToCoordinate(index, out x, out y, out z);
+            float startHeight = (2 - y) * CellSpacing + 1.3f;
+            const float duration = 0.22f;
+            float elapsed = 0f;
+
+            while (elapsed < duration && target != null)
+            {
+                elapsed += Time.deltaTime;
+                float t = Mathf.Clamp01(elapsed / duration);
+                target.localPosition = new Vector3(0f, startHeight * (1f - t * t), 0f);
+                yield return null;
+            }
+
+            // Tiny settle bounce.
+            float bounce = 0f;
+
+            while (bounce < 0.12f && target != null)
+            {
+                bounce += Time.deltaTime;
+                float t = Mathf.Clamp01(bounce / 0.12f);
+                target.localPosition = new Vector3(0f, Mathf.Sin(t * Mathf.PI) * 0.12f, 0f);
+                yield return null;
+            }
+
+            if (target != null)
+            {
+                target.localPosition = Vector3.zero;
+            }
         }
 
         private IEnumerator PopIn(Transform target)

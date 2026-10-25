@@ -19,8 +19,14 @@ genç oyuncu ve erişilebilirlik ihtiyaçları olan oyuncu).
 
 ### Oyun
 
-- **Çizgiler** (varsayılan) ve **Klasik** kural setleri; menüde seçili
-  kuralın tek cümlelik açıklaması
+- **Dört kural seçeneği**: Çizgiler (varsayılan), Klasik ve ikisinin
+  **Kule** varyantları — Kule'de taşlar sütuna bırakılır ve Connect-4 gibi
+  en alttaki boş hücreye düşer (her an en çok 9 hedef; iç hücrelere kamera
+  döndürme derdi kuralla ortadan kalkar). Sütunun herhangi bir hücresine
+  dokunmak yeter, taş düşüş animasyonuyla yerine oturur. Kule'de Pie
+  kuralı yoktur ve istatistikler ayrı tutulur. Menüde seçili kuralın tek
+  cümlelik açıklaması gösterilir (Kule yalnız yerel modlarda — online
+  sunucusu kural setini sabitler)
 - **Günlük Bulmaca**: tarih-tohumlu, web sürümüyle aynı gün aynı bulmaca
   (4 tür rotasyonu: en iyi Çizgiler hamlesi / maks çizgi / Klasik kazanç /
   iki hamlede kazanç); günde tek deneme sayılır, sonrası pratik; bulmaca
