@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -56,6 +57,14 @@ namespace TicTacube.Game
 
         private bool tutorialActive;
         private int tutorialStep;
+
+        // Lead-change narrative (Lines): -1 O leads, 0 tied, +1 X leads.
+        private int lastLeadSign;
+        private int onlineLeadSign;
+
+        // Daily puzzle mode: a preset board, one move, a verdict.
+        private bool puzzleMode;
+        private DailyPuzzle currentPuzzle;
 
         private Task<int?> aiTask;
         private float aiStartedAt;
@@ -140,14 +149,19 @@ namespace TicTacube.Game
         public void StartMatch(bool solo, Ruleset selectedRuleset, Difficulty selectedDifficulty, int targetWins)
         {
             GamePrefs.ClearSave();
+            puzzleMode = false;
             soloMode = solo;
             ruleset = selectedRuleset;
             difficulty = selectedDifficulty;
             humanPlayer = Player.X;
-            match = MatchState.Create(Player.X);
-            match.TargetWins = Mathf.Max(1, targetWins);
             tutorialActive = !GamePrefs.TutorialDone;
             tutorialStep = 0;
+
+            // Matches alternate who opens (the opener has a real edge); the
+            // very first game keeps the human opening so the tutorial works.
+            Player opener = tutorialActive ? Player.X : GamePrefs.TakeNextOpener();
+            match = MatchState.Create(opener);
+            match.TargetWins = Mathf.Max(1, targetWins);
             StartRound();
             hud.ShowGame();
         }
@@ -165,6 +179,7 @@ namespace TicTacube.Game
                 return;
             }
 
+            puzzleMode = false;
             soloMode = save.Solo;
             ruleset = (Ruleset)save.Ruleset;
             difficulty = (Difficulty)save.Difficulty;
@@ -208,6 +223,7 @@ namespace TicTacube.Game
             baselineBoard = (Player?[])board.Clone();
             baselineTurn = currentPlayer;
             lastResult = Rules.EvaluateBoard(board, ruleset);
+            lastLeadSign = Math.Sign(lastResult.LineScoreX - lastResult.LineScoreO);
             phase = GamePhase.Playing;
             hud.ShowGame();
             RefreshHud();
@@ -247,6 +263,12 @@ namespace TicTacube.Game
                 onlineRenderedSequence = -1;
                 onlineResultShown = false;
                 hud.SetOnlineUi(false);
+                hud.HideRoomCode();
+            }
+            else if (puzzleMode)
+            {
+                // Leaving a puzzle must never overwrite a real match save.
+                puzzleMode = false;
             }
             else if (match != null && !match.IsComplete && !matchEndedByDraw && phase != GamePhase.Menu)
             {
@@ -265,6 +287,14 @@ namespace TicTacube.Game
 
         public void ResultContinuePressed()
         {
+            if (puzzleMode)
+            {
+                // Practice: replay the same daily board (the recorded daily
+                // result stays whatever the first attempt was).
+                StartDailyPuzzle();
+                return;
+            }
+
             if (onlineMode)
             {
                 var snapshot = online.LastSnapshot;
@@ -320,6 +350,7 @@ namespace TicTacube.Game
             hud.HideResult();
             hud.ClearHint();
             pieResolved = false;
+            lastLeadSign = 0;
             currentPlayer = match.Opener;
             lastResult = Rules.EvaluateBoard(board, ruleset);
             phase = GamePhase.Playing;
@@ -412,6 +443,22 @@ namespace TicTacube.Game
             boardView.SetSelected(index, true);
             hud.SetConfirmVisible(true);
             gameAudio.PlaySelect();
+
+            // Analysis extra: warn when the selected move hands the rival an
+            // immediate line (the AI's replyRisk idea, surfaced to humans).
+            if (GamePrefs.Analysis && ruleset == Ruleset.Lines && !tutorialActive && !puzzleMode)
+            {
+                var next = (Player?[])board.Clone();
+                next[index] = currentPlayer;
+                int risk = Rules.GetBestImmediateLineGain(next, Rules.GetOtherPlayer(currentPlayer));
+
+                if (risk > 0)
+                {
+                    hud.Toast(GameStrings.T(
+                        "Dikkat: bu hamle rakibe " + risk + " çizgi bırakıyor.",
+                        "Careful: this leaves the opponent " + risk + " line(s)."), 3.5f);
+                }
+            }
         }
 
         public void ConfirmPressed()
@@ -446,6 +493,12 @@ namespace TicTacube.Game
 
         private void PlaceMark(int index)
         {
+            if (puzzleMode)
+            {
+                PlacePuzzleMove(index);
+                return;
+            }
+
             ClearSelection();
 
             var previous = (Player?[])board.Clone();
@@ -488,9 +541,15 @@ namespace TicTacube.Game
                 return;
             }
 
+            if (ruleset == Ruleset.Lines)
+            {
+                UpdateLeadNarrative();
+            }
+
             currentPlayer = Rules.GetOtherPlayer(currentPlayer);
             RefreshHud();
             UpdateHints();
+            UpdateEndgameBand();
             SaveProgress(0);
 
             if (HandlePieRule())
@@ -499,6 +558,90 @@ namespace TicTacube.Game
             }
 
             MaybeStartAiTurn();
+        }
+
+        /// <summary>Toast when the Lines lead changes hands (mid-game drama).</summary>
+        private void UpdateLeadNarrative()
+        {
+            int sign = Math.Sign(lastResult.LineScoreX - lastResult.LineScoreO);
+
+            if (sign != lastLeadSign
+                && lastResult.LineScoreX + lastResult.LineScoreO > 0
+                && !tutorialActive)
+            {
+                hud.Toast(LeadText(sign, soloMode), 2.2f);
+            }
+
+            lastLeadSign = sign;
+        }
+
+        private string LeadText(int sign, bool youPerspective)
+        {
+            if (sign == 0)
+            {
+                return GameStrings.T("Eşitlik!", "All tied!");
+            }
+
+            if (!youPerspective)
+            {
+                return (sign > 0 ? "X" : "O") + GameStrings.T(" öne geçti!", " takes the lead!");
+            }
+
+            int humanSign = humanPlayer == Player.X ? sign : -sign;
+            return humanSign > 0
+                ? GameStrings.T("Öne geçtin!", "You take the lead!")
+                : GameStrings.T("Rakip öne geçti.", "The opponent takes the lead.");
+        }
+
+        /// <summary>
+        /// Final-six tension band (Lines): a persistent hint naming the swing
+        /// still on the table for the side to move.
+        /// </summary>
+        private void UpdateEndgameBand()
+        {
+            if (ruleset != Ruleset.Lines || tutorialActive || lastResult.IsComplete)
+            {
+                return;
+            }
+
+            if (soloMode && currentPlayer != humanPlayer)
+            {
+                hud.ClearHint();
+                return;
+            }
+
+            var endgame = LinesTension.Analyze(board, currentPlayer);
+            hud.SetHint(endgame == null ? "" : BandText(endgame));
+        }
+
+        private static string BandText(LinesEndgame endgame)
+        {
+            string swing;
+
+            if (endgame.MaxScoreLines > 0 && endgame.MaxBlockLines > 0)
+            {
+                swing = GameStrings.T(
+                    "+" + endgame.MaxScoreLines + " şans ve " + endgame.MaxBlockLines + " blok canlı",
+                    "up to +" + endgame.MaxScoreLines + " and " + endgame.MaxBlockLines + " block live");
+            }
+            else if (endgame.MaxScoreLines > 0)
+            {
+                swing = GameStrings.T(
+                    "+" + endgame.MaxScoreLines + " çizgi şansı",
+                    "up to +" + endgame.MaxScoreLines + " lines");
+            }
+            else if (endgame.MaxBlockLines > 0)
+            {
+                swing = GameStrings.T(
+                    endgame.MaxBlockLines + " blok canlı",
+                    endgame.MaxBlockLines + " block live");
+            }
+            else
+            {
+                swing = GameStrings.T("her hücre sayılır", "every cell matters");
+            }
+
+            return GameStrings.T("Son ", "Final ") + endgame.RemainingCells + ": " + swing;
         }
 
         private void CelebrateLines(List<int[]> newLines, Player mover, bool humanMoved)
@@ -612,7 +755,7 @@ namespace TicTacube.Game
 
         public void UndoPressed()
         {
-            if (onlineMode || phase != GamePhase.Playing || moveHistory.Count == 0)
+            if (onlineMode || puzzleMode || phase != GamePhase.Playing || moveHistory.Count == 0)
             {
                 return;
             }
@@ -701,8 +844,10 @@ namespace TicTacube.Game
                 ? Rules.GetOtherPlayer(moveHistory[moveHistory.Count - 1].Value)
                 : baselineTurn;
             lastResult = Rules.EvaluateBoard(board, ruleset);
+            lastLeadSign = Math.Sign(lastResult.LineScoreX - lastResult.LineScoreO);
             RefreshHud();
             UpdateHints();
+            UpdateEndgameBand();
         }
 
         /// <summary>Rebuild beams from a restored board (no move order known).</summary>
@@ -840,6 +985,11 @@ namespace TicTacube.Game
                 {
                     stats = GamePrefs.RecordMatch(ruleset, difficulty, match.Winner.Value == humanPlayer);
                 }
+                else if (matchEndedByDraw && soloMode)
+                {
+                    // Draws leave a trace too (and don't break the streak).
+                    GamePrefs.RecordDraw(ruleset, difficulty);
+                }
             }
             else
             {
@@ -939,6 +1089,215 @@ namespace TicTacube.Game
         }
 
         // ------------------------------------------------------------------
+        // Daily puzzle
+        // ------------------------------------------------------------------
+
+        public void StartDailyPuzzle()
+        {
+            if (onlineMode)
+            {
+                online.Close();
+                onlineMode = false;
+                hud.SetOnlineUi(false);
+                hud.HideRoomCode();
+            }
+
+            puzzleMode = true;
+            tutorialActive = false;
+            currentPuzzle = Puzzles.GetDailyPuzzle(DateTime.Now);
+            ruleset = currentPuzzle.Ruleset;
+            soloMode = true;
+            humanPlayer = currentPuzzle.Mover;
+            currentPlayer = currentPuzzle.Mover;
+            board = (Player?[])currentPuzzle.Board.Clone();
+            moveHistory.Clear();
+            ClearSelection();
+
+            if (resultRoutine != null)
+            {
+                StopCoroutine(resultRoutine);
+                resultRoutine = null;
+            }
+
+            boardView.ClearBoard();
+            boardView.ClearHints();
+
+            for (int index = 0; index < board.Length; index += 1)
+            {
+                if (board[index] != null)
+                {
+                    boardView.SetMark(index, board[index].Value, false);
+                }
+            }
+
+            boardView.HideLastMoveRing();
+            phase = GamePhase.Playing;
+            hud.HideResult();
+            hud.SetUndoEnabled(false);
+            hud.ShowGame();
+            hud.SetTurn(currentPlayer, true, humanPlayer, false);
+            hud.SetPuzzleHeader(currentPuzzle.Id, PuzzlePrompt(currentPuzzle.Kind));
+        }
+
+        private static string PuzzlePrompt(PuzzleKind kind)
+        {
+            switch (kind)
+            {
+                case PuzzleKind.BestLines:
+                    return GameStrings.T(
+                        "Bulmaca: en iyi Çizgiler hamlesini bul (X oynar).",
+                        "Puzzle: find the best Lines move (X to play).");
+                case PuzzleKind.MaxLines:
+                    return GameStrings.T(
+                        "Bulmaca: tek hamlede en çok çizgiyi tamamla (X oynar).",
+                        "Puzzle: score the most lines in one move (X to play).");
+                case PuzzleKind.ClassicWin:
+                    return GameStrings.T(
+                        "Bulmaca: Klasik'te kazanan hamleyi bul (X oynar).",
+                        "Puzzle: find the Classic winning move (X to play).");
+                default:
+                    return GameStrings.T(
+                        "Bulmaca: iki hamlede kazan — çifte tehdit kur (X oynar).",
+                        "Puzzle: win in two — create a double threat (X to play).");
+            }
+        }
+
+        private static string PuzzleExplanation(PuzzleKind kind, int bestMove)
+        {
+            string cell = GameStrings.T("Hücre ", "Cell ") + (bestMove + 1);
+
+            switch (kind)
+            {
+                case PuzzleKind.BestLines:
+                    return cell + GameStrings.T(
+                        " en temiz Çizgiler skorunu getirir ve farkı korur.",
+                        " completes the cleanest Lines score and protects the margin.");
+                case PuzzleKind.MaxLines:
+                    return cell + GameStrings.T(
+                        " aynı anda dört uzay köşegenini tamamlar.",
+                        " scores four space diagonals at once.");
+                case PuzzleKind.ClassicWin:
+                    return cell + GameStrings.T(
+                        " orta katın sırasını tamamlayıp turu bitirir.",
+                        " finishes the middle-floor row.");
+                default:
+                    return cell + GameStrings.T(
+                        " iki tehdidi birden kurar; rakip ikisini de kapatamaz.",
+                        " creates two threats at once; the rival cannot cover both.");
+            }
+        }
+
+        private void PlacePuzzleMove(int index)
+        {
+            ClearSelection();
+
+            var previous = (Player?[])board.Clone();
+            board[index] = currentPlayer;
+            boardView.SetMark(index, currentPlayer, true);
+            gameAudio.PlayTap();
+
+            bool solved = index == currentPuzzle.BestMove;
+
+            if (ruleset == Ruleset.Lines)
+            {
+                var newLines = Rules.GetNewCompletedLines(previous, board, currentPlayer);
+
+                if (newLines.Count > 0)
+                {
+                    boardView.AddLineBeams(newLines, currentPlayer);
+                    gameAudio.PlayLines(newLines.Count);
+                }
+            }
+            else
+            {
+                var result = Rules.EvaluateClassicBoard(board);
+
+                if (result.Winner == currentPlayer)
+                {
+                    boardView.HighlightWinningLine(result.WinningLine, currentPlayer);
+                }
+            }
+
+            phase = GamePhase.RoundOver;
+            hud.ClearHint();
+
+            var daily = RecordDailyAttempt(solved);
+            gameAudio.PlayRoundEnd(solved, false);
+
+            if (solved)
+            {
+                boardView.PlayConfetti();
+            }
+
+            string title = solved
+                ? GameStrings.T("Doğru!", "Correct!")
+                : GameStrings.T("Olmadı.", "Not quite.");
+            string explanation = solved
+                ? PuzzleExplanation(currentPuzzle.Kind, currentPuzzle.BestMove)
+                : GameStrings.T("En iyi hamle hücre ", "The best move was cell ")
+                    + (currentPuzzle.BestMove + 1) + ".\n"
+                    + PuzzleExplanation(currentPuzzle.Kind, currentPuzzle.BestMove);
+
+            if (solved && daily.Streak > 1)
+            {
+                explanation += GameStrings.T(
+                    "\nBulmaca serisi: " + daily.Streak + " gün!",
+                    "\nPuzzle streak: " + daily.Streak + " days!");
+            }
+
+            string shareText = "TicTacube " + GameStrings.T("Günlük", "Daily") + " #" + currentPuzzle.Id
+                + " — " + (solved ? GameStrings.T("çözüldü ✓", "solved ✓") : GameStrings.T("bir dahaki sefere ✗", "next time ✗"));
+
+            if (resultRoutine != null)
+            {
+                StopCoroutine(resultRoutine);
+            }
+
+            resultRoutine = StartCoroutine(ShowPuzzleResultDelayed(
+                title,
+                explanation,
+                GameStrings.T("Tekrar Dene", "Try Again"),
+                shareText));
+        }
+
+        private IEnumerator ShowPuzzleResultDelayed(string title, string subtitle, string buttonLabel, string shareText)
+        {
+            yield return new WaitForSeconds(1.1f);
+            hud.ShowPuzzleResult(title, subtitle, buttonLabel, shareText);
+            resultRoutine = null;
+        }
+
+        /// <summary>
+        /// Only the first attempt of the day counts; later replays are
+        /// practice. Solving on consecutive days grows the puzzle streak.
+        /// </summary>
+        private DailyPuzzleState RecordDailyAttempt(bool solved)
+        {
+            var state = GamePrefs.LoadDailyPuzzle();
+            string today = Puzzles.DateKeyFor(DateTime.Now);
+
+            if (state.DateKey == today && state.Attempted)
+            {
+                return state; // practice run
+            }
+
+            string yesterday = Puzzles.DateKeyFor(DateTime.Now.AddDays(-1));
+            state.DateKey = today;
+            state.Attempted = true;
+            state.Solved = solved;
+
+            if (solved)
+            {
+                state.Streak = state.LastSolvedKey == yesterday ? state.Streak + 1 : 1;
+                state.BestStreak = Mathf.Max(state.BestStreak, state.Streak);
+                state.LastSolvedKey = today;
+            }
+
+            GamePrefs.SaveDailyPuzzle(state);
+            return state;
+        }
+
+        // ------------------------------------------------------------------
         // Online rooms
         // ------------------------------------------------------------------
 
@@ -950,11 +1309,13 @@ namespace TicTacube.Game
             }
 
             onlineMode = true;
+            puzzleMode = false;
             tutorialActive = false;
             onlineRendered = null;
             onlineRenderedSequence = -1;
             onlineResultShown = false;
             onlineCelebratedSequence = -1;
+            onlineLeadSign = 0;
             phase = GamePhase.Playing;
 
             ClearSelection();
@@ -1048,7 +1409,7 @@ namespace TicTacube.Game
                     break;
 
                 case OnlineEventType.SnapshotUpdated:
-                    ApplyOnlineSnapshot(entry.Snapshot);
+                    ApplyOnlineSnapshot(entry.Snapshot, entry.Cause);
                     break;
 
                 case OnlineEventType.ActionRejected:
@@ -1065,17 +1426,22 @@ namespace TicTacube.Game
         {
             hud.SetReconnectVisible(status == OnlineStatus.Disconnected && online.HasSession);
 
+            if (status != OnlineStatus.Waiting)
+            {
+                hud.HideRoomCode();
+            }
+
             switch (status)
             {
                 case OnlineStatus.Connecting:
                     hud.SetHint(GameStrings.T("Sunucuya bağlanılıyor…", "Connecting to server…"));
                     break;
                 case OnlineStatus.Waiting:
-                    hud.SetHint(GameStrings.T(
-                        "Oda kodu: " + online.RoomId + " — rakibini bekle",
-                        "Room code: " + online.RoomId + " — waiting for your opponent"));
+                    hud.ClearHint();
+                    hud.ShowRoomCode(online.RoomId);
                     break;
                 case OnlineStatus.Connected:
+                    hud.ClearHint();
                     hud.Toast(GameStrings.T("Rakip bağlı — iyi oyunlar!", "Opponent connected — good luck!"), 2.5f);
                     break;
                 case OnlineStatus.PeerWaiting:
@@ -1174,7 +1540,7 @@ namespace TicTacube.Game
             online.SendMove(index);
         }
 
-        private void ApplyOnlineSnapshot(OnlineSnapshot snapshot)
+        private void ApplyOnlineSnapshot(OnlineSnapshot snapshot, string cause)
         {
             if (snapshot.Sequence < onlineRenderedSequence)
             {
@@ -1232,6 +1598,19 @@ namespace TicTacube.Game
                         boardView.AddLineBeams(newLines, addedPlayer);
                         CelebrateLines(newLines, addedPlayer, addedPlayer == humanPlayer);
                     }
+
+                    // Lead-change narrative, from the human's perspective.
+                    if (!snapshot.ResultComplete)
+                    {
+                        int sign = Math.Sign(snapshot.LineScoreX - snapshot.LineScoreO);
+
+                        if (sign != onlineLeadSign && snapshot.LineScoreX + snapshot.LineScoreO > 0)
+                        {
+                            hud.Toast(LeadText(sign, true), 2.2f);
+                        }
+
+                        onlineLeadSign = sign;
+                    }
                 }
                 else if (snapshot.ResultComplete && snapshot.ResultWinner != null)
                 {
@@ -1252,7 +1631,27 @@ namespace TicTacube.Game
 
             hud.SetTurn(snapshot.CurrentPlayer, true, humanPlayer, false);
             hud.SetOnlineScores(snapshot, humanPlayer, ruleset);
-            HandleOnlineRoundState(snapshot);
+            UpdateOnlineEndgameBand(snapshot);
+            HandleOnlineRoundState(snapshot, cause);
+        }
+
+        /// <summary>Final-six band online: only when connected and it's our turn.</summary>
+        private void UpdateOnlineEndgameBand(OnlineSnapshot snapshot)
+        {
+            if (ruleset != Ruleset.Lines || online.Status != OnlineStatus.Connected)
+            {
+                return;
+            }
+
+            if (snapshot.ResultComplete || snapshot.CurrentPlayer != humanPlayer)
+            {
+                hud.ClearHint();
+                return;
+            }
+
+            var mirror = (Player?[])snapshot.Board.Clone();
+            var endgame = LinesTension.Analyze(mirror, humanPlayer);
+            hud.SetHint(endgame == null ? "" : BandText(endgame));
         }
 
         private void RebuildOnlineBoard(OnlineSnapshot snapshot)
@@ -1300,7 +1699,7 @@ namespace TicTacube.Game
             }
         }
 
-        private void HandleOnlineRoundState(OnlineSnapshot snapshot)
+        private void HandleOnlineRoundState(OnlineSnapshot snapshot, string cause)
         {
             if (!snapshot.ResultComplete)
             {
@@ -1315,9 +1714,26 @@ namespace TicTacube.Game
                 if (onlineResultShown || phase != GamePhase.Playing)
                 {
                     onlineResultShown = false;
+                    onlineLeadSign = 0;
                     phase = GamePhase.Playing;
                     hud.HideResult();
-                    hud.Toast(GameStrings.T("Yeni tur!", "New round!"), 2f);
+
+                    // The rematch moment deserves more than a generic toast.
+                    if (cause == "reset-match")
+                    {
+                        hud.Toast(GameStrings.T(
+                            "Rakip rövanş istedi — başlıyor!",
+                            "The opponent wants a rematch — here we go!"), 2.5f);
+                        gameAudio.PlayLines(2);
+                    }
+                    else if (cause == "reset-round")
+                    {
+                        hud.Toast(GameStrings.T("Rakip yeni turu başlattı!", "The opponent started the next round!"), 2f);
+                    }
+                    else
+                    {
+                        hud.Toast(GameStrings.T("Yeni tur!", "New round!"), 2f);
+                    }
                 }
 
                 return;
@@ -1379,7 +1795,7 @@ namespace TicTacube.Game
                 + " - " + snapshot.Wins(Rules.GetOtherPlayer(humanPlayer)) + GameStrings.T(" Rakip", " Opp");
 
             string buttonLabel = snapshot.MatchComplete
-                ? GameStrings.T("Yeni Maç", "New Match")
+                ? GameStrings.T("Rövanş", "Rematch")
                 : GameStrings.T("Sonraki Tur", "Next Round");
 
             if (resultRoutine != null)
@@ -1409,7 +1825,8 @@ namespace TicTacube.Game
         /// <summary>Threat hints for the side to move (red = must block, green = can score).</summary>
         private void UpdateHints()
         {
-            if (onlineMode)
+            // Online: fairness; puzzle: hints would spell out the answer.
+            if (onlineMode || puzzleMode)
             {
                 boardView.ClearHints();
                 return;
@@ -1423,8 +1840,8 @@ namespace TicTacube.Game
                 return;
             }
 
-            var danger = Rules.GetBlockingCells(board, currentPlayer);
-            var scoring = Rules.GetThreatCells(board, currentPlayer);
+            var danger = Rules.GetThreatCellCounts(board, Rules.GetOtherPlayer(currentPlayer));
+            var scoring = Rules.GetThreatCellCounts(board, currentPlayer);
             boardView.ShowHints(danger, scoring);
         }
 
@@ -1434,7 +1851,7 @@ namespace TicTacube.Game
 
         private void SaveProgress(int stage)
         {
-            if (onlineMode || match == null || match.IsComplete)
+            if (onlineMode || puzzleMode || match == null || match.IsComplete)
             {
                 return;
             }
@@ -1468,7 +1885,8 @@ namespace TicTacube.Game
 
         private void OnApplicationPause(bool paused)
         {
-            if (paused && match != null && !match.IsComplete && !matchEndedByDraw
+            if (paused && !onlineMode && !puzzleMode
+                && match != null && !match.IsComplete && !matchEndedByDraw
                 && phase != GamePhase.Menu && phase != GamePhase.MatchOver)
             {
                 SaveProgress(phase == GamePhase.RoundOver ? 1 : 0);
