@@ -18,6 +18,7 @@ namespace TicTacube.Game
             public bool AiOpens;
             public int TargetWins = 1;
             public int RequiredMargin; // Lines: win by at least this many lines
+            public string PersonalityId; // AiPersonality id; null = default profile
             public string TitleTr;
             public string TitleEn;
             public string ConditionTr;
@@ -43,27 +44,36 @@ namespace TicTacube.Game
                 TitleTr = "İlk Hat", TitleEn = "First Line",
                 ConditionTr = "Kolay'a karşı bir Klasik turu kazan", ConditionEn = "Win a Classic round vs Easy" },
             new Step { Number = 3, Difficulty = Difficulty.Balanced, Ruleset = Ruleset.Lines, RequiredMargin = 2,
+                PersonalityId = "gambler",
                 TitleTr = "Fark Atan", TitleEn = "Margin Maker",
                 ConditionTr = "Dengeli'yi 2+ çizgi farkla yen", ConditionEn = "Beat Balanced by 2+ lines" },
             new Step { Number = 4, Difficulty = Difficulty.Balanced, Ruleset = Ruleset.Lines, Gravity = true,
+                PersonalityId = "fortress",
                 TitleTr = "Kule Ustası", TitleEn = "Tower Hand",
                 ConditionTr = "Dengeli'ye karşı bir Kule turu kazan", ConditionEn = "Win a Tower round vs Balanced" },
             new Step { Number = 5, Difficulty = Difficulty.Balanced, Ruleset = Ruleset.Classic,
                 TitleTr = "Pasta Pazarlığı", TitleEn = "Pie Bargain",
                 ConditionTr = "Dengeli'ye karşı Klasik kazan (Pie açık)", ConditionEn = "Win Classic vs Balanced (Pie on)" },
             new Step { Number = 6, Difficulty = Difficulty.Hard, Ruleset = Ruleset.Lines, AiOpens = true,
+                PersonalityId = "aggressive",
                 TitleTr = "Ters Rüzgâr", TitleEn = "Headwind",
                 ConditionTr = "Zor açarken Çizgiler turu kazan", ConditionEn = "Win Lines with Hard opening" },
             new Step { Number = 7, Difficulty = Difficulty.Hard, Ruleset = Ruleset.Lines, Gravity = true,
+                PersonalityId = "fortress",
                 TitleTr = "Yüksek Kule", TitleEn = "High Tower",
                 ConditionTr = "Zor'a karşı bir Kule turu kazan", ConditionEn = "Win a Tower round vs Hard" },
             new Step { Number = 8, Difficulty = Difficulty.Hard, Ruleset = Ruleset.Classic,
                 TitleTr = "Soğukkanlı", TitleEn = "Cold Blood",
                 ConditionTr = "Zor'a karşı bir Klasik turu kazan", ConditionEn = "Win a Classic round vs Hard" },
             new Step { Number = 9, Difficulty = Difficulty.Master, Ruleset = Ruleset.Lines,
+                PersonalityId = "drifter",
                 TitleTr = "Usta Kapısı", TitleEn = "Master's Gate",
                 ConditionTr = "Usta'ya karşı bir Çizgiler turu kazan", ConditionEn = "Win a Lines round vs Master" },
+            // Aggressive, not Fortress: the audit showed Fortress drives
+            // Master games to ~80% draws, which would make a 3+ margin
+            // nearly unreachable; Aggressive sharpens games both ways.
             new Step { Number = 10, Difficulty = Difficulty.Master, Ruleset = Ruleset.Lines, RequiredMargin = 3,
+                PersonalityId = "aggressive",
                 TitleTr = "Ezici Üstünlük", TitleEn = "Crusher",
                 ConditionTr = "Usta'yı 3+ çizgi farkla yen", ConditionEn = "Beat Master by 3+ lines" },
             new Step { Number = 11, Difficulty = Difficulty.Master, Ruleset = Ruleset.Classic,

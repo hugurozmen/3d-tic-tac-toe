@@ -1057,7 +1057,15 @@ namespace TicTacube.Game
                     ? new Color(0.3f, 0.26f, 0.12f, 1f)
                     : unlocked ? ButtonColor : new Color(0.1f, 0.12f, 0.18f, 1f);
                 rowText.alignment = TextAnchor.MiddleLeft;
-                rowText.text = "  " + step.Number + ". " + step.Title() + " — " + step.Condition()
+                string personalityTag = "";
+
+                if (step.PersonalityId != null)
+                {
+                    var profile = AiPersonality.ById(step.PersonalityId);
+                    personalityTag = " · " + GameStrings.T(profile.NameTr, profile.NameEn);
+                }
+
+                rowText.text = "  " + step.Number + ". " + step.Title() + personalityTag + " — " + step.Condition()
                     + (done ? GameStrings.T("  (fethedildi)", "  (conquered)") : unlocked ? "" : GameStrings.T("  (kilitli)", "  (locked)"));
                 rowText.color = done ? new Color(1f, 0.84f, 0.32f, 1f) : unlocked ? TextColor : MutedColor;
             }

@@ -90,6 +90,10 @@ namespace TicTacube.Game
         private Ladder.Step ladderStep;
         private bool ladderSuccess;
 
+        // AI personality profile: set by ladder steps, null (= default,
+        // web-parity profile) in every other mode.
+        private AiPersonality aiPersonality;
+
         // Match log for the summary panel + round replay (local modes only).
         private sealed class LoggedMove
         {
@@ -194,6 +198,7 @@ namespace TicTacube.Game
             GamePrefs.ClearSave();
             puzzleMode = false;
             ladderMode = false;
+            aiPersonality = null;
             soloMode = solo;
             gravityMode = gravity && !tournament;
             tournamentMode = tournament;
@@ -237,6 +242,7 @@ namespace TicTacube.Game
             ladderMode = true;
             ladderStep = step;
             ladderSuccess = false;
+            aiPersonality = step.PersonalityId == null ? null : AiPersonality.ById(step.PersonalityId);
             soloMode = true;
             gravityMode = step.Gravity;
             ruleset = step.Ruleset;
@@ -250,7 +256,16 @@ namespace TicTacube.Game
             ResetMatchLog();
             StartRound();
             hud.ShowGame();
-            hud.Toast(GameStrings.T("Basamak ", "Step ") + step.Number + ": " + step.Condition(), 3.5f);
+            string intro = GameStrings.T("Basamak ", "Step ") + step.Number + ": " + step.Condition();
+
+            if (aiPersonality != null)
+            {
+                intro += "\n" + GameStrings.T("Rakip: ", "Rival: ")
+                    + GameStrings.T(aiPersonality.NameTr, aiPersonality.NameEn)
+                    + " — " + GameStrings.T(aiPersonality.IntroTr, aiPersonality.IntroEn);
+            }
+
+            hud.Toast(intro, aiPersonality != null ? 5f : 3.5f);
         }
 
         private void ResetMatchLog()
@@ -278,6 +293,7 @@ namespace TicTacube.Game
 
             puzzleMode = false;
             ladderMode = false;
+            aiPersonality = null;
             tournamentMode = save.Tournament;
             soloMode = save.Solo;
             gravityMode = save.Gravity;
@@ -1092,8 +1108,9 @@ namespace TicTacube.Game
             var aiRuleset = ruleset;
             var aiGravity = gravityMode;
             var aiPieAware = aiRuleset == Ruleset.Classic && !aiGravity;
+            var aiProfile = aiPersonality;
             aiStartedAt = Time.time;
-            aiTask = Task.Run(() => Ai.ChooseMove(boardCopy, aiPlayer, aiDifficulty, aiRuleset, null, aiGravity, aiPieAware));
+            aiTask = Task.Run(() => Ai.ChooseMove(boardCopy, aiPlayer, aiDifficulty, aiRuleset, null, aiGravity, aiPieAware, aiProfile));
         }
 
         private void Update()
@@ -1455,6 +1472,7 @@ namespace TicTacube.Game
             gravityMode = false;
             tournamentMode = false;
             ladderMode = false;
+            aiPersonality = null;
             tutorialActive = false;
             currentPuzzle = Puzzles.GetDailyPuzzle(DateTime.Now);
             ruleset = currentPuzzle.Ruleset;

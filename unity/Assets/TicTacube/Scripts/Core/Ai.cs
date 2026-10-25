@@ -31,6 +31,19 @@ namespace TicTacube.Core
         [ThreadStatic]
         private static bool pieAwareOpening;
 
+        /// <summary>
+        /// Active personality profile for this ChooseMove call (Lines only).
+        /// Null means Default, whose multipliers reproduce the baseline
+        /// numbers exactly. Thread-static like the other per-call flags.
+        /// </summary>
+        [ThreadStatic]
+        private static AiPersonality personality;
+
+        private static AiPersonality Profile
+        {
+            get { return personality ?? AiPersonality.Default; }
+        }
+
         private static List<int> LegalMoves(Player?[] board)
         {
             return gravityRules ? Rules.GetGravityMoves(board) : Rules.GetAvailableMoves(board);
@@ -405,7 +418,7 @@ namespace TicTacube.Core
         {
             if (move == CenterIndex)
             {
-                return 30;
+                return Profile.CenterBonus;
             }
 
             if (Corners.Contains(move))
@@ -597,7 +610,7 @@ namespace TicTacube.Core
                 }
                 else if (rivalCount > 0)
                 {
-                    score -= LinesRivalWeights[rivalCount] * 1.08;
+                    score -= LinesRivalWeights[rivalCount] * 1.08 * Profile.RivalWeightMul;
                 }
                 else
                 {
@@ -606,15 +619,15 @@ namespace TicTacube.Core
             }
 
             score += Rules.GetThreatCells(board, player).Count * (remaining < 8 ? 54 : 42);
-            score -= Rules.GetThreatCells(board, rival).Count * (remaining < 8 ? 72 : 58);
+            score -= Rules.GetThreatCells(board, rival).Count * (remaining < 8 ? 72 : 58) * Profile.DefenseMul;
 
             if (board[CenterIndex] == player)
             {
-                score += 26;
+                score += 26 * Profile.CenterOwnershipMul;
             }
             else if (board[CenterIndex] == rival)
             {
-                score -= 24;
+                score -= 24 * Profile.CenterOwnershipMul;
             }
 
             return score;
@@ -637,10 +650,10 @@ namespace TicTacube.Core
                 + immediateGain * 270 * endgameMultiplier
                 + analysis.ImmediateLines * 170
                 + analysis.MultiLineBonus * 260
-                + analysis.BlockedThreats * 185 * endgameMultiplier
+                + analysis.BlockedThreats * 185 * endgameMultiplier * Profile.DefenseMul
                 + Math.Max(0, analysis.BlockedThreats - 1) * 95
                 + analysis.DeniedRivalLines * 34
-                + analysis.CreatesThreats * 46
+                + analysis.CreatesThreats * 46 * Profile.CreatesThreatsMul
                 + analysis.FutureScoringPaths * 12
                 + analysis.RivalPathsDenied * 8
                 + CountOpenLinesThroughMove(board, move, player) * 11
@@ -848,6 +861,18 @@ namespace TicTacube.Core
                 return null;
             }
 
+            // Drifter-style profiles refuse an open center in the opening:
+            // the center is otherwise the forced pick, so the personality
+            // only becomes visible (and exploitable) by dropping it from the
+            // candidate set outright. No-op for the default profile.
+            if (Profile.CenterAvoidPlies > 0
+                && moves.Count > 1
+                && moves.Contains(CenterIndex)
+                && Rules.CellCount - Rules.GetAvailableMoves(board).Count < Profile.CenterAvoidPlies)
+            {
+                moves = moves.Where(move => move != CenterIndex).ToList();
+            }
+
             int depth = difficulty == Difficulty.Hard ? 1 : difficulty == Difficulty.Master ? 2 : 0;
             int candidateLimit = difficulty == Difficulty.Easy ? 7 : difficulty == Difficulty.Master ? 9 : 8;
 
@@ -895,7 +920,7 @@ namespace TicTacube.Core
                     }
                 }
 
-                if (softerMove != null && random() < 0.12)
+                if (softerMove != null && random() < Profile.SofterMoveChance)
                 {
                     return softerMove.Move;
                 }
@@ -1115,10 +1140,12 @@ namespace TicTacube.Core
             Ruleset ruleset,
             Func<double> random = null,
             bool gravity = false,
-            bool pieAware = false)
+            bool pieAware = false,
+            AiPersonality profile = null)
         {
             gravityRules = gravity;
             pieAwareOpening = pieAware;
+            personality = profile;
 
             if (random == null)
             {
@@ -1136,6 +1163,7 @@ namespace TicTacube.Core
             {
                 gravityRules = false;
                 pieAwareOpening = false;
+                personality = null;
             }
         }
     }
