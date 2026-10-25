@@ -5,8 +5,9 @@ namespace TicTacube.Game
 {
     /// <summary>
     /// Mobile-first camera: one-finger drag orbits the board, pinch zooms,
-    /// a short tap places a mark. Mouse drag / scroll wheel cover the editor
-    /// and desktop builds.
+    /// a short tap places a mark. A drag dead-zone keeps shaky fingers from
+    /// nudging the camera while tapping. Mouse drag / scroll wheel cover the
+    /// editor and desktop builds.
     /// </summary>
     public sealed class CameraOrbit : MonoBehaviour
     {
@@ -16,7 +17,7 @@ namespace TicTacube.Game
         private const float MaxPitch = 75f;
         private const float MinDistance = 4.5f;
         private const float MaxDistance = 13f;
-        private const float TapMaxSeconds = 0.4f;
+        private const float TapMaxSeconds = 0.8f;
 
         private GameController controller;
         private Camera orbitCamera;
@@ -28,8 +29,12 @@ namespace TicTacube.Game
 
         private bool trackingTouch;
         private bool touchStartedOverUi;
+        private bool dragging;
         private float touchStartTime;
         private float touchTravel;
+
+        private Vector3 shakeOffset = Vector3.zero;
+        private float shakeStrength;
 
         public void Initialize(GameController gameController, Camera camera)
         {
@@ -50,6 +55,15 @@ namespace TicTacube.Game
             return dpi * 0.08f;
         }
 
+        /// <summary>Brief decaying camera shake (gated by the Effects pref).</summary>
+        public void Shake(float strength)
+        {
+            if (GamePrefs.Effects)
+            {
+                shakeStrength = Mathf.Max(shakeStrength, strength);
+            }
+        }
+
         private void Update()
         {
             if (orbitCamera == null)
@@ -66,7 +80,25 @@ namespace TicTacube.Game
                 HandleMouse();
             }
 
+            UpdateShake();
             Apply();
+        }
+
+        private void UpdateShake()
+        {
+            if (shakeStrength > 0.001f)
+            {
+                shakeOffset = new Vector3(
+                    Random.Range(-1f, 1f) * shakeStrength,
+                    Random.Range(-1f, 1f) * shakeStrength,
+                    0f);
+                shakeStrength = Mathf.Lerp(shakeStrength, 0f, Time.deltaTime * 9f);
+            }
+            else
+            {
+                shakeOffset = Vector3.zero;
+                shakeStrength = 0f;
+            }
         }
 
         private static bool PointerOverUi(int fingerId)
@@ -92,6 +124,7 @@ namespace TicTacube.Game
                 if (touch.phase == TouchPhase.Began)
                 {
                     trackingTouch = true;
+                    dragging = false;
                     touchStartedOverUi = PointerOverUi(touch.fingerId);
                     touchStartTime = Time.time;
                     touchTravel = 0f;
@@ -100,7 +133,14 @@ namespace TicTacube.Game
                 {
                     touchTravel += touch.deltaPosition.magnitude;
 
-                    if (!touchStartedOverUi)
+                    // Dead zone: don't orbit until the finger clearly drags,
+                    // so a slightly shaky tap stays a tap.
+                    if (!dragging && touchTravel > TapMaxTravel())
+                    {
+                        dragging = true;
+                    }
+
+                    if (dragging && !touchStartedOverUi)
                     {
                         yaw += touch.deltaPosition.x * OrbitSpeed;
                         pitch -= touch.deltaPosition.y * OrbitSpeed;
@@ -109,8 +149,7 @@ namespace TicTacube.Game
                 }
                 else if (trackingTouch && touch.phase == TouchPhase.Ended)
                 {
-                    bool isTap = touchTravel <= TapMaxTravel()
-                        && Time.time - touchStartTime <= TapMaxSeconds;
+                    bool isTap = !dragging && Time.time - touchStartTime <= TapMaxSeconds;
 
                     if (isTap && !touchStartedOverUi)
                     {
@@ -118,10 +157,12 @@ namespace TicTacube.Game
                     }
 
                     trackingTouch = false;
+                    dragging = false;
                 }
                 else if (touch.phase == TouchPhase.Canceled)
                 {
                     trackingTouch = false;
+                    dragging = false;
                 }
 
                 return;
@@ -130,6 +171,7 @@ namespace TicTacube.Game
             if (Input.touchCount >= 2)
             {
                 trackingTouch = false;
+                dragging = false;
                 var first = Input.GetTouch(0);
                 var second = Input.GetTouch(1);
                 float currentGap = (first.position - second.position).magnitude;
@@ -144,6 +186,7 @@ namespace TicTacube.Game
             if (Input.GetMouseButtonDown(0))
             {
                 trackingTouch = true;
+                dragging = false;
                 touchStartedOverUi = PointerOverUi(-1);
                 touchStartTime = Time.time;
                 touchTravel = 0f;
@@ -154,7 +197,12 @@ namespace TicTacube.Game
                 float dy = Input.GetAxis("Mouse Y");
                 touchTravel += Mathf.Abs(dx) + Mathf.Abs(dy);
 
-                if (!touchStartedOverUi)
+                if (!dragging && touchTravel > 0.6f)
+                {
+                    dragging = true;
+                }
+
+                if (dragging && !touchStartedOverUi)
                 {
                     yaw += dx * 4f;
                     pitch -= dy * 4f;
@@ -163,7 +211,7 @@ namespace TicTacube.Game
             }
             else if (trackingTouch && Input.GetMouseButtonUp(0))
             {
-                bool isTap = touchTravel <= 0.6f && Time.time - touchStartTime <= TapMaxSeconds;
+                bool isTap = !dragging && Time.time - touchStartTime <= TapMaxSeconds;
 
                 if (isTap && !touchStartedOverUi)
                 {
@@ -171,6 +219,7 @@ namespace TicTacube.Game
                 }
 
                 trackingTouch = false;
+                dragging = false;
             }
 
             float scroll = Input.GetAxis("Mouse ScrollWheel");
@@ -195,7 +244,7 @@ namespace TicTacube.Game
             {
                 var cell = hit.collider.GetComponent<CellView>();
 
-                if (cell != null)
+                if (cell != null && cell.enabled)
                 {
                     controller.OnCellTapped(cell.Index);
                 }
@@ -205,7 +254,7 @@ namespace TicTacube.Game
         private void Apply()
         {
             var rotation = Quaternion.Euler(pitch, yaw, 0f);
-            transform.position = target + rotation * new Vector3(0f, 0f, -distance);
+            transform.position = target + rotation * (new Vector3(0f, 0f, -distance) + shakeOffset);
             transform.rotation = rotation;
         }
     }
