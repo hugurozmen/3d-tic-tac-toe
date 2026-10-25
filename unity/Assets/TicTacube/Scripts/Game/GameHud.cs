@@ -852,6 +852,14 @@ namespace TicTacube.Game
             confirmButton.gameObject.SetActive(visible);
         }
 
+        /// <summary>Blank the turn indicator (entering online before data).</summary>
+        public void ClearTurnDisplay()
+        {
+            turnLabel.text = "";
+            thinkingLabel.text = "";
+            turnStrip.color = new Color(0.17f, 0.22f, 0.33f, 1f);
+        }
+
         /// <summary>HUD scores for online games, straight from the snapshot.</summary>
         public void SetOnlineScores(OnlineSnapshot snapshot, Player myPlayer, Ruleset ruleset)
         {

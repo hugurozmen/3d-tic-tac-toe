@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Net.WebSockets;
 using System.Text;
 using System.Threading;
@@ -48,19 +49,34 @@ namespace TicTacube.Online
     /// callers poll <see cref="DrainEvents"/> and <see cref="Tick"/> from
     /// their main loop. The server is authoritative: every accepted action
     /// comes back as a snapshot, which is the only state this client stores.
+    ///
+    /// Every state mutation that originates from a socket is stamped with the
+    /// socket's generation and re-validated under the lock, so a message read
+    /// just before Close/HostRoom/JoinRoom replaced the transport can never
+    /// poison the next session's state.
     /// </summary>
     public sealed class OnlineClient
     {
         private const double ActionAckTimeoutSeconds = 8.0;
         private static readonly int[] RejoinDelaysMs = { 1000, 2000, 4000 };
 
+        /// <summary>
+        /// Origin offered during the handshake. The server only checks it
+        /// when ONLINE_ALLOWED_ORIGINS is configured; deployments that serve
+        /// native clients should allowlist this value (or use '*').
+        /// </summary>
+        public static string OriginHeader = "app://tictacube-unity";
+
         private readonly object gate = new object();
         private readonly ConcurrentQueue<OnlineEvent> events = new ConcurrentQueue<OnlineEvent>();
         private readonly SemaphoreSlim sendLock = new SemaphoreSlim(1, 1);
+        private readonly Stopwatch clock = Stopwatch.StartNew();
 
         private ClientWebSocket socket;
         private int generation;
         private bool closedByUser;
+        private bool establishedOnSocket;
+        private int rejoinAttempts;
 
         private string serverUrl = "";
         private string roomId = "";
@@ -73,7 +89,7 @@ namespace TicTacube.Online
         private OnlineSnapshot lastSnapshot;
 
         private string pendingActionId;
-        private DateTime pendingActionSentAt;
+        private long pendingActionSentAtMs;
         private int actionCounter;
 
         public OnlineStatus Status
@@ -134,9 +150,9 @@ namespace TicTacube.Online
         }
 
         /// <summary>
-        /// Resume a room session from stored credentials (e.g. after an app
-        /// restart). Possession of the private session id authorizes taking
-        /// the seat over, even from a socket that has not finished closing.
+        /// Resume a room session from stored credentials (e.g. after leaving
+        /// the room screen). Possession of the private session id authorizes
+        /// taking the seat over, even from a socket still closing.
         /// </summary>
         public void ResumeSession(string url, string room, Player player, string session)
         {
@@ -168,6 +184,7 @@ namespace TicTacube.Online
                 }
 
                 closedByUser = false;
+                rejoinAttempts = 0;
                 room = roomId;
                 session = sessionId;
                 player = myPlayer;
@@ -205,6 +222,8 @@ namespace TicTacube.Online
                 toClose = socket;
                 socket = null;
                 hasSession = false;
+                establishedOnSocket = false;
+                rejoinAttempts = 0;
                 roomId = "";
                 sessionId = "";
                 settings = null;
@@ -212,6 +231,8 @@ namespace TicTacube.Online
                 pendingActionId = null;
                 status = OnlineStatus.Idle;
             }
+
+            DropQueuedEvents();
 
             if (toClose != null)
             {
@@ -234,11 +255,14 @@ namespace TicTacube.Online
         public void Tick()
         {
             bool timedOut = false;
+            int myGeneration;
 
             lock (gate)
             {
+                myGeneration = generation;
+
                 if (pendingActionId != null
-                    && (DateTime.UtcNow - pendingActionSentAt).TotalSeconds > ActionAckTimeoutSeconds)
+                    && (clock.ElapsedMilliseconds - pendingActionSentAtMs) / 1000.0 > ActionAckTimeoutSeconds)
                 {
                     pendingActionId = null;
                     timedOut = true;
@@ -248,21 +272,29 @@ namespace TicTacube.Online
             if (timedOut)
             {
                 // Mirror the web client: a lost acknowledgement means the
-                // transport can't be trusted; drop it and let the player
-                // reconnect with the stored session.
+                // transport can't be trusted; drop it and recover via rejoin.
                 Emit(new OnlineEvent
                 {
                     Type = OnlineEventType.ActionRejected,
                     Code = "ack-timeout",
                     Message = "Action confirmation timed out",
                 });
-                HandleTransportLoss(null);
+                HandleTransportLoss(null, myGeneration);
             }
         }
 
         // ------------------------------------------------------------------
         // Connection management
         // ------------------------------------------------------------------
+
+        private void DropQueuedEvents()
+        {
+            OnlineEvent ignored;
+
+            while (events.TryDequeue(out ignored))
+            {
+            }
+        }
 
         private void StartFresh(string url)
         {
@@ -276,12 +308,16 @@ namespace TicTacube.Online
                 socket = null;
                 serverUrl = (url ?? "").Trim();
                 hasSession = false;
+                establishedOnSocket = false;
+                rejoinAttempts = 0;
                 roomId = "";
                 sessionId = "";
                 settings = null;
                 lastSnapshot = null;
                 pendingActionId = null;
             }
+
+            DropQueuedEvents();
 
             if (toClose != null)
             {
@@ -304,6 +340,26 @@ namespace TicTacube.Online
             }
         }
 
+        private static ClientWebSocket CreateSocket()
+        {
+            var fresh = new ClientWebSocket();
+
+            try
+            {
+                if (!string.IsNullOrEmpty(OriginHeader))
+                {
+                    fresh.Options.SetRequestHeader("Origin", OriginHeader);
+                }
+            }
+            catch (Exception)
+            {
+                // Some platforms restrict handshake headers; the server only
+                // enforces origins when an allowlist is configured.
+            }
+
+            return fresh;
+        }
+
         private void RunConnect(string helloMessage)
         {
             int myGeneration;
@@ -317,7 +373,7 @@ namespace TicTacube.Online
 
             Task.Run(async () =>
             {
-                var fresh = new ClientWebSocket();
+                var fresh = CreateSocket();
 
                 try
                 {
@@ -333,11 +389,13 @@ namespace TicTacube.Online
                     if (IsCurrent(myGeneration))
                     {
                         EmitError("Could not connect: " + caught.Message);
-                        HandleTransportLoss(null);
+                        HandleTransportLoss(null, myGeneration);
                     }
 
                     return;
                 }
+
+                int freshGeneration;
 
                 lock (gate)
                 {
@@ -347,11 +405,14 @@ namespace TicTacube.Online
                         return;
                     }
 
+                    generation += 1;
+                    freshGeneration = generation;
                     socket = fresh;
+                    establishedOnSocket = false;
                 }
 
                 await SendRawAsync(fresh, helloMessage).ConfigureAwait(false);
-                await ReceiveLoop(fresh, myGeneration).ConfigureAwait(false);
+                await ReceiveLoop(fresh, freshGeneration).ConfigureAwait(false);
             });
         }
 
@@ -367,6 +428,7 @@ namespace TicTacube.Online
         {
             var buffer = new byte[16 * 1024];
             var builder = new StringBuilder();
+            string closeDescription = null;
 
             try
             {
@@ -378,6 +440,7 @@ namespace TicTacube.Online
 
                     if (result.MessageType == WebSocketMessageType.Close)
                     {
+                        closeDescription = result.CloseStatusDescription;
                         break;
                     }
 
@@ -390,11 +453,7 @@ namespace TicTacube.Online
 
                     string text = builder.ToString();
                     builder.Length = 0;
-
-                    if (IsCurrent(myGeneration))
-                    {
-                        HandleMessage(text);
-                    }
+                    HandleMessage(text, myGeneration);
                 }
             }
             catch (Exception)
@@ -404,7 +463,12 @@ namespace TicTacube.Online
 
             if (IsCurrent(myGeneration))
             {
-                HandleTransportLoss(active);
+                if (!string.IsNullOrEmpty(closeDescription))
+                {
+                    EmitError(closeDescription);
+                }
+
+                HandleTransportLoss(active, myGeneration);
             }
             else
             {
@@ -412,20 +476,33 @@ namespace TicTacube.Online
             }
         }
 
-        private void HandleTransportLoss(ClientWebSocket lost)
+        /// <summary>
+        /// Shared recovery after a dead transport (socket closed, errored, or
+        /// an ack timed out). Attempts are counted across reconnects so an
+        /// accept-then-close server can't keep the client in a retry loop
+        /// forever; the counter resets only when a room is re-established or
+        /// the user acts (Reconnect / new Host / Join).
+        /// </summary>
+        private void HandleTransportLoss(ClientWebSocket lost, int myGeneration)
         {
             bool shouldRejoin;
-            int myGeneration;
+            int attempt;
+            int nextGeneration;
 
             lock (gate)
             {
-                if (closedByUser)
+                if (closedByUser || myGeneration != generation)
                 {
+                    if (lost != null && socket != lost)
+                    {
+                        AbortQuietly(lost);
+                    }
+
                     return;
                 }
 
                 generation += 1;
-                myGeneration = generation;
+                nextGeneration = generation;
 
                 if (socket != null)
                 {
@@ -437,84 +514,88 @@ namespace TicTacube.Online
                     AbortQuietly(lost);
                 }
 
+                establishedOnSocket = false;
                 pendingActionId = null;
-                shouldRejoin = hasSession;
+                rejoinAttempts += 1;
+                attempt = rejoinAttempts;
+                shouldRejoin = hasSession && rejoinAttempts <= RejoinDelaysMs.Length;
             }
 
             if (!shouldRejoin)
             {
+                if (HasSession)
+                {
+                    EmitError("Reconnect failed");
+                }
+
                 SetStatus(OnlineStatus.Disconnected);
                 return;
             }
 
             SetStatus(OnlineStatus.Reconnecting);
-            Task.Run(() => RejoinWithBackoff(myGeneration));
+            int delay = RejoinDelaysMs[attempt - 1];
+            Task.Run(() => RejoinOnce(nextGeneration, delay));
         }
 
-        private async Task RejoinWithBackoff(int myGeneration)
+        private async Task RejoinOnce(int myGeneration, int delayMs)
         {
-            foreach (int delay in RejoinDelaysMs)
+            await Task.Delay(delayMs).ConfigureAwait(false);
+
+            string url;
+            string room;
+            string session;
+            Player player;
+
+            lock (gate)
             {
-                await Task.Delay(delay).ConfigureAwait(false);
-
-                string url;
-                string room;
-                string session;
-                Player player;
-
-                lock (gate)
+                if (myGeneration != generation || closedByUser || !hasSession)
                 {
-                    if (myGeneration != generation || closedByUser || !hasSession)
-                    {
-                        return;
-                    }
-
-                    url = serverUrl;
-                    room = roomId;
-                    session = sessionId;
-                    player = myPlayer;
+                    return;
                 }
 
-                var fresh = new ClientWebSocket();
+                url = serverUrl;
+                room = roomId;
+                session = sessionId;
+                player = myPlayer;
+            }
 
-                try
+            var fresh = CreateSocket();
+
+            try
+            {
+                using (var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(8)))
                 {
-                    using (var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(8)))
-                    {
-                        await fresh.ConnectAsync(new Uri(url), timeout.Token).ConfigureAwait(false);
-                    }
+                    await fresh.ConnectAsync(new Uri(url), timeout.Token).ConfigureAwait(false);
                 }
-                catch (Exception)
-                {
-                    fresh.Dispose();
-                    continue;
-                }
+            }
+            catch (Exception)
+            {
+                fresh.Dispose();
 
-                int freshGeneration;
-
-                lock (gate)
-                {
-                    if (myGeneration != generation || closedByUser)
-                    {
-                        AbortQuietly(fresh);
-                        return;
-                    }
-
-                    generation += 1;
-                    freshGeneration = generation;
-                    socket = fresh;
-                }
-
-                await SendRawAsync(fresh, OnlineMessages.RejoinRoom(room, player, session)).ConfigureAwait(false);
-                await ReceiveLoop(fresh, freshGeneration).ConfigureAwait(false);
+                // A failed connect consumes this attempt and schedules the
+                // next one (or gives up) through the shared recovery path.
+                HandleTransportLoss(null, myGeneration);
                 return;
             }
 
-            if (IsCurrent(myGeneration))
+            int freshGeneration;
+
+            lock (gate)
             {
-                EmitError("Reconnect failed");
-                SetStatus(OnlineStatus.Disconnected);
+                if (myGeneration != generation || closedByUser)
+                {
+                    AbortQuietly(fresh);
+                    return;
+                }
+
+                generation += 1;
+                freshGeneration = generation;
+                socket = fresh;
+                establishedOnSocket = false;
             }
+
+            await SendRawAsync(fresh, OnlineMessages.RejoinRoom(room, player, session)).ConfigureAwait(false);
+            await ReceiveLoop(fresh, freshGeneration).ConfigureAwait(false);
         }
 
         // ------------------------------------------------------------------
@@ -548,7 +629,7 @@ namespace TicTacube.Online
                 var parsed = MiniJson.Parse(payload) as Dictionary<string, object>;
                 object id;
                 pendingActionId = parsed != null && parsed.TryGetValue("actionId", out id) ? id as string : null;
-                pendingActionSentAt = DateTime.UtcNow;
+                pendingActionSentAtMs = clock.ElapsedMilliseconds;
                 active = socket;
             }
 
@@ -579,10 +660,10 @@ namespace TicTacube.Online
         }
 
         // ------------------------------------------------------------------
-        // Incoming messages
+        // Incoming messages (all stamped with the socket's generation)
         // ------------------------------------------------------------------
 
-        private void HandleMessage(string text)
+        private void HandleMessage(string text, int myGeneration)
         {
             object parsed;
 
@@ -611,32 +692,32 @@ namespace TicTacube.Online
                 case "room-created":
                 case "room-joined":
                 case "room-rejoined":
-                    HandleRoomEstablished(type, map);
+                    HandleRoomEstablished(type, map, myGeneration);
                     return;
                 case "peer-joined":
-                    StoreSettings(map);
-                    StoreSnapshot(map, "peer-joined");
-                    SetStatus(OnlineStatus.Connected);
+                    StoreSettings(map, myGeneration);
+                    StoreSnapshot(map, "peer-joined", myGeneration);
+                    SetStatus(OnlineStatus.Connected, myGeneration);
                     return;
                 case "peer-left":
-                    StoreSnapshot(map, "peer-left");
-                    ClearPending(null);
-                    SetStatus(OnlineStatus.PeerWaiting);
+                    StoreSnapshot(map, "peer-left", myGeneration);
+                    ClearPending(null, myGeneration);
+                    SetStatus(OnlineStatus.PeerWaiting, myGeneration);
                     return;
                 case "action-ack":
-                    ClearPending(StringField(map, "actionId"));
-                    StoreSnapshot(map, "action-ack");
+                    ClearPending(StringField(map, "actionId"), myGeneration);
+                    StoreSnapshot(map, "action-ack", myGeneration);
                     return;
                 case "move":
                 case "reset-round":
                 case "reset-match":
-                    StoreSnapshot(map, type);
+                    StoreSnapshot(map, type, myGeneration);
                     return;
                 case "action-rejected":
-                    HandleActionRejected(map);
+                    HandleActionRejected(map, myGeneration);
                     return;
                 case "error":
-                    EmitError(StringField(map, "message"));
+                    HandleServerError(StringField(map, "message"), myGeneration);
                     return;
             }
         }
@@ -647,7 +728,7 @@ namespace TicTacube.Online
             return map.TryGetValue(key, out value) ? value as string ?? "" : "";
         }
 
-        private void HandleRoomEstablished(string type, Dictionary<string, object> map)
+        private void HandleRoomEstablished(string type, Dictionary<string, object> map, int myGeneration)
         {
             var player = StringField(map, "player") == "O" ? Player.O : Player.X;
             var incomingSettings = OnlineRoomSettings.FromJson(
@@ -657,11 +738,18 @@ namespace TicTacube.Online
 
             lock (gate)
             {
+                if (myGeneration != generation)
+                {
+                    return;
+                }
+
                 myPlayer = player;
                 roomId = room;
                 sessionId = session;
                 settings = incomingSettings;
                 hasSession = true;
+                establishedOnSocket = true;
+                rejoinAttempts = 0;
                 pendingActionId = null;
             }
 
@@ -674,29 +762,92 @@ namespace TicTacube.Online
                 Cause = type,
             });
 
-            StoreSnapshot(map, type);
+            StoreSnapshot(map, type, myGeneration);
 
             if (type == "room-created")
             {
-                SetStatus(OnlineStatus.Waiting);
+                SetStatus(OnlineStatus.Waiting, myGeneration);
             }
             else if (type == "room-rejoined")
             {
                 object peerConnected;
                 bool connected = map.TryGetValue("peerConnected", out peerConnected)
                     && peerConnected is bool && (bool)peerConnected;
-                SetStatus(connected ? OnlineStatus.Connected : OnlineStatus.PeerWaiting);
+                SetStatus(connected ? OnlineStatus.Connected : OnlineStatus.PeerWaiting, myGeneration);
             }
             else
             {
-                SetStatus(OnlineStatus.Connected);
+                SetStatus(OnlineStatus.Connected, myGeneration);
             }
         }
 
-        private void HandleActionRejected(Dictionary<string, object> map)
+        /// <summary>
+        /// The server's '{type:"error"}' replies leave the socket open, but
+        /// before a room is established on this socket they are terminal for
+        /// the attempt (invalid code, room full, server full, host gone), and
+        /// some of them mean the stored session is dead for good.
+        /// </summary>
+        private void HandleServerError(string message, int myGeneration)
+        {
+            if (!IsCurrent(myGeneration))
+            {
+                return;
+            }
+
+            EmitError(message);
+
+            bool sessionKilling = message == "Session expired"
+                || message == "Room not found"
+                || message.StartsWith("Host session expired", StringComparison.Ordinal)
+                || message.StartsWith("Host disconnected", StringComparison.Ordinal);
+
+            ClientWebSocket toClose = null;
+            bool fatal;
+
+            lock (gate)
+            {
+                if (myGeneration != generation)
+                {
+                    return;
+                }
+
+                fatal = !establishedOnSocket || sessionKilling;
+
+                if (fatal)
+                {
+                    if (sessionKilling)
+                    {
+                        hasSession = false;
+                    }
+
+                    generation += 1;
+                    toClose = socket;
+                    socket = null;
+                    establishedOnSocket = false;
+                    pendingActionId = null;
+                }
+            }
+
+            if (fatal)
+            {
+                if (toClose != null)
+                {
+                    AbortQuietly(toClose);
+                }
+
+                SetStatus(OnlineStatus.Disconnected);
+            }
+        }
+
+        private void HandleActionRejected(Dictionary<string, object> map, int myGeneration)
         {
             string actionId = StringField(map, "actionId");
-            ClearPending(string.IsNullOrEmpty(actionId) ? null : actionId);
+            ClearPending(string.IsNullOrEmpty(actionId) ? null : actionId, myGeneration);
+
+            if (!IsCurrent(myGeneration))
+            {
+                return;
+            }
 
             Emit(new OnlineEvent
             {
@@ -706,13 +857,18 @@ namespace TicTacube.Online
             });
 
             // Rejections carry the authoritative snapshot; resync from it.
-            StoreSnapshot(map, "action-rejected");
+            StoreSnapshot(map, "action-rejected", myGeneration);
         }
 
-        private void ClearPending(string actionId)
+        private void ClearPending(string actionId, int myGeneration)
         {
             lock (gate)
             {
+                if (myGeneration != generation)
+                {
+                    return;
+                }
+
                 if (actionId == null || pendingActionId == actionId)
                 {
                     pendingActionId = null;
@@ -720,7 +876,7 @@ namespace TicTacube.Online
             }
         }
 
-        private void StoreSettings(Dictionary<string, object> map)
+        private void StoreSettings(Dictionary<string, object> map, int myGeneration)
         {
             var incoming = OnlineRoomSettings.FromJson(map.ContainsKey("settings") ? map["settings"] : null);
 
@@ -728,12 +884,17 @@ namespace TicTacube.Online
             {
                 lock (gate)
                 {
+                    if (myGeneration != generation)
+                    {
+                        return;
+                    }
+
                     settings = incoming;
                 }
             }
         }
 
-        private void StoreSnapshot(Dictionary<string, object> map, string cause)
+        private void StoreSnapshot(Dictionary<string, object> map, string cause, int myGeneration)
         {
             var snapshot = OnlineSnapshot.FromJson(map.ContainsKey("snapshot") ? map["snapshot"] : null);
 
@@ -744,6 +905,11 @@ namespace TicTacube.Online
 
             lock (gate)
             {
+                if (myGeneration != generation)
+                {
+                    return;
+                }
+
                 if (lastSnapshot != null && snapshot.Sequence < lastSnapshot.Sequence)
                 {
                     return; // stale
@@ -769,6 +935,21 @@ namespace TicTacube.Online
             lock (gate)
             {
                 if (status == next)
+                {
+                    return;
+                }
+
+                status = next;
+            }
+
+            Emit(new OnlineEvent { Type = OnlineEventType.StatusChanged, Status = next });
+        }
+
+        private void SetStatus(OnlineStatus next, int myGeneration)
+        {
+            lock (gate)
+            {
+                if (myGeneration != generation || status == next)
                 {
                     return;
                 }

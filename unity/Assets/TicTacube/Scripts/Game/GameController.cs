@@ -69,6 +69,14 @@ namespace TicTacube.Game
         private Player?[] onlineRendered;
         private long onlineRenderedSequence = -1;
         private bool onlineResultShown;
+        private long onlineCelebratedSequence = -1;
+
+        // Last room credentials, kept after leaving so rejoining the same
+        // room code reclaims the reserved seat instead of "Room is full".
+        private string lastOnlineUrl = "";
+        private string lastOnlineRoom = "";
+        private string lastOnlineSession = "";
+        private Player lastOnlinePlayer = Player.X;
 
         private void Awake()
         {
@@ -225,6 +233,14 @@ namespace TicTacube.Game
 
             if (onlineMode)
             {
+                if (online.HasSession)
+                {
+                    lastOnlineUrl = GamePrefs.ServerUrl;
+                    lastOnlineRoom = online.RoomId;
+                    lastOnlineSession = online.SessionId;
+                    lastOnlinePlayer = online.MyPlayer;
+                }
+
                 online.Close();
                 onlineMode = false;
                 onlineRendered = null;
@@ -253,8 +269,13 @@ namespace TicTacube.Game
             {
                 var snapshot = online.LastSnapshot;
 
-                if (snapshot == null)
+                if (snapshot == null
+                    || online.Status != OnlineStatus.Connected
+                    || online.HasPendingAction)
                 {
+                    hud.Toast(GameStrings.T(
+                        "Rakip bağlı değilken tur başlatılamaz.",
+                        "Can't start the next round while the opponent is away."), 2.5f);
                     return;
                 }
 
@@ -933,6 +954,7 @@ namespace TicTacube.Game
             onlineRendered = null;
             onlineRenderedSequence = -1;
             onlineResultShown = false;
+            onlineCelebratedSequence = -1;
             phase = GamePhase.Playing;
 
             ClearSelection();
@@ -941,6 +963,11 @@ namespace TicTacube.Game
             hud.HideResult();
             hud.SetOnlineUi(true);
             hud.SetUndoEnabled(false);
+
+            // Neutralize HUD text left over from a previous local game.
+            hud.ClearTurnDisplay();
+            hud.SetOnlineScores(null, humanPlayer, ruleset);
+
             hud.ShowGame();
             hud.SetHint(GameStrings.T("Sunucuya bağlanılıyor…", "Connecting to server…"));
         }
@@ -955,6 +982,19 @@ namespace TicTacube.Game
         public void StartOnlineJoin(string url, string code)
         {
             EnterOnlineMode();
+
+            // Rejoining the room we just left: the server reserves our seat
+            // for the grace window, so a plain join would get "Room is full".
+            string normalized = (code ?? "").Trim().ToUpperInvariant();
+
+            if (normalized == lastOnlineRoom
+                && url == lastOnlineUrl
+                && !string.IsNullOrEmpty(lastOnlineSession))
+            {
+                online.ResumeSession(url, lastOnlineRoom, lastOnlinePlayer, lastOnlineSession);
+                return;
+            }
+
             online.JoinRoom(url, code);
         }
 
@@ -1199,9 +1239,17 @@ namespace TicTacube.Game
                 }
             }
 
+            // Re-delivered equal-sequence snapshots (peer-left, rejected
+            // actions) must not cancel a selection the player is still making.
+            bool boardChanged = onlineRendered == null || added > 0 || removed > 0;
             onlineRendered = (Player?[])snapshot.Board.Clone();
             onlineRenderedSequence = snapshot.Sequence;
-            ClearSelection();
+
+            if (boardChanged || (pendingIndex >= 0 && snapshot.Board[pendingIndex] != null))
+            {
+                ClearSelection();
+            }
+
             hud.SetTurn(snapshot.CurrentPlayer, true, humanPlayer, false);
             hud.SetOnlineScores(snapshot, humanPlayer, ruleset);
             HandleOnlineRoundState(snapshot);
@@ -1283,16 +1331,24 @@ namespace TicTacube.Game
             onlineResultShown = true;
             phase = snapshot.MatchComplete ? GamePhase.MatchOver : GamePhase.RoundOver;
 
+            // Celebrate each round end once: a rejected reset re-delivers the
+            // same completed snapshot, which should re-show the panel quietly.
+            bool celebrate = snapshot.Sequence != onlineCelebratedSequence;
+            onlineCelebratedSequence = snapshot.Sequence;
             bool humanWon = snapshot.ResultWinner != null && snapshot.ResultWinner.Value == humanPlayer;
-            gameAudio.PlayRoundEnd(humanWon, snapshot.ResultWinner == null);
 
-            if (snapshot.ResultWinner != null)
+            if (celebrate)
             {
-                boardView.PulseBeams(snapshot.ResultWinner.Value, ResultDelaySeconds);
+                gameAudio.PlayRoundEnd(humanWon, snapshot.ResultWinner == null);
 
-                if (humanWon)
+                if (snapshot.ResultWinner != null)
                 {
-                    boardView.PlayConfetti();
+                    boardView.PulseBeams(snapshot.ResultWinner.Value, ResultDelaySeconds);
+
+                    if (humanWon)
+                    {
+                        boardView.PlayConfetti();
+                    }
                 }
             }
 
