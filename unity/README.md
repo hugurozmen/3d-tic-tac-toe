@@ -21,6 +21,14 @@ genç oyuncu ve erişilebilirlik ihtiyaçları olan oyuncu).
 
 - **Çizgiler** (varsayılan) ve **Klasik** kural setleri; menüde seçili
   kuralın tek cümlelik açıklaması
+- **Günlük Bulmaca**: tarih-tohumlu, web sürümüyle aynı gün aynı bulmaca
+  (4 tür rotasyonu: en iyi Çizgiler hamlesi / maks çizgi / Klasik kazanç /
+  iki hamlede kazanç); günde tek deneme sayılır, sonrası pratik; bulmaca
+  serisi ve paylaş-kopyala
+- **Açılış rotasyonu**: yerel maçlarda açılış hakkı maçtan maça dönüşümlü
+  (açıcının ölçülü bir avantajı var — istatistikler artık taraflı değil)
+- **Liderlik anlatısı + Son-6 bandı** (Çizgiler): öne geçişlerde anlık
+  bildirim; son 6 hücrede "Son N: +S şans ve B blok canlı" gerilim şeridi
 - **Online odalar**: web sürümüyle aynı WebSocket oda sunucusuna
   (`server/online-server.mjs`) bağlanır — oda kur, 5 haneli kodla katıl,
   kopan bağlantıda oturum kimliğiyle otomatik/elle yeniden bağlan; sunucu
@@ -32,14 +40,17 @@ genç oyuncu ve erişilebilirlik ihtiyaçları olan oyuncu).
   sırası dönüşümlü
 - **Pie Rule** (Klasik): ilk hamleden sonra rakip taraf değişimi
   isteyebilir; AI da web'dekiyle aynı eşiklerle karar verir
-- **İstatistik ve seri**: zorluk + kural seti başına galibiyet/mağlubiyet,
-  güncel ve en iyi seri (cihazda saklanır)
+- **İstatistik ve seri**: zorluk + kural seti başına galibiyet/mağlubiyet/
+  beraberlik, güncel ve en iyi seri (cihazda saklanır; beraberlik seriyi
+  bozmaz)
 - **Kaldığın yerden devam**: maç durumu her hamlede kaydedilir; uygulama
   kapansa bile menüden sürdürülür
 - **Rehberli ilk tur**: ilk oyunda adım adım ipucu çubuğu; kurallar oyun
   içinde öğrenilir
 - **Analiz modu** (aç/kapa): engellemen gereken hücreler kırmızı, puan
-  getirecek hücreler yeşil ipucu küpleriyle gösterilir
+  getirecek hücreler yeşil ipucu küpleriyle gösterilir; küp boyutu hücrenin
+  tamamladığı çizgi sayısıyla büyür (çoklu-çizgi kill-move'lar ayırt edilir)
+  ve seçim sırasında "bu hamle rakibe N çizgi bırakıyor" uyarısı verilir
 
 ### Kontroller ve erişilebilirlik
 
@@ -69,7 +80,9 @@ genç oyuncu ve erişilebilirlik ihtiyaçları olan oyuncu).
   önce tahtada **pulse** yapar; **Tahtaya Bak** düğmesiyle panel gizlenip
   son konum incelenebilir
 - Sıra göstergesi oyuncunun renginde; ekranın üstünde aynı renkte ince
-  şerit; skor yazıları büyük puntolu ve konturlu
+  şerit; skor yazıları büyük puntolu ve konturlu; çizgi skoru tek tek
+  sayarak güncellenir ve kısa altın parlamayla vurgulanır; "Rakip
+  düşünüyor…" yazısı canlı nokta animasyonlu
 - Türkçe / İngilizce arayüz (cihaz diline göre otomatik, menüden
   değiştirilebilir ve hatırlanır)
 - AI arka plan iş parçacığında çalışır; arayüz hiç takılmaz
@@ -85,7 +98,9 @@ gerekmez, bu yüzden birleştirme çatışması riski düşüktür.
 ## Online mod notları
 
 - Menüde Mod'u **Online Oda** yapınca sunucu adresi ve oda kodu alanları
-  açılır. Varsayılan adres `ws://127.0.0.1:8787` (editörde yerel test
+  açılır. Oda kurunca kod ekran ortasında büyük puntoyla gösterilir ve
+  **Kodu Kopyala** ile panoya alınır; maç bitiminde **Rövanş** akışı iki
+  taraftan da başlatılabilir. Varsayılan adres `ws://127.0.0.1:8787` (editörde yerel test
   için); gerçek cihazda kendi sunucunun adresini yaz (ör.
   `wss://sunucun.example`). Adres cihazda hatırlanır.
 - Yerel test: depoda `npm run online:server` ile sunucuyu başlat, Unity

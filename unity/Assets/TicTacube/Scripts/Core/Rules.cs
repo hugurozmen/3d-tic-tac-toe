@@ -267,5 +267,51 @@ namespace TicTacube.Core
         {
             return GetThreatCells(board, GetOtherPlayer(player));
         }
+
+        /// <summary>
+        /// Empty cells that complete at least one of the player's threats,
+        /// with how many lines each cell would complete — a cell completing
+        /// three lines is a very different move from one completing one.
+        /// </summary>
+        public static Dictionary<int, int> GetThreatCellCounts(Player?[] board, Player player)
+        {
+            var counts = new Dictionary<int, int>();
+
+            foreach (var line in GetLineThreats(board, player))
+            {
+                foreach (int index in line)
+                {
+                    if (board[index] == null)
+                    {
+                        int current;
+                        counts.TryGetValue(index, out current);
+                        counts[index] = current + 1;
+                        break;
+                    }
+                }
+            }
+
+            return counts;
+        }
+
+        /// <summary>Best single-move line gain available to the player.</summary>
+        public static int GetBestImmediateLineGain(Player?[] board, Player player)
+        {
+            int best = 0;
+
+            foreach (int move in GetAvailableMoves(board))
+            {
+                var next = (Player?[])board.Clone();
+                next[move] = player;
+                int gained = GetNewCompletedLines(board, next, player).Count;
+
+                if (gained > best)
+                {
+                    best = gained;
+                }
+            }
+
+            return best;
+        }
     }
 }

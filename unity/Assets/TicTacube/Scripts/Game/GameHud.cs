@@ -74,6 +74,20 @@ namespace TicTacube.Game
         private Text pieNoLabel;
         private Text returnLabel;
 
+        private GameObject roomCodePanel;
+        private Text roomCodeText;
+        private Text roomCodeCaption;
+        private Text roomCodeCopyLabel;
+        private string shownRoomCode = "";
+        private Text dailyPuzzleLabel;
+
+        private int shownLineA = -1;
+        private int shownLineB = -1;
+        private Coroutine lineScoreRoutine;
+        private Coroutine thinkingRoutine;
+        private bool puzzleResultMode;
+        private string puzzleShareText = "";
+
         private int menuMode; // 0 solo, 1 duo, 2 online
         private Ruleset menuRuleset = Ruleset.Lines;
         private Difficulty menuDifficulty = Difficulty.Balanced;
@@ -106,6 +120,7 @@ namespace TicTacube.Game
             BuildMenu();
             BuildHud();
             BuildResultOverlay();
+            BuildRoomCodePanel();
             BuildPiePanel();
             ShowMenu();
         }
@@ -311,6 +326,12 @@ namespace TicTacube.Game
             CreateMenuRow(rect, "QuickRow", new Vector2(-198f, -1122f), halfSize, ToggleQuickMove, out quickMoveLabel);
             CreateMenuRow(rect, "LanguageRow", new Vector2(198f, -1122f), halfSize, CycleLanguage, out languageLabel);
 
+            Text dailyText;
+            var dailyButton = CreateButton(rect, "DailyPuzzle", 34, DailyPuzzlePressed, out dailyText);
+            dailyPuzzleLabel = dailyText;
+            Place((RectTransform)dailyButton.transform, new Vector2(1f, 1f), new Vector2(-28f, -28f), new Vector2(330f, 130f));
+            dailyButton.GetComponent<Image>().color = AccentDimColor;
+
             resumeButton = CreateButton(rect, "Resume", 48, ResumePressed, out resumeLabel);
             Place((RectTransform)resumeButton.transform, new Vector2(0.5f, 1f), new Vector2(0f, -1248f), new Vector2(760f, 108f));
             resumeButton.GetComponent<Image>().color = AccentDimColor;
@@ -480,10 +501,12 @@ namespace TicTacube.Game
             if (MenuSolo)
             {
                 var stats = GamePrefs.LoadStats(menuRuleset, menuDifficulty);
-                statsLabel.text = stats.Wins + stats.Losses == 0
+                statsLabel.text = stats.Wins + stats.Losses + stats.Draws == 0
                     ? GameStrings.T("Bu zorlukta henüz maç oynamadın.", "No matches at this difficulty yet.")
                     : DifficultyName(menuDifficulty) + ": "
-                        + stats.Wins + GameStrings.T("G", "W") + "-" + stats.Losses + GameStrings.T("M", "L")
+                        + stats.Wins + GameStrings.T("G", "W")
+                        + "-" + stats.Losses + GameStrings.T("M", "L")
+                        + "-" + stats.Draws + GameStrings.T("B", "D")
                         + GameStrings.T("  Seri: ", "  Streak: ") + stats.Streak
                         + GameStrings.T("  En iyi: ", "  Best: ") + stats.BestStreak;
             }
@@ -499,6 +522,34 @@ namespace TicTacube.Game
             {
                 resumeLabel.text = GameStrings.T("Devam Et (kayıtlı maç)", "Continue (saved match)");
             }
+
+            RefreshDailyPuzzleLabel();
+        }
+
+        private void RefreshDailyPuzzleLabel()
+        {
+            var daily = GamePrefs.LoadDailyPuzzle();
+            string todayKey = Puzzles.DateKeyFor(DateTime.Now);
+            bool playedToday = daily.DateKey == todayKey && daily.Attempted;
+            string streakLine = daily.Streak > 0
+                ? "\n" + GameStrings.T("Seri: ", "Streak: ") + daily.Streak
+                : "";
+
+            if (playedToday)
+            {
+                dailyPuzzleLabel.text = (daily.Solved
+                    ? GameStrings.T("Bulmaca: çözüldü", "Puzzle: solved")
+                    : GameStrings.T("Bulmaca: oynandı", "Puzzle: played")) + streakLine;
+            }
+            else
+            {
+                dailyPuzzleLabel.text = GameStrings.T("Günlük Bulmaca", "Daily Puzzle") + streakLine;
+            }
+        }
+
+        private void DailyPuzzlePressed()
+        {
+            controller.StartDailyPuzzle();
         }
 
         private string ReadServerUrl()
@@ -711,6 +762,13 @@ namespace TicTacube.Game
 
         private void PeekPressed()
         {
+            if (puzzleResultMode)
+            {
+                GUIUtility.systemCopyBuffer = puzzleShareText;
+                Toast(GameStrings.T("Sonuç panoya kopyalandı!", "Result copied to clipboard!"), 2f);
+                return;
+            }
+
             resultPanel.SetActive(false);
             returnToResultButton.SetActive(true);
         }
@@ -719,6 +777,58 @@ namespace TicTacube.Game
         {
             returnToResultButton.SetActive(false);
             resultPanel.SetActive(true);
+        }
+
+        // ------------------------------------------------------------------
+        // Room code showcase (online hosting)
+        // ------------------------------------------------------------------
+
+        private void BuildRoomCodePanel()
+        {
+            var rect = CreateRect("RoomCode", transform);
+            Place(rect, new Vector2(0.5f, 0.5f), new Vector2(0f, 140f), new Vector2(780f, 560f));
+            roomCodePanel = rect.gameObject;
+
+            var card = rect.gameObject.AddComponent<Image>();
+            card.color = PanelColor;
+
+            var heading = CreateText(rect, "Heading", "", 40, TextAnchor.MiddleCenter, MutedColor);
+            roomCodeCaption = heading;
+            Place((RectTransform)heading.transform, new Vector2(0.5f, 1f), new Vector2(0f, -26f), new Vector2(720f, 130f));
+
+            roomCodeText = CreateText(rect, "Code", "", 150, TextAnchor.MiddleCenter, new Color(1f, 0.84f, 0.32f, 1f));
+            roomCodeText.fontStyle = FontStyle.Bold;
+            Place((RectTransform)roomCodeText.transform, new Vector2(0.5f, 0.5f), new Vector2(0f, 20f), new Vector2(720f, 200f));
+
+            Text copyText;
+            var copyButton = CreateButton(rect, "CopyCode", 42, CopyRoomCodePressed, out copyText);
+            roomCodeCopyLabel = copyText;
+            Place((RectTransform)copyButton.transform, new Vector2(0.5f, 0f), new Vector2(0f, 28f), new Vector2(420f, 110f));
+            copyButton.GetComponent<Image>().color = AccentColor;
+
+            roomCodePanel.SetActive(false);
+        }
+
+        public void ShowRoomCode(string code)
+        {
+            shownRoomCode = code ?? "";
+            roomCodeText.text = shownRoomCode;
+            roomCodeCaption.text = GameStrings.T(
+                "Oda kurdun! Kodu arkadaşına gönder;\no 'Odaya Katıl'dan girsin.",
+                "Room is up! Send this code to a friend;\nthey enter it under 'Join Room'.");
+            roomCodeCopyLabel.text = GameStrings.T("Kodu Kopyala", "Copy Code");
+            roomCodePanel.SetActive(true);
+        }
+
+        public void HideRoomCode()
+        {
+            roomCodePanel.SetActive(false);
+        }
+
+        private void CopyRoomCodePressed()
+        {
+            GUIUtility.systemCopyBuffer = shownRoomCode;
+            Toast(GameStrings.T("Kod panoya kopyalandı!", "Code copied to clipboard!"), 2f);
         }
 
         // ------------------------------------------------------------------
@@ -810,7 +920,45 @@ namespace TicTacube.Game
             turnLabel.text = who;
             turnLabel.color = player == Player.X ? XColor : OColor;
             turnStrip.color = player == Player.X ? XColor : OColor;
-            thinkingLabel.text = aiThinking ? GameStrings.T("Rakip düşünüyor…", "Opponent is thinking…") : "";
+            SetThinking(aiThinking);
+        }
+
+        private void SetThinking(bool thinking)
+        {
+            if (thinkingRoutine != null)
+            {
+                StopCoroutine(thinkingRoutine);
+                thinkingRoutine = null;
+            }
+
+            if (!thinking)
+            {
+                thinkingLabel.text = "";
+                return;
+            }
+
+            thinkingRoutine = StartCoroutine(AnimateThinking());
+        }
+
+        private IEnumerator AnimateThinking()
+        {
+            string baseText = GameStrings.T("Rakip düşünüyor", "Opponent is thinking");
+            int dots = 1;
+
+            while (true)
+            {
+                thinkingLabel.text = baseText + new string('.', dots);
+                dots = dots % 3 + 1;
+                yield return new WaitForSeconds(0.45f);
+            }
+        }
+
+        /// <summary>Header for daily-puzzle play (no match context).</summary>
+        public void SetPuzzleHeader(int id, string prompt)
+        {
+            scoreLabel.text = GameStrings.T("Bulmaca #", "Puzzle #") + id;
+            ClearLineScore();
+            SetHint(prompt);
         }
 
         public void SetScores(MatchState match, GameResult result, Ruleset ruleset, bool soloMode, Player humanPlayer)
@@ -838,13 +986,93 @@ namespace TicTacube.Game
 
             if (ruleset == Ruleset.Lines && result != null)
             {
-                lineScoreLabel.text = GameStrings.T("Çizgi  ", "Lines  ")
-                    + "X " + result.LineScoreX + " - " + result.LineScoreO + " O";
+                if (soloMode)
+                {
+                    SetLineScore(result.LineScore(humanPlayer), result.LineScore(Rules.GetOtherPlayer(humanPlayer)), true);
+                }
+                else
+                {
+                    SetLineScore(result.LineScoreX, result.LineScoreO, false);
+                }
             }
             else
             {
-                lineScoreLabel.text = "";
+                ClearLineScore();
             }
+        }
+
+        /// <summary>
+        /// Animated line score: counts up to new values with a brief gold
+        /// flash, so a point lands with some weight. Decreases (round resets)
+        /// snap instantly.
+        /// </summary>
+        private void SetLineScore(int a, int b, bool youLabels)
+        {
+            bool increase = shownLineA >= 0 && (a > shownLineA || b > shownLineB)
+                && a >= shownLineA && b >= shownLineB;
+
+            if (lineScoreRoutine != null)
+            {
+                StopCoroutine(lineScoreRoutine);
+                lineScoreRoutine = null;
+            }
+
+            if (!increase || !GamePrefs.Effects)
+            {
+                shownLineA = a;
+                shownLineB = b;
+                lineScoreLabel.color = TextColor;
+                lineScoreLabel.text = FormatLineScore(a, b, youLabels);
+                return;
+            }
+
+            lineScoreRoutine = StartCoroutine(AnimateLineScore(a, b, youLabels));
+        }
+
+        private void ClearLineScore()
+        {
+            if (lineScoreRoutine != null)
+            {
+                StopCoroutine(lineScoreRoutine);
+                lineScoreRoutine = null;
+            }
+
+            shownLineA = -1;
+            shownLineB = -1;
+            lineScoreLabel.color = TextColor;
+            lineScoreLabel.text = "";
+        }
+
+        private static string FormatLineScore(int a, int b, bool youLabels)
+        {
+            return youLabels
+                ? GameStrings.T("Çizgi  Sen ", "Lines  You ") + a + " - " + b + GameStrings.T(" Rakip", " Opp")
+                : GameStrings.T("Çizgi  ", "Lines  ") + "X " + a + " - " + b + " O";
+        }
+
+        private IEnumerator AnimateLineScore(int targetA, int targetB, bool youLabels)
+        {
+            lineScoreLabel.color = new Color(1f, 0.84f, 0.32f, 1f);
+
+            while (shownLineA < targetA || shownLineB < targetB)
+            {
+                if (shownLineA < targetA)
+                {
+                    shownLineA += 1;
+                }
+
+                if (shownLineB < targetB)
+                {
+                    shownLineB += 1;
+                }
+
+                lineScoreLabel.text = FormatLineScore(shownLineA, shownLineB, youLabels);
+                yield return new WaitForSeconds(0.09f);
+            }
+
+            yield return new WaitForSeconds(0.35f);
+            lineScoreLabel.color = TextColor;
+            lineScoreRoutine = null;
         }
 
         public void SetConfirmVisible(bool visible)
@@ -866,7 +1094,7 @@ namespace TicTacube.Game
             if (snapshot == null)
             {
                 scoreLabel.text = "";
-                lineScoreLabel.text = "";
+                ClearLineScore();
                 return;
             }
 
@@ -876,12 +1104,11 @@ namespace TicTacube.Game
 
             if (ruleset == Ruleset.Lines)
             {
-                lineScoreLabel.text = GameStrings.T("Çizgi  ", "Lines  ")
-                    + "X " + snapshot.LineScoreX + " - " + snapshot.LineScoreO + " O";
+                SetLineScore(snapshot.LineScore(myPlayer), snapshot.LineScore(Rules.GetOtherPlayer(myPlayer)), true);
             }
             else
             {
-                lineScoreLabel.text = "";
+                ClearLineScore();
             }
         }
 
@@ -904,16 +1131,26 @@ namespace TicTacube.Game
         // Hint bar, toasts, floating score
         // ------------------------------------------------------------------
 
-        public void SetHint(string message)
-        {
-            if (toastRoutine != null)
-            {
-                StopCoroutine(toastRoutine);
-                toastRoutine = null;
-            }
+        private string baselineHint = "";
 
+        private void ApplyHintText(string message)
+        {
             hintBackground.gameObject.SetActive(!string.IsNullOrEmpty(message));
             hintLabel.text = message ?? "";
+        }
+
+        /// <summary>
+        /// Persistent baseline hint (tutorial step, endgame band, online
+        /// status). Toasts draw over it and restore it when they expire.
+        /// </summary>
+        public void SetHint(string message)
+        {
+            baselineHint = message ?? "";
+
+            if (toastRoutine == null)
+            {
+                ApplyHintText(baselineHint);
+            }
         }
 
         public void ClearHint()
@@ -923,16 +1160,20 @@ namespace TicTacube.Game
 
         public void Toast(string message, float seconds)
         {
-            SetHint(message);
-            toastRoutine = StartCoroutine(ClearHintAfter(seconds));
+            if (toastRoutine != null)
+            {
+                StopCoroutine(toastRoutine);
+            }
+
+            ApplyHintText(message);
+            toastRoutine = StartCoroutine(RestoreBaselineAfter(seconds));
         }
 
-        private IEnumerator ClearHintAfter(float seconds)
+        private IEnumerator RestoreBaselineAfter(float seconds)
         {
             yield return new WaitForSeconds(seconds);
-            hintBackground.gameObject.SetActive(false);
-            hintLabel.text = "";
             toastRoutine = null;
+            ApplyHintText(baselineHint);
         }
 
         /// <summary>Floating score text ("+1") rising from a world position.</summary>
@@ -997,11 +1238,24 @@ namespace TicTacube.Game
 
         public void ShowResult(string title, string subtitle, string buttonLabel)
         {
+            puzzleResultMode = false;
+            peekLabel.text = GameStrings.T("Tahtaya Bak", "View Board");
             returnToResultButton.SetActive(false);
             resultPanel.SetActive(true);
             resultTitle.text = title;
             resultSubtitle.text = subtitle;
             resultButtonLabel.text = buttonLabel;
+        }
+
+        /// <summary>
+        /// Daily-puzzle result: the peek button becomes a share-copy button.
+        /// </summary>
+        public void ShowPuzzleResult(string title, string subtitle, string buttonLabel, string shareText)
+        {
+            ShowResult(title, subtitle, buttonLabel);
+            puzzleResultMode = true;
+            puzzleShareText = shareText ?? "";
+            peekLabel.text = GameStrings.T("Paylaş (kopyala)", "Share (copy)");
         }
 
         public void HideResult()

@@ -9,8 +9,20 @@ namespace TicTacube.Game
     {
         public int Wins;
         public int Losses;
+        public int Draws;
         public int Streak;
         public int BestStreak;
+    }
+
+    [Serializable]
+    public struct DailyPuzzleState
+    {
+        public string DateKey;
+        public bool Attempted;
+        public bool Solved;
+        public int Streak;
+        public int BestStreak;
+        public string LastSolvedKey;
     }
 
     [Serializable]
@@ -165,6 +177,60 @@ namespace TicTacube.Game
             PlayerPrefs.SetString(StatsKey(ruleset, difficulty), JsonUtility.ToJson(stats));
             PlayerPrefs.Save();
             return stats;
+        }
+
+        /// <summary>A drawn single-round match: counted, but streak survives.</summary>
+        public static StatsData RecordDraw(Ruleset ruleset, Difficulty difficulty)
+        {
+            var stats = LoadStats(ruleset, difficulty);
+            stats.Draws += 1;
+            PlayerPrefs.SetString(StatsKey(ruleset, difficulty), JsonUtility.ToJson(stats));
+            PlayerPrefs.Save();
+            return stats;
+        }
+
+        // ------------------------------------------------------------------
+        // Opening rotation: who opens the next local match.
+        // ------------------------------------------------------------------
+
+        private const string KeyNextOpenerO = "tictacube_next_opener_o";
+
+        public static Player TakeNextOpener()
+        {
+            bool openerIsO = GetBool(KeyNextOpenerO, false);
+            SetBool(KeyNextOpenerO, !openerIsO);
+            return openerIsO ? Player.O : Player.X;
+        }
+
+        // ------------------------------------------------------------------
+        // Daily puzzle
+        // ------------------------------------------------------------------
+
+        private const string KeyDailyPuzzle = "tictacube_daily_puzzle";
+
+        public static DailyPuzzleState LoadDailyPuzzle()
+        {
+            string json = PlayerPrefs.GetString(KeyDailyPuzzle, "");
+
+            if (string.IsNullOrEmpty(json))
+            {
+                return new DailyPuzzleState();
+            }
+
+            try
+            {
+                return JsonUtility.FromJson<DailyPuzzleState>(json);
+            }
+            catch (Exception)
+            {
+                return new DailyPuzzleState();
+            }
+        }
+
+        public static void SaveDailyPuzzle(DailyPuzzleState state)
+        {
+            PlayerPrefs.SetString(KeyDailyPuzzle, JsonUtility.ToJson(state));
+            PlayerPrefs.Save();
         }
 
         // ------------------------------------------------------------------

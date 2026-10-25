@@ -474,31 +474,36 @@ namespace TicTacube.Game
         // Threat hints (analysis layer)
         // ------------------------------------------------------------------
 
-        public void ShowHints(List<int> dangerCells, List<int> scoringCells)
+        /// <summary>
+        /// Threat hints sized by how many lines each cell completes: a
+        /// triple-line kill move reads bigger than a single-line one.
+        /// </summary>
+        public void ShowHints(Dictionary<int, int> dangerCells, Dictionary<int, int> scoringCells)
         {
             ClearHints();
 
-            foreach (int index in dangerCells)
+            foreach (var entry in dangerCells)
             {
-                hintObjects.Add(CreateHintCube(index, hintRedMaterial));
+                hintObjects.Add(CreateHintCube(entry.Key, hintRedMaterial, entry.Value));
             }
 
-            foreach (int index in scoringCells)
+            foreach (var entry in scoringCells)
             {
-                if (!dangerCells.Contains(index))
+                if (!dangerCells.ContainsKey(entry.Key))
                 {
-                    hintObjects.Add(CreateHintCube(index, hintGreenMaterial));
+                    hintObjects.Add(CreateHintCube(entry.Key, hintGreenMaterial, entry.Value));
                 }
             }
         }
 
-        private GameObject CreateHintCube(int index, Material material)
+        private GameObject CreateHintCube(int index, Material material, int lineCount)
         {
+            float scale = lineCount >= 3 ? 0.86f : lineCount == 2 ? 0.72f : 0.56f;
             var hint = GameObject.CreatePrimitive(PrimitiveType.Cube);
             Object.Destroy(hint.GetComponent<Collider>());
-            hint.name = "Hint " + index;
+            hint.name = "Hint " + index + " x" + lineCount;
             hint.transform.SetParent(cells[index].transform, false);
-            hint.transform.localScale = new Vector3(0.66f, 0.66f, 0.66f);
+            hint.transform.localScale = new Vector3(scale, scale, scale);
             hint.GetComponent<Renderer>().sharedMaterial = material;
             return hint;
         }
