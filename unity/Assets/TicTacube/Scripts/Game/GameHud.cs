@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using TicTacube.Core;
+using TicTacube.Online;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
@@ -73,16 +74,27 @@ namespace TicTacube.Game
         private Text pieNoLabel;
         private Text returnLabel;
 
-        private bool menuSolo = true;
+        private int menuMode; // 0 solo, 1 duo, 2 online
         private Ruleset menuRuleset = Ruleset.Lines;
         private Difficulty menuDifficulty = Difficulty.Balanced;
         private int menuTargetWins = 1;
 
+        private GameObject difficultyRowObject;
+        private GameObject matchRowObject;
+        private InputField serverUrlField;
+        private GameObject serverUrlRowObject;
+        private InputField roomCodeField;
+        private GameObject joinRowObject;
+        private Text joinLabel;
+        private Button reconnectButton;
+        private Text reconnectLabel;
+        private GameObject undoButtonObject;
+        private GameObject analysisButtonObject;
+
         private Coroutine toastRoutine;
 
-        public bool MenuSolo { get { return menuSolo; } }
-        public Ruleset MenuRuleset { get { return menuRuleset; } }
-        public Difficulty MenuDifficulty { get { return menuDifficulty; } }
+        private bool MenuSolo { get { return menuMode == 0; } }
+        private bool MenuOnline { get { return menuMode == 2; } }
 
         public void Initialize(GameController gameController)
         {
@@ -216,6 +228,27 @@ namespace TicTacube.Game
             rect.sizeDelta = size;
         }
 
+        private InputField CreateInputField(Transform parent, string name, Vector2 position, Vector2 size, int fontSize)
+        {
+            var rect = CreateRect(name, parent);
+            Place(rect, new Vector2(0.5f, 1f), position, size);
+            var background = rect.gameObject.AddComponent<Image>();
+            background.color = new Color(0.12f, 0.15f, 0.23f, 1f);
+
+            var input = rect.gameObject.AddComponent<InputField>();
+
+            var placeholder = CreateText(rect, "Placeholder", "", fontSize, TextAnchor.MiddleCenter, MutedColor);
+            Stretch((RectTransform)placeholder.transform);
+
+            var text = CreateText(rect, "Text", "", fontSize, TextAnchor.MiddleCenter, TextColor);
+            Stretch((RectTransform)text.transform);
+            text.supportRichText = false;
+
+            input.textComponent = text;
+            input.placeholder = placeholder;
+            return input;
+        }
+
         private static void AddOutline(Text text)
         {
             var outline = text.gameObject.AddComponent<Outline>();
@@ -255,7 +288,22 @@ namespace TicTacube.Game
             Place((RectTransform)rulesetDescription.transform, new Vector2(0.5f, 1f), new Vector2(0f, -658f), new Vector2(880f, 76f));
 
             CreateMenuRow(rect, "DifficultyRow", new Vector2(0f, -744f), rowSize, CycleDifficulty, out difficultyLabel);
+            difficultyRowObject = difficultyLabel.transform.parent.gameObject;
             CreateMenuRow(rect, "MatchRow", new Vector2(0f, -876f), rowSize, CycleMatchLength, out matchLengthLabel);
+            matchRowObject = matchLengthLabel.transform.parent.gameObject;
+
+            // Online rows occupy the difficulty/match slots in online mode.
+            serverUrlField = CreateInputField(rect, "ServerUrlRow", new Vector2(0f, -744f), rowSize, 34);
+            serverUrlRowObject = serverUrlField.gameObject;
+
+            roomCodeField = CreateInputField(rect, "RoomCodeRow", new Vector2(-190f, -876f), new Vector2(380f, 108f), 48);
+            roomCodeField.characterLimit = 5;
+            Text joinText;
+            var joinButton = CreateButton(rect, "JoinRow", 44, JoinPressed, out joinText);
+            joinLabel = joinText;
+            Place((RectTransform)joinButton.transform, new Vector2(0.5f, 1f), new Vector2(190f, -876f), new Vector2(360f, 108f));
+            joinButton.GetComponent<Image>().color = AccentDimColor;
+            joinRowObject = joinButton.gameObject;
 
             var halfSize = new Vector2(368f, 94f);
             CreateMenuRow(rect, "SoundRow", new Vector2(-198f, -1008f), halfSize, ToggleSound, out soundLabel);
@@ -293,7 +341,7 @@ namespace TicTacube.Game
 
         private void CycleMode()
         {
-            menuSolo = !menuSolo;
+            menuMode = (menuMode + 1) % 3;
             RefreshMenuLabels();
         }
 
@@ -378,9 +426,11 @@ namespace TicTacube.Game
         {
             subtitleLabel.text = GameStrings.T("3x3x3 XOX strateji oyunu", "3x3x3 XOX strategy game");
             modeLabel.text = GameStrings.T("Mod: ", "Mode: ")
-                + (menuSolo
+                + (menuMode == 0
                     ? GameStrings.T("Tek Oyuncu", "Single Player")
-                    : GameStrings.T("İki Oyuncu", "Two Players"));
+                    : menuMode == 1
+                        ? GameStrings.T("İki Oyuncu", "Two Players")
+                        : GameStrings.T("Online Oda", "Online Room"));
             rulesetLabel.text = GameStrings.T("Kurallar: ", "Ruleset: ") + RulesetName(menuRuleset);
             rulesetDescription.text = menuRuleset == Ruleset.Lines
                 ? GameStrings.T(
@@ -390,18 +440,44 @@ namespace TicTacube.Game
                     "İlk 3'lü çizgiyi yapan turu kazanır.\nİlk hamleden sonra rakip taraf değişimi isteyebilir (Pie kuralı).",
                     "First 3-in-a-row wins the round.\nAfter the first move the opponent may swap sides (Pie rule).");
             difficultyLabel.text = GameStrings.T("Zorluk: ", "Difficulty: ") + DifficultyName(menuDifficulty);
-            difficultyLabel.color = menuSolo ? TextColor : MutedColor;
+            difficultyLabel.color = MenuSolo ? TextColor : MutedColor;
             matchLengthLabel.text = GameStrings.T("Maç: ", "Match: ")
                 + (menuTargetWins == 1
                     ? GameStrings.T("Tek Tur", "Single Round")
                     : menuTargetWins + GameStrings.T(" galibiyet", " wins"));
+
+            // Online mode swaps the difficulty/match rows for server + room code.
+            difficultyRowObject.SetActive(!MenuOnline);
+            matchRowObject.SetActive(!MenuOnline);
+            serverUrlRowObject.SetActive(MenuOnline);
+            roomCodeField.gameObject.SetActive(MenuOnline);
+            joinRowObject.SetActive(MenuOnline);
+
+            if (MenuOnline)
+            {
+                if (string.IsNullOrEmpty(serverUrlField.text))
+                {
+                    serverUrlField.text = GamePrefs.ServerUrl;
+                }
+
+                var codePlaceholder = roomCodeField.placeholder as Text;
+
+                if (codePlaceholder != null)
+                {
+                    codePlaceholder.text = GameStrings.T("Oda kodu", "Room code");
+                }
+
+                joinLabel.text = GameStrings.T("Odaya Katıl", "Join Room");
+            }
             soundLabel.text = GameStrings.T("Ses: ", "Sound: ") + OnOff(GamePrefs.Sound);
             effectsLabel.text = GameStrings.T("Efektler: ", "Effects: ") + OnOff(GamePrefs.Effects);
             quickMoveLabel.text = GameStrings.T("Hızlı hamle: ", "Quick move: ") + OnOff(GamePrefs.QuickMove);
             languageLabel.text = GameStrings.T("Dil: Türkçe", "Language: English");
-            startLabel.text = GameStrings.T("Başlat", "Start");
+            startLabel.text = MenuOnline
+                ? GameStrings.T("Oda Kur", "Host Room")
+                : GameStrings.T("Başlat", "Start");
 
-            if (menuSolo)
+            if (MenuSolo)
             {
                 var stats = GamePrefs.LoadStats(menuRuleset, menuDifficulty);
                 statsLabel.text = stats.Wins + stats.Losses == 0
@@ -416,7 +492,7 @@ namespace TicTacube.Game
                 statsLabel.text = "";
             }
 
-            bool hasSave = GamePrefs.HasSave();
+            bool hasSave = GamePrefs.HasSave() && !MenuOnline;
             resumeButton.gameObject.SetActive(hasSave);
 
             if (hasSave)
@@ -425,9 +501,41 @@ namespace TicTacube.Game
             }
         }
 
+        private string ReadServerUrl()
+        {
+            string url = (serverUrlField.text ?? "").Trim();
+
+            if (string.IsNullOrEmpty(url))
+            {
+                url = GamePrefs.ServerUrl;
+            }
+
+            GamePrefs.ServerUrl = url;
+            return url;
+        }
+
         private void StartPressed()
         {
-            controller.StartMatch(menuSolo, menuRuleset, menuDifficulty, menuTargetWins);
+            if (MenuOnline)
+            {
+                controller.StartOnlineHost(ReadServerUrl(), menuRuleset);
+                return;
+            }
+
+            controller.StartMatch(MenuSolo, menuRuleset, menuDifficulty, menuTargetWins);
+        }
+
+        private void JoinPressed()
+        {
+            string code = (roomCodeField.text ?? "").Trim();
+
+            if (code.Length == 0)
+            {
+                Toast(GameStrings.T("Önce oda kodunu yaz.", "Enter the room code first."), 2.5f);
+                return;
+            }
+
+            controller.StartOnlineJoin(ReadServerUrl(), code);
         }
 
         private void ResumePressed()
@@ -470,7 +578,9 @@ namespace TicTacube.Game
             AddOutline(lineScoreLabel);
             Place((RectTransform)lineScoreLabel.transform, new Vector2(1f, 0.5f), new Vector2(-40f, -38f), new Vector2(520f, 78f));
 
-            var hintRect = CreateRect("HintBar", rect);
+            // The hint bar lives on the canvas root so toasts show over the
+            // menu too (e.g. join-form validation).
+            var hintRect = CreateRect("HintBar", transform);
             Place(hintRect, new Vector2(0.5f, 1f), new Vector2(0f, -196f), new Vector2(980f, 96f));
             hintBackground = hintRect.gameObject.AddComponent<Image>();
             hintBackground.color = new Color(0.08f, 0.1f, 0.16f, 0.72f);
@@ -503,17 +613,44 @@ namespace TicTacube.Game
             undoButton = CreateButton(rect, "UndoButton", 40, controller.UndoPressed, out undoText);
             undoLabel = undoText;
             Place((RectTransform)undoButton.transform, new Vector2(1f, 0f), new Vector2(-40f, 40f), new Vector2(260f, 100f));
+            undoButtonObject = undoButton.gameObject;
 
             Text analysisText;
             var analysisButton = CreateButton(rect, "AnalysisButton", 36, controller.ToggleAnalysisPressed, out analysisText);
             analysisLabel = analysisText;
             Place((RectTransform)analysisButton.transform, new Vector2(1f, 0f), new Vector2(-40f, 158f), new Vector2(260f, 100f));
+            analysisButtonObject = analysisButton.gameObject;
+
+            Text reconnectText;
+            reconnectButton = CreateButton(rect, "ReconnectButton", 36, controller.OnlineReconnectPressed, out reconnectText);
+            reconnectLabel = reconnectText;
+            Place((RectTransform)reconnectButton.transform, new Vector2(1f, 0f), new Vector2(-40f, 40f), new Vector2(300f, 100f));
+            reconnectButton.GetComponent<Image>().color = AccentColor;
+            reconnectButton.gameObject.SetActive(false);
+        }
+
+        /// <summary>Online games hide the local-only controls (undo, hints).</summary>
+        public void SetOnlineUi(bool online)
+        {
+            undoButtonObject.SetActive(!online);
+            analysisButtonObject.SetActive(!online);
+
+            if (!online)
+            {
+                reconnectButton.gameObject.SetActive(false);
+            }
+        }
+
+        public void SetReconnectVisible(bool visible)
+        {
+            reconnectButton.gameObject.SetActive(visible);
         }
 
         public void RefreshHudLabels()
         {
             menuButtonLabel.text = GameStrings.T("Menü", "Menu");
             undoLabel.text = GameStrings.T("Geri Al", "Undo");
+            reconnectLabel.text = GameStrings.T("Yeniden Bağlan", "Reconnect");
             confirmLabel.text = GameStrings.T("Onayla", "Confirm");
             layersLabel.text = GameStrings.T("Katmanlar", "Layers");
             analysisLabel.text = GameStrings.T("Analiz: ", "Hints: ") + OnOff(GamePrefs.Analysis);
@@ -713,6 +850,39 @@ namespace TicTacube.Game
         public void SetConfirmVisible(bool visible)
         {
             confirmButton.gameObject.SetActive(visible);
+        }
+
+        /// <summary>Blank the turn indicator (entering online before data).</summary>
+        public void ClearTurnDisplay()
+        {
+            turnLabel.text = "";
+            thinkingLabel.text = "";
+            turnStrip.color = new Color(0.17f, 0.22f, 0.33f, 1f);
+        }
+
+        /// <summary>HUD scores for online games, straight from the snapshot.</summary>
+        public void SetOnlineScores(OnlineSnapshot snapshot, Player myPlayer, Ruleset ruleset)
+        {
+            if (snapshot == null)
+            {
+                scoreLabel.text = "";
+                lineScoreLabel.text = "";
+                return;
+            }
+
+            scoreLabel.text = GameStrings.T("Sen ", "You ") + snapshot.Wins(myPlayer)
+                + " - " + snapshot.Wins(Rules.GetOtherPlayer(myPlayer))
+                + GameStrings.T(" Rakip   Tur ", " Opp   Round ") + snapshot.RoundNumber;
+
+            if (ruleset == Ruleset.Lines)
+            {
+                lineScoreLabel.text = GameStrings.T("Çizgi  ", "Lines  ")
+                    + "X " + snapshot.LineScoreX + " - " + snapshot.LineScoreO + " O";
+            }
+            else
+            {
+                lineScoreLabel.text = "";
+            }
         }
 
         private void ConfirmPressed()
