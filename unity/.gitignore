@@ -1,0 +1,22 @@
+# Unity generated folders
+Library/
+Temp/
+Obj/
+Logs/
+UserSettings/
+MemoryCaptures/
+Recordings/
+
+# Build outputs
+Build/
+Builds/
+*.apk
+*.aab
+*.ipa
+
+# IDE project files Unity regenerates
+*.csproj
+*.sln
+*.vsconfig
+.vs/
+.idea/

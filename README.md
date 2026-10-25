@@ -248,6 +248,15 @@ npm run mobile:sync
 Native iOS/Android platform folders are included. Use `npm run mobile:sync`
 after web changes, then open the platform project for device QA.
 
+### Unity Port
+
+`unity/` contains a native Unity port of the core game (Lines + Classic
+rulesets, solo vs the same AI as the web build, local two-player, best-of-5
+matches, touch orbit/pinch controls). Open the `unity/` folder in Unity Hub
+(2021.3 LTS or newer) and see [unity/README.md](unity/README.md) for Android
+and iOS build steps. Online rooms, the daily puzzle, and Coach are not ported
+yet; the Capacitor path above remains the full-featured mobile build.
+
 ## Release QA
 
 - Desktop: run `npm run test`, then manually smoke Chrome or a Safari-like
