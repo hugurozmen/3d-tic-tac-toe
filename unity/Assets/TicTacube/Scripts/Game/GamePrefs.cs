@@ -45,6 +45,7 @@ namespace TicTacube.Game
         public int Draws;
         public int TargetWins;
         public bool Gravity;
+        public bool Tournament;
     }
 
     /// <summary>
@@ -135,14 +136,15 @@ namespace TicTacube.Game
         // Stats
         // ------------------------------------------------------------------
 
-        private static string StatsKey(Ruleset ruleset, Difficulty difficulty, bool gravity)
+        private static string StatsKey(Ruleset ruleset, Difficulty difficulty, bool gravity, bool tournament)
         {
-            return KeyStatsPrefix + (int)ruleset + "_" + (int)difficulty + (gravity ? "_g" : "");
+            return KeyStatsPrefix + (int)ruleset + "_" + (int)difficulty
+                + (gravity ? "_g" : "") + (tournament ? "_t" : "");
         }
 
-        public static StatsData LoadStats(Ruleset ruleset, Difficulty difficulty, bool gravity)
+        public static StatsData LoadStats(Ruleset ruleset, Difficulty difficulty, bool gravity, bool tournament = false)
         {
-            string json = PlayerPrefs.GetString(StatsKey(ruleset, difficulty, gravity), "");
+            string json = PlayerPrefs.GetString(StatsKey(ruleset, difficulty, gravity, tournament), "");
 
             if (string.IsNullOrEmpty(json))
             {
@@ -159,9 +161,9 @@ namespace TicTacube.Game
             }
         }
 
-        public static StatsData RecordMatch(Ruleset ruleset, Difficulty difficulty, bool gravity, bool humanWon)
+        public static StatsData RecordMatch(Ruleset ruleset, Difficulty difficulty, bool gravity, bool tournament, bool humanWon)
         {
-            var stats = LoadStats(ruleset, difficulty, gravity);
+            var stats = LoadStats(ruleset, difficulty, gravity, tournament);
 
             if (humanWon)
             {
@@ -175,17 +177,17 @@ namespace TicTacube.Game
                 stats.Streak = 0;
             }
 
-            PlayerPrefs.SetString(StatsKey(ruleset, difficulty, gravity), JsonUtility.ToJson(stats));
+            PlayerPrefs.SetString(StatsKey(ruleset, difficulty, gravity, tournament), JsonUtility.ToJson(stats));
             PlayerPrefs.Save();
             return stats;
         }
 
         /// <summary>A drawn single-round match: counted, but streak survives.</summary>
-        public static StatsData RecordDraw(Ruleset ruleset, Difficulty difficulty, bool gravity)
+        public static StatsData RecordDraw(Ruleset ruleset, Difficulty difficulty, bool gravity, bool tournament = false)
         {
-            var stats = LoadStats(ruleset, difficulty, gravity);
+            var stats = LoadStats(ruleset, difficulty, gravity, tournament);
             stats.Draws += 1;
-            PlayerPrefs.SetString(StatsKey(ruleset, difficulty, gravity), JsonUtility.ToJson(stats));
+            PlayerPrefs.SetString(StatsKey(ruleset, difficulty, gravity, tournament), JsonUtility.ToJson(stats));
             PlayerPrefs.Save();
             return stats;
         }
@@ -282,6 +284,19 @@ namespace TicTacube.Game
             set
             {
                 PlayerPrefs.SetString(KeyDailyGoals, value ?? "");
+                PlayerPrefs.Save();
+            }
+        }
+
+        private const string KeyLadder = "tictacube_ladder";
+
+        /// <summary>Highest conquered ladder step (0..12).</summary>
+        public static int LadderProgress
+        {
+            get { return PlayerPrefs.GetInt(KeyLadder, 0); }
+            set
+            {
+                PlayerPrefs.SetInt(KeyLadder, value);
                 PlayerPrefs.Save();
             }
         }

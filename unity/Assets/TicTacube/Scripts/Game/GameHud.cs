@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using TicTacube.Core;
 using TicTacube.Online;
 using UnityEngine;
@@ -83,6 +84,13 @@ namespace TicTacube.Game
         private Text progressLabel;
         private GameObject progressPanel;
         private RectTransform progressContent;
+        private Text ladderLabel;
+        private GameObject ladderPanel;
+        private RectTransform ladderContent;
+        private GameObject summaryPanel;
+        private RectTransform summaryContent;
+        private GameObject summaryButtonObject;
+        private Text summaryButtonLabel;
 
         private int shownLineA = -1;
         private int shownLineB = -1;
@@ -92,7 +100,7 @@ namespace TicTacube.Game
         private string puzzleShareText = "";
 
         private int menuMode; // 0 solo, 1 duo, 2 online
-        private int menuRulesetIndex; // 0 Lines, 1 Classic, 2 Tower Lines, 3 Tower Classic
+        private int menuRulesetIndex; // 0 Lines, 1 Classic, 2 Tower Lines, 3 Tower Classic, 4 Tournament Lines
         private Difficulty menuDifficulty = Difficulty.Balanced;
         private int menuTargetWins = 1;
 
@@ -126,6 +134,8 @@ namespace TicTacube.Game
             BuildRoomCodePanel();
             BuildPiePanel();
             BuildProgressPanel();
+            BuildLadderPanel();
+            BuildSummaryPanel();
             ShowMenu();
         }
 
@@ -336,6 +346,12 @@ namespace TicTacube.Game
             Place((RectTransform)progressButton.transform, new Vector2(0f, 1f), new Vector2(28f, -28f), new Vector2(330f, 130f));
             progressButton.GetComponent<Image>().color = AccentDimColor;
 
+            Text ladderText;
+            var ladderButton = CreateButton(rect, "Ladder", 34, LadderPressed, out ladderText);
+            ladderLabel = ladderText;
+            Place((RectTransform)ladderButton.transform, new Vector2(0f, 1f), new Vector2(28f, -170f), new Vector2(330f, 110f));
+            ladderButton.GetComponent<Image>().color = AccentDimColor;
+
             Text dailyText;
             var dailyButton = CreateButton(rect, "DailyPuzzle", 34, DailyPuzzlePressed, out dailyText);
             dailyPuzzleLabel = dailyText;
@@ -385,12 +401,22 @@ namespace TicTacube.Game
 
         private Ruleset MenuRulesetBase
         {
-            get { return EffectiveRulesetIndex % 2 == 0 ? Ruleset.Lines : Ruleset.Classic; }
+            get
+            {
+                return EffectiveRulesetIndex == 1 || EffectiveRulesetIndex == 3
+                    ? Ruleset.Classic
+                    : Ruleset.Lines;
+            }
         }
 
         private bool MenuGravity
         {
-            get { return EffectiveRulesetIndex >= 2; }
+            get { return EffectiveRulesetIndex == 2 || EffectiveRulesetIndex == 3; }
+        }
+
+        private bool MenuTournament
+        {
+            get { return EffectiveRulesetIndex == 4; }
         }
 
         private void CycleRuleset()
@@ -401,7 +427,7 @@ namespace TicTacube.Game
             }
             else
             {
-                menuRulesetIndex = (menuRulesetIndex + 1) % 4;
+                menuRulesetIndex = (menuRulesetIndex + 1) % 5;
             }
 
             RefreshMenuLabels();
@@ -461,8 +487,10 @@ namespace TicTacube.Game
                     return GameStrings.T("Klasik", "Classic");
                 case 2:
                     return GameStrings.T("Kule (Çizgiler)", "Tower (Lines)");
-                default:
+                case 3:
                     return GameStrings.T("Kule (Klasik)", "Tower (Classic)");
+                default:
+                    return GameStrings.T("Turnuva (Çizgiler)", "Tournament (Lines)");
             }
         }
 
@@ -482,10 +510,14 @@ namespace TicTacube.Game
                     return GameStrings.T(
                         "Taşlar sütuna bırakılır, en alttaki boş hücreye düşer (9 hedef).\nTahta dolunca en çok çizgisi olan kazanır.",
                         "Marks drop into a column and land on its lowest empty cell (9 targets).\nMost lines on the full board wins.");
-                default:
+                case 3:
                     return GameStrings.T(
                         "Taşlar sütuna düşer; ilk 3'lü çizgiyi yapan turu kazanır.\n(Kule'de Pie kuralı yoktur.)",
                         "Marks drop into columns; first 3-in-a-row wins the round.\n(No Pie rule in Tower.)");
+                default:
+                    return GameStrings.T(
+                        "Rekabet formatı: merkezden geçen çizgi 0,75 sayılır,\neşitlikte açılmayan kazanır (komi). En az 2 galibiyetlik maç.",
+                        "Competitive format: center lines count 0.75,\nties go to the non-opener (komi). At least a 2-win match.");
             }
         }
 
@@ -530,9 +562,11 @@ namespace TicTacube.Game
             difficultyLabel.text = GameStrings.T("Zorluk: ", "Difficulty: ") + DifficultyName(menuDifficulty);
             difficultyLabel.color = MenuSolo ? TextColor : MutedColor;
             matchLengthLabel.text = GameStrings.T("Maç: ", "Match: ")
-                + (menuTargetWins == 1
-                    ? GameStrings.T("Tek Tur", "Single Round")
-                    : menuTargetWins + GameStrings.T(" galibiyet", " wins"));
+                + (MenuTournament
+                    ? Mathf.Max(2, menuTargetWins) + GameStrings.T(" galibiyet (turnuva asgarisi)", " wins (tournament minimum)")
+                    : menuTargetWins == 1
+                        ? GameStrings.T("Tek Tur", "Single Round")
+                        : menuTargetWins + GameStrings.T(" galibiyet", " wins"));
 
             // Online mode swaps the difficulty/match rows for server + room code.
             difficultyRowObject.SetActive(!MenuOnline);
@@ -567,7 +601,7 @@ namespace TicTacube.Game
 
             if (MenuSolo)
             {
-                var stats = GamePrefs.LoadStats(MenuRulesetBase, menuDifficulty, MenuGravity);
+                var stats = GamePrefs.LoadStats(MenuRulesetBase, menuDifficulty, MenuGravity, MenuTournament);
                 statsLabel.text = stats.Wins + stats.Losses + stats.Draws == 0
                     ? GameStrings.T("Bu zorlukta henüz maç oynamadın.", "No matches at this difficulty yet.")
                     : DifficultyName(menuDifficulty) + ": "
@@ -592,6 +626,8 @@ namespace TicTacube.Game
 
             RefreshDailyPuzzleLabel();
             RefreshProgressLabel();
+            ladderLabel.text = GameStrings.T("Merdiven ", "Ladder ")
+                + Ladder.HighestConquered() + "/" + Ladder.Steps.Length;
         }
 
         private void RefreshProgressLabel()
@@ -607,6 +643,12 @@ namespace TicTacube.Game
         {
             RefreshProgressPanel();
             progressPanel.SetActive(true);
+        }
+
+        private void LadderPressed()
+        {
+            RefreshLadderPanel();
+            ladderPanel.SetActive(true);
         }
 
         private void RefreshDailyPuzzleLabel()
@@ -656,7 +698,7 @@ namespace TicTacube.Game
                 return;
             }
 
-            controller.StartMatch(MenuSolo, MenuRulesetBase, menuDifficulty, menuTargetWins, MenuGravity);
+            controller.StartMatch(MenuSolo, MenuRulesetBase, menuDifficulty, menuTargetWins, MenuGravity, MenuTournament);
         }
 
         private void JoinPressed()
@@ -833,6 +875,13 @@ namespace TicTacube.Game
             toMenuLabel = toMenuText;
             Place((RectTransform)toMenuButton.transform, new Vector2(0.5f, 0f), new Vector2(175f, 230f), new Vector2(330f, 104f));
 
+            Text summaryText;
+            var summaryButton = CreateButton(rect, "Summary", 36, () => controller.ShowMatchSummaryPressed(), out summaryText);
+            summaryButtonLabel = summaryText;
+            Place((RectTransform)summaryButton.transform, new Vector2(0.5f, 0f), new Vector2(0f, 110f), new Vector2(400f, 96f));
+            summaryButtonObject = summaryButton.gameObject;
+            summaryButtonObject.SetActive(false);
+
             // Small floating button shown while the result panel is hidden.
             Text returnText;
             var returnButton = CreateButton(transform, "ReturnToResult", 34, ReturnToResultPressed, out returnText);
@@ -941,6 +990,141 @@ namespace TicTacube.Game
                 Place((RectTransform)cell.transform, new Vector2(0.5f, 1f),
                     new Vector2(column == 0 ? -240f : 240f, -530f - row * 104f), new Vector2(460f, 100f));
             }
+        }
+
+        // ------------------------------------------------------------------
+        // Ladder panel
+        // ------------------------------------------------------------------
+
+        private void BuildLadderPanel()
+        {
+            var rect = CreateRect("LadderPanel", transform);
+            Stretch(rect);
+            ladderPanel = rect.gameObject;
+            var backdrop = rect.gameObject.AddComponent<Image>();
+            backdrop.color = PanelColor;
+
+            var content = CreateRect("Content", rect);
+            Stretch(content);
+            ladderContent = content;
+
+            Text closeText;
+            var closeButton = CreateButton(rect, "Close", 44, () => ladderPanel.SetActive(false), out closeText);
+            Place((RectTransform)closeButton.transform, new Vector2(0.5f, 0f), new Vector2(0f, 40f), new Vector2(420f, 110f));
+            closeButton.GetComponent<Image>().color = AccentColor;
+            closeText.text = GameStrings.T("Kapat", "Close");
+
+            ladderPanel.SetActive(false);
+        }
+
+        private void RefreshLadderPanel()
+        {
+            for (int i = ladderContent.transform.childCount - 1; i >= 0; i -= 1)
+            {
+                UnityEngine.Object.Destroy(ladderContent.transform.GetChild(i).gameObject);
+            }
+
+            var title = CreateText(ladderContent, "Title",
+                GameStrings.T("Rakip Merdiveni", "Opponent Ladder"), 56, TextAnchor.MiddleCenter, TextColor);
+            title.fontStyle = FontStyle.Bold;
+            Place((RectTransform)title.transform, new Vector2(0.5f, 1f), new Vector2(0f, -56f), new Vector2(900f, 90f));
+
+            int conquered = Ladder.HighestConquered();
+
+            for (int i = 0; i < Ladder.Steps.Length; i += 1)
+            {
+                var step = Ladder.Steps[i];
+                bool done = step.Number <= conquered;
+                bool unlocked = Ladder.IsUnlocked(step);
+                var captured = step;
+
+                Text rowText;
+                var rowButton = CreateButton(ladderContent, "Step" + step.Number, 32, () =>
+                {
+                    if (Ladder.IsUnlocked(captured))
+                    {
+                        ladderPanel.SetActive(false);
+                        controller.StartLadderStep(captured);
+                    }
+                    else
+                    {
+                        Toast(GameStrings.T("Önce önceki basamağı fethet.", "Conquer the previous step first."), 2f);
+                    }
+                }, out rowText);
+                Place((RectTransform)rowButton.transform, new Vector2(0.5f, 1f),
+                    new Vector2(0f, -160f - i * 104f), new Vector2(880f, 96f));
+                rowButton.GetComponent<Image>().color = done
+                    ? new Color(0.3f, 0.26f, 0.12f, 1f)
+                    : unlocked ? ButtonColor : new Color(0.1f, 0.12f, 0.18f, 1f);
+                rowText.alignment = TextAnchor.MiddleLeft;
+                rowText.text = "  " + step.Number + ". " + step.Title() + " — " + step.Condition()
+                    + (done ? GameStrings.T("  (fethedildi)", "  (conquered)") : unlocked ? "" : GameStrings.T("  (kilitli)", "  (locked)"));
+                rowText.color = done ? new Color(1f, 0.84f, 0.32f, 1f) : unlocked ? TextColor : MutedColor;
+            }
+        }
+
+        // ------------------------------------------------------------------
+        // Match summary panel
+        // ------------------------------------------------------------------
+
+        private void BuildSummaryPanel()
+        {
+            var rect = CreateRect("SummaryPanel", transform);
+            Stretch(rect);
+            summaryPanel = rect.gameObject;
+            var backdrop = rect.gameObject.AddComponent<Image>();
+            backdrop.color = PanelColor;
+
+            var content = CreateRect("Content", rect);
+            Stretch(content);
+            summaryContent = content;
+
+            Text replayText;
+            var replayButton = CreateButton(rect, "Replay", 40, () => controller.ReplayLastRoundPressed(), out replayText);
+            Place((RectTransform)replayButton.transform, new Vector2(0.5f, 0f), new Vector2(-180f, 40f), new Vector2(340f, 110f));
+            replayButton.GetComponent<Image>().color = AccentDimColor;
+            replayText.text = GameStrings.T("Son Turu İzle", "Replay Last Round");
+
+            Text closeText;
+            var closeButton = CreateButton(rect, "Close", 44, () => summaryPanel.SetActive(false), out closeText);
+            Place((RectTransform)closeButton.transform, new Vector2(0.5f, 0f), new Vector2(180f, 40f), new Vector2(340f, 110f));
+            closeButton.GetComponent<Image>().color = AccentColor;
+            closeText.text = GameStrings.T("Kapat", "Close");
+
+            summaryPanel.SetActive(false);
+        }
+
+        public void ShowSummary(List<string> rounds, string bestMoveText, bool replayAvailable)
+        {
+            for (int i = summaryContent.transform.childCount - 1; i >= 0; i -= 1)
+            {
+                UnityEngine.Object.Destroy(summaryContent.transform.GetChild(i).gameObject);
+            }
+
+            var title = CreateText(summaryContent, "Title",
+                GameStrings.T("Maç Özeti", "Match Summary"), 56, TextAnchor.MiddleCenter, TextColor);
+            title.fontStyle = FontStyle.Bold;
+            Place((RectTransform)title.transform, new Vector2(0.5f, 1f), new Vector2(0f, -70f), new Vector2(900f, 90f));
+
+            for (int i = 0; i < rounds.Count && i < 9; i += 1)
+            {
+                var row = CreateText(summaryContent, "Round" + i, rounds[i], 36, TextAnchor.MiddleCenter, TextColor);
+                Place((RectTransform)row.transform, new Vector2(0.5f, 1f), new Vector2(0f, -190f - i * 70f), new Vector2(920f, 62f));
+            }
+
+            if (!string.IsNullOrEmpty(bestMoveText))
+            {
+                var best = CreateText(summaryContent, "Best", bestMoveText, 36, TextAnchor.MiddleCenter, new Color(1f, 0.84f, 0.32f, 1f));
+                Place((RectTransform)best.transform, new Vector2(0.5f, 1f),
+                    new Vector2(0f, -220f - Mathf.Min(rounds.Count, 9) * 70f), new Vector2(920f, 70f));
+            }
+
+            summaryPanel.SetActive(true);
+        }
+
+        public void HideSummary()
+        {
+            summaryPanel.SetActive(false);
         }
 
         // ------------------------------------------------------------------
@@ -1059,6 +1243,8 @@ namespace TicTacube.Game
         public void ShowMenu()
         {
             progressPanel.SetActive(false);
+            ladderPanel.SetActive(false);
+            summaryPanel.SetActive(false);
             menuPanel.SetActive(true);
             hudPanel.SetActive(false);
             resultPanel.SetActive(false);
@@ -1070,6 +1256,8 @@ namespace TicTacube.Game
         public void ShowGame()
         {
             progressPanel.SetActive(false);
+            ladderPanel.SetActive(false);
+            summaryPanel.SetActive(false);
             menuPanel.SetActive(false);
             hudPanel.SetActive(true);
             resultPanel.SetActive(false);
@@ -1252,6 +1440,31 @@ namespace TicTacube.Game
         public void SetConfirmVisible(bool visible)
         {
             confirmButton.gameObject.SetActive(visible);
+        }
+
+        /// <summary>Match-summary access on the result panel (local matches).</summary>
+        public void SetSummaryAvailable(bool available)
+        {
+            if (summaryButtonObject != null)
+            {
+                summaryButtonLabel.text = GameStrings.T("Maç Özeti", "Match Summary");
+                summaryButtonObject.SetActive(available);
+            }
+        }
+
+        /// <summary>Direct line-score text (Tournament's weighted display).</summary>
+        public void SetLineScoreText(string text)
+        {
+            if (lineScoreRoutine != null)
+            {
+                StopCoroutine(lineScoreRoutine);
+                lineScoreRoutine = null;
+            }
+
+            shownLineA = -1;
+            shownLineB = -1;
+            lineScoreLabel.color = TextColor;
+            lineScoreLabel.text = text;
         }
 
         /// <summary>Blank the turn indicator (entering online before data).</summary>

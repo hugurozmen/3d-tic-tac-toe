@@ -19,14 +19,30 @@ genç oyuncu ve erişilebilirlik ihtiyaçları olan oyuncu).
 
 ### Oyun
 
-- **Dört kural seçeneği**: Çizgiler (varsayılan), Klasik ve ikisinin
-  **Kule** varyantları — Kule'de taşlar sütuna bırakılır ve Connect-4 gibi
-  en alttaki boş hücreye düşer (her an en çok 9 hedef; iç hücrelere kamera
-  döndürme derdi kuralla ortadan kalkar). Sütunun herhangi bir hücresine
-  dokunmak yeter, taş düşüş animasyonuyla yerine oturur. Kule'de Pie
-  kuralı yoktur ve istatistikler ayrı tutulur. Menüde seçili kuralın tek
-  cümlelik açıklaması gösterilir (Kule yalnız yerel modlarda — online
-  sunucusu kural setini sabitler)
+- **Beş kural seçeneği**: Çizgiler (varsayılan), Klasik, ikisinin
+  **Kule** varyantları ve **Turnuva Çizgiler** — Kule'de taşlar sütuna
+  bırakılır ve Connect-4 gibi en alttaki boş hücreye düşer (her an en çok
+  9 hedef; iç hücrelere kamera döndürme derdi kuralla ortadan kalkar).
+  Sütunun herhangi bir hücresine dokunmak yeter, taş düşüş animasyonuyla
+  yerine oturur. Kule'de Pie kuralı yoktur ve istatistikler ayrı tutulur.
+  Menüde seçili kuralın tek cümlelik açıklaması gösterilir (Kule ve
+  Turnuva yalnız yerel modlarda — online sunucusu kural setini sabitler)
+- **Turnuva Çizgiler** (denge varyantı, tasarım raporu §3.2): merkezden
+  geçen çizgiler 1 yerine **0,75** puan sayılır (açıcı avantajının kökü
+  merkez — 49 çizginin 13'ü oradan geçer) ve puan eşitliğinde tur
+  **açmayan** oyuncuya gider (açılış komisi) — beraberlik yok, her tur
+  sonuca bağlanır. HUD skoru ağırlıklı puanı "7,5" biçiminde gösterir;
+  istatistikler ayrı anahtarda tutulur
+- **Rakip Merdiveni**: 12 basamaklı tek yönlü seri — her basamak zorluk +
+  kural seti + koşul paketler (ör. "Dengeli'yi 2+ çizgi farkla yen",
+  "Zor açarken kazan", Kule basamakları, finalde Usta'ya karşı 2
+  galibiyetlik maç). Basamaklar sırayla açılır, fethedilenler tekrar
+  oynanabilir; ilerleme cihazda saklanır ve basamak maçları istatistikleri
+  şişirmez
+- **Maç özeti + tur tekrarı**: sonuç ekranındaki **Özet** düğmesi tur tur
+  dökümü (kim kazandı, kaç hamle, çizgi skorları) ve "en iyi hamleni"
+  (tek hamlede en çok çizgi) gösterir; **Tekrar İzle** son turu taş taş,
+  çizgi ışınlarıyla birlikte tahtada yeniden oynatır (yerel modlarda)
 - **Günlük Bulmaca**: tarih-tohumlu, web sürümüyle aynı gün aynı bulmaca
   (4 tür rotasyonu: en iyi Çizgiler hamlesi / maks çizgi / Klasik kazanç /
   iki hamlede kazanç); günde tek deneme sayılır, sonrası pratik; bulmaca
@@ -110,7 +126,9 @@ gerekmez, bu yüzden birleştirme çatışması riski düşüktür.
 
 ## Henüz portlanmayanlar (yol haritası)
 
-- Günlük bulmaca, joker/güç sistemleri, tema seçimi
+- Joker/güç sistemleri, tema seçimi, online maç özeti/tekrarı,
+  turnuvaya özel AI ağırlıkları (AI turnuvada standart Çizgiler
+  sezgileriyle oynar)
 
 ## Online mod notları
 
